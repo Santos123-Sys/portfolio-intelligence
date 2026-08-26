@@ -11,9 +11,17 @@ import { positionWeights, WeightableHolding } from '../quant/weights';
 import { toReturnSeries, timeWeightedReturn } from '../quant/returns';
 import { volatility, sharpeRatio, maxDrawdown, valueAtRisk } from '../quant/risk';
 import { expectedShortfall } from '../quant/tail-risk';
-import { Currency, ValuationPoint } from '../quant/types';
+import { Currency, TRADING_DAYS, ValuationPoint } from '../quant/types';
+import {
+  beta,
+  componentRiskContribution,
+  concentrationHerfindahl,
+  covarianceMatrix,
+  sortinoRatio,
+} from '../quant/portfolio-risk';
+import { singlePeriodReturnAttribution, totalAttributedReturn } from '../quant/attribution';
 
-/** Risk-free rate per currency. Replace with a live source before relying on Sharpe. */
+/** Risk-free rate per currency. Replace with a live source before relying on Sharpe/Sortino. */
 const RISK_FREE: Record<string, number> = { CHF: 0.005, BRL: 0.105, EUR: 0.02, USD: 0.042 };
 
 export async function recomputePositionValues(portfolioId: string) {
@@ -77,6 +85,206 @@ export async function buildValuationSeries(portfolioId: string, fromDate: string
   return [...byDate.entries()].map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+interface SecuritySeries {
+  ticker: string;
+  securityId: string;
+  quantity: number;
+  weight: number;
+  prices: ValuationPoint[];
+  returns: number[];
+}
+
+async function buildSecuritySeries(portfolioId: string, fromDate: string): Promise<SecuritySeries[]> {
+  const holdings = await db
+    .select({
+      ticker: securities.ticker,
+      securityId: securities.id,
+      quantity: positions.quantity,
+      weight: positions.weight,
+    })
+    .from(positions)
+    .innerJoin(securities, eq(positions.securityId, securities.id))
+    .where(eq(positions.portfolioId, portfolioId));
+
+  const out: SecuritySeries[] = [];
+  for (const h of holdings) {
+    const bars = await db
+      .select({ priceDate: priceHistory.priceDate, close: priceHistory.close })
+      .from(priceHistory)
+      .where(and(eq(priceHistory.securityId, h.securityId), gte(priceHistory.priceDate, fromDate)));
+    const prices = bars
+      .map((b) => ({ date: b.priceDate, value: Number(b.close) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    if (prices.length < 3) continue;
+    out.push({
+      ticker: h.ticker,
+      securityId: h.securityId,
+      quantity: Number(h.quantity),
+      weight: Number(h.weight ?? 0),
+      prices,
+      returns: toReturnSeries(prices),
+    });
+  }
+  return out;
+}
+
+function trailingAligned(series: number[][]): number[][] {
+  const min = Math.min(...series.map((s) => s.length));
+  return series.map((s) => s.slice(s.length - min));
+}
+
+async function insertKpi(
+  portfolioId: string,
+  metricName: string,
+  value: number,
+  currency: Currency,
+  methodology: string,
+  dataAsOf: string,
+  lookbackDays: number,
+  caveat: string | null = null
+) {
+  if (!Number.isFinite(value)) return;
+  await db.insert(riskMetrics).values({
+    portfolioId,
+    metricName,
+    value,
+    currency,
+    methodology,
+    confidenceLevel: null,
+    horizonDays: null,
+    lookbackDays,
+    annualizationFactor: null,
+    caveat,
+    computedAt: new Date(),
+    dataAsOf: new Date(dataAsOf),
+  });
+}
+
+async function recomputeAdvancedRiskMetrics(portfolioId: string, currency: Currency, fromDate: string, portfolioReturns: number[], dataAsOf: string) {
+  const securitySeries = await buildSecuritySeries(portfolioId, fromDate);
+  if (securitySeries.length === 0) return 0;
+
+  let written = 0;
+  const weights = securitySeries.map((s) => s.weight).filter((w) => w > 0);
+  if (weights.length > 0) {
+    await insertKpi(
+      portfolioId,
+      'Concentration_HHI',
+      concentrationHerfindahl(weights),
+      currency,
+      'Herfindahl-Hirschman concentration index calculated from current position weights: sum(weight^2)',
+      dataAsOf,
+      weights.length
+    );
+    written++;
+  }
+
+  const alignedInput = trailingAligned([portfolioReturns, ...securitySeries.map((s) => s.returns)]);
+  const alignedPortfolio = alignedInput[0];
+  const alignedSecurities = securitySeries.map((s, i) => ({ ...s, returns: alignedInput[i + 1] }));
+
+  for (const s of alignedSecurities) {
+    if (s.returns.length < 3) continue;
+    try {
+      await insertKpi(
+        portfolioId,
+        `Beta_to_Portfolio_${s.ticker}`,
+        beta(s.returns, alignedPortfolio),
+        currency,
+        `Covariance(${s.ticker}, portfolio returns) / variance(portfolio returns), using trailing aligned daily returns`,
+        dataAsOf,
+        s.returns.length,
+        'Beta is measured to this portfolio, not to an external benchmark index'
+      );
+      written++;
+    } catch { /* insufficient or zero variance */ }
+  }
+
+  if (alignedSecurities.length >= 2) {
+    const returnMap: Record<string, number[]> = {};
+    const weightMap: Record<string, number> = {};
+    for (const s of alignedSecurities) {
+      returnMap[s.ticker] = s.returns;
+      weightMap[s.ticker] = s.weight;
+    }
+    try {
+      const matrix = covarianceMatrix(returnMap);
+      const keys = Object.keys(matrix);
+      for (let i = 0; i < keys.length; i++) {
+        for (let j = i; j < keys.length; j++) {
+          await insertKpi(
+            portfolioId,
+            `Covariance_${keys[i]}_${keys[j]}`,
+            matrix[keys[i]][keys[j]],
+            currency,
+            'Sample covariance of aligned daily security return series',
+            dataAsOf,
+            returnMap[keys[i]].length
+          );
+          written++;
+        }
+      }
+      const riskContribution = componentRiskContribution(weightMap, matrix);
+      for (const [ticker, contribution] of Object.entries(riskContribution)) {
+        await insertKpi(
+          portfolioId,
+          `RiskContribution_${ticker}`,
+          contribution,
+          currency,
+          'Component contribution to portfolio variance: weight × marginal variance contribution / portfolio variance',
+          dataAsOf,
+          returnMap[ticker].length
+        );
+        written++;
+      }
+    } catch { /* covariance/risk contribution undefined on insufficient series */ }
+  }
+
+  const attributionInputs = securitySeries
+    .filter((s) => s.weight > 0 && s.prices.length >= 2)
+    .map((s) => {
+      const first = s.prices[0];
+      const last = s.prices[s.prices.length - 1];
+      return {
+        key: s.ticker,
+        startingWeight: s.weight,
+        startValue: first.value * s.quantity,
+        endValue: last.value * s.quantity,
+      };
+    });
+  if (attributionInputs.length > 0) {
+    try {
+      const attribution = singlePeriodReturnAttribution(attributionInputs);
+      for (const item of attribution) {
+        await insertKpi(
+          portfolioId,
+          `ReturnContribution_${item.key}`,
+          item.contribution,
+          currency,
+          'Single-period arithmetic attribution: starting weight × holding return; no external cash flows supplied',
+          dataAsOf,
+          portfolioReturns.length,
+          'Attribution is approximate until transaction-level cash flows are fully incorporated'
+        );
+        written++;
+      }
+      await insertKpi(
+        portfolioId,
+        'AttributedReturn_Total',
+        totalAttributedReturn(attribution),
+        currency,
+        'Sum of position-level return contributions over the available lookback window',
+        dataAsOf,
+        portfolioReturns.length,
+        'Attribution is approximate until transaction-level cash flows are fully incorporated'
+      );
+      written++;
+    } catch { /* attribution requires non-zero start values */ }
+  }
+
+  return written;
+}
+
 export async function recomputeRiskMetrics(portfolioId: string, lookbackDays = 365) {
   const [pf] = await db.select().from(portfolios).where(eq(portfolios.id, portfolioId));
   if (!pf) throw new Error(`Portfolio ${portfolioId} not found`);
@@ -100,6 +308,22 @@ export async function recomputeRiskMetrics(portfolioId: string, lookbackDays = 3
   ];
 
   try { metrics.push(sharpeRatio(returns, RISK_FREE[currency] ?? 0, ctx)); } catch { /* zero volatility */ }
+  try {
+    const rfPeriodic = Math.pow(1 + (RISK_FREE[currency] ?? 0), 1 / TRADING_DAYS) - 1;
+    metrics.push({
+      metricName: 'Sortino',
+      value: sortinoRatio(returns, rfPeriodic) * Math.sqrt(TRADING_DAYS),
+      currency,
+      methodology: `Annualized Sortino ratio using downside deviation below the ${currency} periodic risk-free rate`,
+      confidenceLevel: null,
+      horizonDays: null,
+      lookbackDays: returns.length,
+      annualizationFactor: TRADING_DAYS,
+      computedAt: new Date().toISOString(),
+      dataAsOf,
+      caveat: returns.length < 60 ? `Only ${returns.length} observations; Sortino is unstable on short samples` : null,
+    });
+  } catch { /* zero downside deviation */ }
 
   const twr = timeWeightedReturn(series);
   for (const m of metrics) {
@@ -119,7 +343,9 @@ export async function recomputeRiskMetrics(portfolioId: string, lookbackDays = 3
     computedAt: new Date(), dataAsOf: new Date(dataAsOf),
   });
 
-  return { written: metrics.length + 1, currency, observations: returns.length };
+  const advancedWritten = await recomputeAdvancedRiskMetrics(portfolioId, currency, fromDate, returns, dataAsOf);
+
+  return { written: metrics.length + 1 + advancedWritten, currency, observations: returns.length };
 }
 
 export async function recomputeAll() {
