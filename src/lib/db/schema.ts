@@ -207,6 +207,10 @@ export const aiAnalyses = pgTable(
      * conclusion drawn from no data and should be treated as such.
      */
     groundedIn: jsonb('grounded_in').$type<string[]>(),
+    /** Full data-completeness disclosure from the external agentic contract. */
+    informationGaps: jsonb('information_gaps').$type<string[]>(),
+    /** External run that produced this imported analysis, when applicable. */
+    externalRunId: uuid('external_run_id'),
     /** Points at the analysis this one replaced, so changes render as a diff. */
     supersedesId: uuid('supersedes_id'),
     analysisTimestamp: timestamp('analysis_timestamp', { withTimezone: true })
