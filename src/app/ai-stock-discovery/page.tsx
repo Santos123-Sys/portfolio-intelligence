@@ -1,4 +1,4 @@
-import { desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { aiAnalyses, securities, thesisVersions } from '@/lib/db/schema';
 
@@ -24,8 +24,8 @@ export default async function AIStockDiscoveryPage() {
       thesisVersion: thesisVersions.versionNumber,
     })
     .from(aiAnalyses)
-    .innerJoin(securities, (join) => join.on(aiAnalyses.securityId, securities.id))
-    .innerJoin(thesisVersions, (join) => join.on(aiAnalyses.thesisVersionId, thesisVersions.id))
+    .innerJoin(securities, eq(aiAnalyses.securityId, securities.id))
+    .innerJoin(thesisVersions, eq(aiAnalyses.thesisVersionId, thesisVersions.id))
     .orderBy(desc(aiAnalyses.analysisTimestamp));
 
   return (
