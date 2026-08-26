@@ -8,13 +8,17 @@
  * never sums across currencies. The converted grand total comes from the API's
  * separate `displayTotal` key, with its disclaimer rendered alongside.
  */
-import { db } from '@/lib/db';
-import { portfolios, positions, riskMetrics } from '@/lib/db/schema';
-import { eq, sum, desc } from 'drizzle-orm';
-
 export const dynamic = 'force-dynamic';
 
 async function getData() {
+  // Load the database client only when the page requests data so a missing or
+  // temporarily unavailable integration renders a useful connection state.
+  const [{ db }, { portfolios, positions, riskMetrics }, { eq, sum, desc }] = await Promise.all([
+    import('@/lib/db'),
+    import('@/lib/db/schema'),
+    import('drizzle-orm'),
+  ]);
+
   const pfs = await db
     .select({
       id: portfolios.id,
