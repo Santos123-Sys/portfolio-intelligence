@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, timestamp, numeric, jsonb, index } from 'drizzle-orm/pg-core';
-import { aiAnalyses, analysisJobs, securities, thesisVersions } from './schema';
+import { aiAnalyses, analysisJobs, portfolios, securities, thesisVersions } from './schema';
 
 /**
  * Atomic external-data evidence. This table is deliberately metric-oriented so
