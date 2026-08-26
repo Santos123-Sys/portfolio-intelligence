@@ -6,7 +6,7 @@
  * mistaken for market data.
  */
 import { db } from '../src/lib/db';
-import { portfolios, securities, positions, thesisVersions, priceHistory } from '../src/lib/db/schema';
+import { portfolios, securities, positions, thesisVersions, priceHistory, decisionLog } from '../src/lib/db/schema';
 import { StubProvider } from '../src/lib/connectors/stub';
 
 const SECURITIES = [
@@ -75,6 +75,30 @@ async function main() {
     }
     console.log(`  ${s.ticker}: ${bars.length} price rows`);
   }
+
+  // A couple of seeded entries so the Decision Log (Page 7) isn't an empty
+  // state on first run — this table is append-only from here on.
+  await db.insert(decisionLog).values([
+    {
+      title: 'Initiated Swiss Quality & Stability portfolio',
+      decision: 'Fund the portfolio with an initial allocation to NESN, ROG and NOVN.',
+      reasoning:
+        'All three pass the v1 thesis inclusion criteria: durable competitive advantage, ' +
+        'consistent free cash flow and conservative balance sheets. Sized to keep every ' +
+        'position under the 15% global concentration constraint.',
+      alternativesConsidered: 'Considered an ex-Switzerland European quality basket; rejected for currency-blending risk given the CHF-native reporting requirement.',
+      relatedPortfolioId: swiss.id,
+    },
+    {
+      title: 'Initiated Brazilian Growth portfolio',
+      decision: 'Fund the portfolio with an initial allocation to WEGE3, RADL3 and TOTS3.',
+      reasoning:
+        'Each names structural growth above the 12%-over-3-years inclusion bar and no ' +
+        'single-customer concentration above 30%.',
+      alternativesConsidered: 'Considered adding a fourth position for diversification; deferred pending Agenteki coverage of additional BVMF candidates.',
+      relatedPortfolioId: brazil.id,
+    },
+  ]);
 
   console.log('\nDone. Next: curl http://localhost:3000/api/cron/refresh');
 }

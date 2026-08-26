@@ -1,56 +1,91 @@
+'use client';
+
 /**
- * Overview — functional baseline, intentionally plain.
+ * Overview (Page 1) — Section 5.3.
  *
- * This exists so the app runs end to end and so v0 has a working data contract
- * to redesign against. It is not the finished UI; see V0-DASHBOARD-BRIEF.md.
- *
- * Note what it does NOT do: it renders `totalValueNative` per portfolio and
- * never sums across currencies. The converted grand total comes from the API's
- * separate `displayTotal` key, with its disclaimer rendered alongside.
+ * Client-only per Section 5.2: no Server Components, no server-side db
+ * access from a page. Everything here comes from fetch() in useEffect against
+ * the same JSON API a curl request would hit. This page renders responses;
+ * it recomputes nothing.
  */
-import { db } from '@/lib/db';
-import { portfolios, positions, riskMetrics } from '@/lib/db/schema';
-import { eq, sum, desc } from 'drizzle-orm';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { PortfolioCard, type PortfolioCardData } from '@/components/portfolio-card';
+import { DisplayTotal, type DisplayTotalData } from '@/components/display-total';
+import type { DrillableMetric } from '@/components/metric-drill';
 
-export const dynamic = 'force-dynamic';
-
-async function getData() {
-  const pfs = await db
-    .select({
-      id: portfolios.id,
-      name: portfolios.name,
-      baseCurrency: portfolios.baseCurrency,
-      portfolioType: portfolios.portfolioType,
-      total: sum(positions.marketValueNative),
-    })
-    .from(portfolios)
-    .leftJoin(positions, eq(positions.portfolioId, portfolios.id))
-    .groupBy(portfolios.id);
-
-  const withRisk = await Promise.all(
-    pfs.map(async (p) => {
-      const rows = await db
-        .select()
-        .from(riskMetrics)
-        .where(eq(riskMetrics.portfolioId, p.id))
-        .orderBy(desc(riskMetrics.computedAt))
-        .limit(20);
-      const latest = new Map<string, typeof rows[number]>();
-      for (const r of rows) if (!latest.has(r.metricName)) latest.set(r.metricName, r);
-      return { ...p, total: Number(p.total ?? 0), metrics: [...latest.values()] };
-    })
-  );
-  return withRisk;
+interface PortfolioApiRow {
+  id: string;
+  name: string;
+  baseCurrency: string;
+  totalValueNative: number;
 }
 
-export default async function OverviewPage() {
-  let data: Awaited<ReturnType<typeof getData>> = [];
-  let error: string | null = null;
-  try {
-    data = await getData();
-  } catch (e) {
-    error = (e as Error).message;
-  }
+function OverviewContent() {
+  const searchParams = useSearchParams();
+  const displayCurrency = searchParams.get('displayCurrency');
+
+  const [cards, setCards] = useState<PortfolioCardData[]>([]);
+  const [displayTotal, setDisplayTotalState] = useState<DisplayTotalData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const qs = displayCurrency ? `?displayCurrency=${encodeURIComponent(displayCurrency)}` : '';
+        const res = await fetch(`/api/portfolios${qs}`);
+        if (!res.ok) throw new Error(`API returned ${res.status}`);
+        const data: { portfolios: PortfolioApiRow[]; displayTotal: DisplayTotalData | null } =
+          await res.json();
+
+        if (cancelled) return;
+        setDisplayTotalState(data.displayTotal);
+        setCards(
+          data.portfolios.map((p) => ({
+            id: p.id,
+            name: p.name,
+            baseCurrency: p.baseCurrency,
+            totalValueNative: p.totalValueNative,
+            metrics: [],
+            metricsLoading: true,
+          }))
+        );
+
+        // Risk metrics fetched per-portfolio, in parallel, after the shell renders —
+        // the totals shouldn't wait on the slower per-portfolio query.
+        await Promise.all(
+          data.portfolios.map(async (p) => {
+            try {
+              const riskRes = await fetch(`/api/risk?portfolioId=${p.id}`);
+              if (!riskRes.ok) throw new Error(`risk API returned ${riskRes.status}`);
+              const riskData: { metrics: DrillableMetric[] } = await riskRes.json();
+              if (cancelled) return;
+              setCards((prev) =>
+                prev.map((c) => (c.id === p.id ? { ...c, metrics: riskData.metrics, metricsLoading: false } : c))
+              );
+            } catch {
+              if (cancelled) return;
+              setCards((prev) => (prev.map((c) => (c.id === p.id ? { ...c, metricsLoading: false } : c))));
+            }
+          })
+        );
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [displayCurrency]);
 
   if (error) {
     return (
@@ -58,10 +93,13 @@ export default async function OverviewPage() {
         <h1>Portfolio Intelligence</h1>
         <p className="sub">Overview</p>
         <div className="card">
-          <h2>Not connected</h2>
-          <p className="note">{error}</p>
+          <h2>Connection error</h2>
           <p className="note">
-            Set DATABASE_URL, run <code>npm run db:push</code>, then <code>npm run seed</code>.
+            Connection failed: Unable to reach backend.
+            <br />
+            Check that the API is running and DATABASE_URL is set.
+            <br />
+            {error}
           </p>
         </div>
       </main>
@@ -72,56 +110,41 @@ export default async function OverviewPage() {
     <main>
       <h1>Portfolio Intelligence</h1>
       <p className="sub">
-        Every figure below is in its portfolio&apos;s native currency. Nothing on this
-        page blends currencies.
+        Every figure below is in its portfolio&apos;s native currency. Nothing on this page blends currencies.
       </p>
 
-      {data.length === 0 && (
+      {loading && cards.length === 0 && (
         <div className="card">
-          <h2>No portfolios</h2>
-          <p className="note">Run <code>npm run seed</code> to load demo data.</p>
+          <p className="note">Fetching...</p>
+        </div>
+      )}
+
+      {!loading && cards.length === 0 && (
+        <div className="card">
+          <h2>No portfolios configured</h2>
+          <p className="note">
+            Trigger /api/cron/refresh to load market data.
+            <br />
+            Or run <code>npm run seed</code> to load demo data.
+          </p>
         </div>
       )}
 
       <div className="grid">
-        {data.map((p) => (
-          <div key={p.id} className="card">
-            <h2>{p.name}</h2>
-            <div className="big">
-              {p.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              <span className="cur">{p.baseCurrency}</span>
-            </div>
-            {p.metrics.length === 0 ? (
-              <p className="note">No metrics computed yet. Trigger /api/cron/refresh.</p>
-            ) : (
-              <table style={{ marginTop: '1rem' }}>
-                <tbody>
-                  {p.metrics.map((m) => (
-                    <tr key={m.id}>
-                      <td>{m.metricName}</td>
-                      <td className="num">
-                        {m.metricName.startsWith('VaR') ||
-                        m.metricName === 'MaxDrawdown' ||
-                        m.metricName === 'Volatility' ||
-                        m.metricName === 'TWR'
-                          ? `${(m.value * 100).toFixed(2)}%`
-                          : m.value.toFixed(3)}
-                        <span className="cur">{m.currency}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            {p.metrics.some((m) => m.caveat) && (
-              <p className="caveat">
-                {p.metrics.filter((m) => m.caveat).length} metric(s) carry caveats — see
-                the risk detail page.
-              </p>
-            )}
-          </div>
+        {cards.map((c) => (
+          <PortfolioCard key={c.id} data={c} />
         ))}
       </div>
+
+      <DisplayTotal data={displayTotal} />
     </main>
+  );
+}
+
+export default function OverviewPage() {
+  return (
+    <Suspense fallback={<main><p className="sub">Fetching...</p></main>}>
+      <OverviewContent />
+    </Suspense>
   );
 }

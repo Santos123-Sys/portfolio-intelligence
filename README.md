@@ -98,6 +98,30 @@ src/app/api/         Route handlers, including two cron workers
 tests/               51 tests, all against hand-checkable values
 ```
 
+### Frontend pages
+
+The seven pages in the Master Build Specification, all client-only (Section 5.2: no
+Server Components, no server-side db access from a page — `fetch()` in `useEffect`
+against the same JSON API a curl request would hit):
+
+| Route | Purpose |
+|---|---|
+| `/` | Overview — native-currency totals, headline risk metrics per portfolio |
+| `/allocation` | Sector / country / asset-class weight breakdown, one portfolio at a time |
+| `/positions` | Sortable, filterable position table across portfolios |
+| `/security/[ticker]` | Market & fundamentals, position, AI analysis, grounding audit trail |
+| `/intelligence` | AI analysis feed — new candidates, changed recommendations, thesis violations |
+| `/risk` | Every risk metric, drillable into full methodology, plus the VaR/normality caveat |
+| `/decisions` | Append-only, searchable decision log |
+
+Pages built before this pass — `/portfolio`, `/risk-kpis`, `/ai-insights`,
+`/securities`, `/investment-thesis`, `/ai-stock-discovery`, `/agentic-system`,
+`/candidates` — cover ground the spec's seven pages don't (thesis upload,
+human-in-the-loop candidate review, provenance browsing) and remain reachable
+under the Header's "More" menu rather than deleted. They predate the client-only
+constraint and still fetch data as Server Components; migrating them is tracked
+as a known gap.
+
 ---
 
 ## Design decisions worth knowing before you edit
@@ -121,7 +145,6 @@ Stated plainly, because a spec that overstates completeness is worse than no spe
 - **No real market data.** `StubProvider` generates a reproducible pseudo-random walk seeded from the ticker. Every row is tagged `source: 'stub'`. ADR-005 is open — Twelve Data and EODHD both list XSWX and BVMF, but fundamentals depth for those two exchanges specifically is unverified.
 - **Risk-free rates are hardcoded** in `recompute.ts`. Sharpe is directionally useful and not yet trustworthy in absolute terms.
 - **TWR ignores cash flows.** The function supports them; the recompute service doesn't yet pass transactions in. Until it does, TWR equals cumulative return. The metric carries a caveat saying so.
-- **Only the Overview page is built.** Pages 2–7 from `V0-DASHBOARD-BRIEF.md` are not. That is deliberate — v0 generates them against the API contract the Overview page establishes.
 - **No authentication.** Single-user, but a deployed Vercel URL is public. Add Vercel Password Protection or an auth layer before putting real holdings in.
 - **Agenteki has never run against the live API.** The schema validation and grounding guard are tested; the end-to-end call with a real key is not.
 

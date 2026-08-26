@@ -1,19 +1,51 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { analysisJobs, aiAnalyses, thesisVersions } from '@/lib/db/schema';
+import { analysisJobs, aiAnalyses, thesisVersions, securities } from '@/lib/db/schema';
 import { eq, desc } from 'drizzle-orm';
 
 export const runtime = 'nodejs';
 
-/** Recent analyses, newest first — feeds the AI Intelligence page. */
+/**
+ * Recent analyses, newest first — feeds the AI Intelligence Feed (Page 5) and
+ * Security Detail (Page 4). Joined against securities so the feed can render
+ * a ticker without a second round trip per row.
+ */
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const securityId = url.searchParams.get('securityId');
 
-  const q = db.select().from(aiAnalyses).orderBy(desc(aiAnalyses.analysisTimestamp)).limit(50);
+  const base = db
+    .select({
+      id: aiAnalyses.id,
+      securityId: aiAnalyses.securityId,
+      ticker: securities.ticker,
+      companyName: securities.companyName,
+      thesisVersionId: aiAnalyses.thesisVersionId,
+      portfolioCandidate: aiAnalyses.portfolioCandidate,
+      portfolioRole: aiAnalyses.portfolioRole,
+      investmentScore: aiAnalyses.investmentScore,
+      thesisAlignmentScore: aiAnalyses.thesisAlignmentScore,
+      qualityScore: aiAnalyses.qualityScore,
+      growthScore: aiAnalyses.growthScore,
+      riskScore: aiAnalyses.riskScore,
+      dividendScore: aiAnalyses.dividendScore,
+      fundamentalSummary: aiAnalyses.fundamentalSummary,
+      investmentThesis: aiAnalyses.investmentThesis,
+      keyCatalysts: aiAnalyses.keyCatalysts,
+      keyRisks: aiAnalyses.keyRisks,
+      thesisBreakers: aiAnalyses.thesisBreakers,
+      confidenceScore: aiAnalyses.confidenceScore,
+      groundedIn: aiAnalyses.groundedIn,
+      supersedesId: aiAnalyses.supersedesId,
+      analysisTimestamp: aiAnalyses.analysisTimestamp,
+      dataTimestamp: aiAnalyses.dataTimestamp,
+    })
+    .from(aiAnalyses)
+    .innerJoin(securities, eq(aiAnalyses.securityId, securities.id));
+
   const rows = securityId
-    ? await db.select().from(aiAnalyses).where(eq(aiAnalyses.securityId, securityId)).orderBy(desc(aiAnalyses.analysisTimestamp))
-    : await q;
+    ? await base.where(eq(aiAnalyses.securityId, securityId)).orderBy(desc(aiAnalyses.analysisTimestamp))
+    : await base.orderBy(desc(aiAnalyses.analysisTimestamp)).limit(50);
 
   return NextResponse.json({ analyses: rows });
 }

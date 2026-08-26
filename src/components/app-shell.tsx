@@ -1,35 +1,19 @@
-import Link from 'next/link';
-import type { ReactNode } from 'react';
+'use client';
 
-const navigation = [
-  ['/', 'Overview'],
-  ['/investment-thesis', 'Investment Thesis'],
-  ['/ai-stock-discovery', 'AI Stock Discovery'],
-  ['/agentic-system', 'Agentic System'],
-  ['/candidates', 'Candidates'],
-  ['/portfolio', 'Portfolio'],
-  ['/risk-kpis', 'Risk & KPIs'],
-  ['/securities', 'Securities'],
-  ['/ai-insights', 'AI Insights'],
-] as const;
+import type { ReactNode } from 'react';
+import { PortfolioProvider } from '@/lib/portfolio-context';
+import { Header } from './header';
+import { ErrorBoundary } from './error-boundary';
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <strong>Portfolio Intelligence</strong>
-          <span>Thesis-driven investment management</span>
-        </div>
-        <nav aria-label="Main navigation">
-          {navigation.map(([href, label]) => (
-            <Link key={href} href={href} className="nav-link">
-              {label}
-            </Link>
-          ))}
-        </nav>
-      </aside>
-      <section className="content">{children}</section>
-    </div>
+    <PortfolioProvider>
+      <div className="app-shell">
+        <Header />
+        <section className="content">
+          <ErrorBoundary>{children}</ErrorBoundary>
+        </section>
+      </div>
+    </PortfolioProvider>
   );
 }
