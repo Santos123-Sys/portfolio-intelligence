@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { AnalysisOutput } from '../src/lib/agenteki/schemas';
-import { validateGrounding, diffAnalyses } from '../src/lib/agenteki/pipeline';
-import type { GroundingBundle } from '../src/lib/agenteki/schemas';
+import { AnalysisOutput, type GroundingBundle } from '../src/lib/integrations/analysis-contract';
+import { validateGrounding, diffAnalyses } from '../src/lib/integrations/analysis-validation';
 
 const bundle: GroundingBundle = {
   ticker: 'NESN', companyName: 'Nestle', exchange: 'XSWX', currency: 'CHF',

@@ -1,5 +1,5 @@
-import { pgTable, uuid, text, timestamp, numeric, jsonb, index } from 'drizzle-orm/pg-core';
-import { aiAnalyses, analysisJobs, portfolios, securities, thesisVersions } from './schema';
+import { pgTable, uuid, text, timestamp, numeric, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { aiAnalyses, portfolios, securities, thesisVersions, users } from './schema';
 
 /**
  * Atomic external-data evidence. This table is deliberately metric-oriented so
@@ -37,6 +37,7 @@ export const candidateDecisions = pgTable(
   'candidate_decisions',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
     analysisId: uuid('analysis_id').references(() => aiAnalyses.id, { onDelete: 'cascade' }).notNull(),
     decision: text('decision').notNull(), // accepted | rejected | watchlist | reanalysis_requested
     rationale: text('rationale'),
@@ -52,6 +53,7 @@ export const thesisMutationAudit = pgTable(
   'thesis_mutation_audit',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
     thesisVersionId: uuid('thesis_version_id').references(() => thesisVersions.id, { onDelete: 'cascade' }).notNull(),
     action: text('action').notNull(),
     actor: text('actor').notNull(),
@@ -61,29 +63,18 @@ export const thesisMutationAudit = pgTable(
   (t) => ({ thesisAuditIdx: index('thesis_mutation_audit_thesis_idx').on(t.thesisVersionId, t.createdAt) })
 );
 
-/** Optional queue linkage when a candidate decision requests another analysis. */
-export const candidateReanalysisRequests = pgTable(
-  'candidate_reanalysis_requests',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    decisionId: uuid('decision_id').references(() => candidateDecisions.id, { onDelete: 'cascade' }).notNull(),
-    analysisJobId: uuid('analysis_job_id').references(() => analysisJobs.id, { onDelete: 'cascade' }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-  (t) => ({ decisionIdx: index('candidate_reanalysis_decision_idx').on(t.decisionId) })
-);
-
-
 /** Dashboard record of a run owned by the external agentic system. */
 export const externalAgenticRuns = pgTable(
   'external_agentic_runs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
     externalRunId: text('external_run_id').notNull().unique(),
     status: text('status').notNull().default('queued'),
     thesisVersion: text('thesis_version'),
     manifestSchemaVersion: text('manifest_schema_version'),
     manifestHash: text('manifest_hash'),
+    requestJson: jsonb('request_json'),
     manifestJson: jsonb('manifest_json'),
     reportPdfUrl: text('report_pdf_url'),
     requestedAt: timestamp('requested_at').defaultNow().notNull(),
@@ -109,7 +100,7 @@ export const portfolioAnalysisSyntheses = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => ({
-    runPortfolioIdx: index('portfolio_synthesis_run_portfolio_idx').on(t.runId, t.portfolioId),
+    runPortfolioIdx: uniqueIndex('portfolio_synthesis_run_portfolio_idx').on(t.runId, t.portfolioId),
   })
 );
 
@@ -119,12 +110,13 @@ export const externalAgenticAnalyses = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     runId: uuid('run_id').references(() => externalAgenticRuns.id, { onDelete: 'cascade' }).notNull(),
+    portfolioId: uuid('portfolio_id').references(() => portfolios.id, { onDelete: 'cascade' }).notNull(),
     securityId: uuid('security_id').references(() => securities.id, { onDelete: 'cascade' }).notNull(),
     analysisId: uuid('analysis_id').references(() => aiAnalyses.id, { onDelete: 'cascade' }).notNull(),
     outputJson: jsonb('output_json').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => ({
-    runSecurityIdx: index('external_analysis_run_security_idx').on(t.runId, t.securityId),
+    runSecurityIdx: uniqueIndex('external_analysis_run_portfolio_security_idx').on(t.runId, t.portfolioId, t.securityId),
   })
 );

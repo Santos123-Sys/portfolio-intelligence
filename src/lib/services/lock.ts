@@ -1,7 +1,7 @@
 /**
  * Distributed job lock.
  *
- * Vercel Cron delivers at-least-once and offers no concurrency guarantee, so two
+ * Scheduled jobs can be retried and offer no concurrency guarantee, so two
  * refresh runs can overlap. Two concurrent runs writing FX rates and recomputing
  * metrics is silent data corruption — the kind that is miserable to diagnose
  * three months later.

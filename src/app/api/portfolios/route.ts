@@ -4,6 +4,7 @@ import { portfolios, positions } from '@/lib/db/schema';
 import { eq, sum } from 'drizzle-orm';
 import { fetchEcbRates, displayTotal } from '@/lib/fx';
 import { Currency } from '@/lib/quant/types';
+import { authenticateRequest } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -15,6 +16,8 @@ export const runtime = 'nodejs';
  * `displayTotal` still gets correct, unblended figures.
  */
 export async function GET(req: Request) {
+  const session = await authenticateRequest(req);
+  if (!session.ok) return session.response;
   const url = new URL(req.url);
   const displayCurrency = url.searchParams.get('displayCurrency') as Currency | null;
 
@@ -29,6 +32,7 @@ export async function GET(req: Request) {
     })
     .from(portfolios)
     .leftJoin(positions, eq(positions.portfolioId, portfolios.id))
+    .where(eq(portfolios.ownerId, session.auth.userId))
     .groupBy(portfolios.id);
 
   const items = rows.map((r) => ({

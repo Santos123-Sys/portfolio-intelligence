@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { positions, securities, aiAnalyses, priceHistory, portfolios } from '@/lib/db/schema';
-import { eq, desc, inArray } from 'drizzle-orm';
+import { and, eq, desc, inArray } from 'drizzle-orm';
+import { authenticateRequest, portfolioIsOwned } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -15,6 +16,8 @@ export const runtime = 'nodejs';
  * downstream reads it as a computed metric.
  */
 export async function GET(req: Request) {
+  const session = await authenticateRequest(req);
+  if (!session.ok) return session.response;
   const url = new URL(req.url);
   const portfolioId = url.searchParams.get('portfolioId');
   const ticker = url.searchParams.get('ticker');
@@ -46,11 +49,19 @@ export async function GET(req: Request) {
     .from(positions)
     .innerJoin(securities, eq(positions.securityId, securities.id))
     .innerJoin(portfolios, eq(positions.portfolioId, portfolios.id))
-    .leftJoin(aiAnalyses, eq(aiAnalyses.securityId, securities.id));
+    .leftJoin(aiAnalyses, and(
+      eq(aiAnalyses.ownerId, portfolios.ownerId),
+      eq(aiAnalyses.portfolioId, positions.portfolioId),
+      eq(aiAnalyses.securityId, securities.id)
+    ));
+
+  if (portfolioId && !(await portfolioIsOwned(session.auth.userId, portfolioId))) {
+    return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 });
+  }
 
   let rows = portfolioId
-    ? await base.where(eq(positions.portfolioId, portfolioId)).orderBy(desc(positions.weight))
-    : await base.orderBy(desc(positions.weight));
+    ? await base.where(and(eq(portfolios.ownerId, session.auth.userId), eq(positions.portfolioId, portfolioId))).orderBy(desc(positions.weight))
+    : await base.where(eq(portfolios.ownerId, session.auth.userId)).orderBy(desc(positions.weight));
 
   if (ticker) {
     rows = rows.filter((r) => r.ticker.toLowerCase() === ticker.toLowerCase());

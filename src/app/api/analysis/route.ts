@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { analysisJobs, aiAnalyses, thesisVersions, securities } from '@/lib/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { aiAnalyses, securities } from '@/lib/db/schema';
+import { and, eq, desc } from 'drizzle-orm';
+import { authenticateRequest } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -11,6 +12,8 @@ export const runtime = 'nodejs';
  * a ticker without a second round trip per row.
  */
 export async function GET(req: Request) {
+  const session = await authenticateRequest(req);
+  if (!session.ok) return session.response;
   const url = new URL(req.url);
   const securityId = url.searchParams.get('securityId');
 
@@ -18,6 +21,7 @@ export async function GET(req: Request) {
     .select({
       id: aiAnalyses.id,
       securityId: aiAnalyses.securityId,
+      portfolioId: aiAnalyses.portfolioId,
       ticker: securities.ticker,
       companyName: securities.companyName,
       thesisVersionId: aiAnalyses.thesisVersionId,
@@ -36,6 +40,8 @@ export async function GET(req: Request) {
       thesisBreakers: aiAnalyses.thesisBreakers,
       confidenceScore: aiAnalyses.confidenceScore,
       groundedIn: aiAnalyses.groundedIn,
+      informationGaps: aiAnalyses.informationGaps,
+      externalRunId: aiAnalyses.externalRunId,
       supersedesId: aiAnalyses.supersedesId,
       analysisTimestamp: aiAnalyses.analysisTimestamp,
       dataTimestamp: aiAnalyses.dataTimestamp,
@@ -44,49 +50,17 @@ export async function GET(req: Request) {
     .innerJoin(securities, eq(aiAnalyses.securityId, securities.id));
 
   const rows = securityId
-    ? await base.where(eq(aiAnalyses.securityId, securityId)).orderBy(desc(aiAnalyses.analysisTimestamp))
-    : await base.orderBy(desc(aiAnalyses.analysisTimestamp)).limit(50);
+    ? await base.where(and(eq(aiAnalyses.ownerId, session.auth.userId), eq(aiAnalyses.securityId, securityId))).orderBy(desc(aiAnalyses.analysisTimestamp))
+    : await base.where(eq(aiAnalyses.ownerId, session.auth.userId)).orderBy(desc(aiAnalyses.analysisTimestamp)).limit(50);
 
   return NextResponse.json({ analyses: rows });
 }
 
-/**
- * Enqueue an analysis. Returns 202 immediately.
- *
- * ADR-009: an Agenteki run is minutes of LLM calls with unpredictable duration
- * and MUST NOT execute inside an HTTP request. This handler writes a job row;
- * the cron worker picks it up; the client polls GET /api/analysis.
- */
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const { securityId, portfolioId, jobType = 'single_security' } = body as {
-    securityId?: string; portfolioId?: string; jobType?: string;
-  };
-
-  if (jobType === 'single_security' && !securityId) {
-    return NextResponse.json({ error: 'securityId required for single_security jobs' }, { status: 400 });
-  }
-
-  const [thesis] = await db
-    .select({ id: thesisVersions.id })
-    .from(thesisVersions)
-    .orderBy(desc(thesisVersions.versionNumber))
-    .limit(1);
-
-  if (!thesis) {
-    return NextResponse.json(
-      { error: 'No thesis version exists. Agenteki cannot score against nothing — seed a thesis first.' },
-      { status: 409 }
-    );
-  }
-
-  const [job] = await db
-    .insert(analysisJobs)
-    .values({ status: 'pending', jobType, securityId, portfolioId, thesisVersionId: thesis.id })
-    .returning();
-
+  const session = await authenticateRequest(req);
+  if (!session.ok) return session.response;
   return NextResponse.json(
-    { job, message: 'Queued. Poll GET /api/analysis or check job status.' },
-    { status: 202 }
+    { error: 'Internal analysis jobs are retired. Start an external run through /api/integrations/agentic/runs.' },
+    { status: 410 }
   );
 }

@@ -1,6 +1,11 @@
 # AI Investment Management & Portfolio Intelligence System
 ## System Architecture — v0.1 (Draft, awaiting validation)
 
+> Historical architecture record. The live deployment and system boundary are
+> now defined by `RAILWAY-DEPLOYMENT.md` and `AGENTIC-SYSTEM-HANDOFF.md`.
+> In particular, the agentic runtime is a separate Railway service and is not
+> implemented inside the Next.js dashboard.
+
 **Status:** v0.2 — build-vs-buy, currency-reporting, and phasing questions resolved (see Section 10). Not yet implemented.
 **Scope:** Personal-use system, single investor, two portfolios (CH equity / BR equity / fixed income & liquidity), built fully custom, reported in native currency per portfolio.
 

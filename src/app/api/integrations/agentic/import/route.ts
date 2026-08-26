@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { aiAnalyses, portfolios, securities, thesisVersions } from '@/lib/db/schema';
 import {
@@ -7,17 +7,17 @@ import {
   externalAgenticRuns,
   portfolioAnalysisSyntheses,
 } from '@/lib/db/workflow-schema';
-import { assertMutationAuthorized } from '@/lib/auth';
+import { assertAgenticServiceAuthorized } from '@/lib/auth';
 import { manifestHash, validateManifest } from '@/lib/integrations/agentic-adapter';
+import { AgenticRunRequest } from '@/lib/integrations/agentic-contract';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
-  let actor: string;
   try {
-    actor = assertMutationAuthorized(req).subject;
-  } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 401 });
+    assertAgenticServiceAuthorized(req);
+  } catch {
+    return NextResponse.json({ error: 'Agentic service authentication required' }, { status: 401 });
   }
 
   let parsed;
@@ -36,47 +36,54 @@ export async function POST(req: Request) {
     .where(eq(externalAgenticRuns.externalRunId, parsed.externalRunId))
     .limit(1);
 
+  if (!existing) {
+    return NextResponse.json(
+      { error: 'Unknown externalRunId. The authenticated dashboard user must start the run before import.' },
+      { status: 409 }
+    );
+  }
+
   if (parsed.status === 'failed') {
-    if (existing) {
-      const [failed] = await db
-        .update(externalAgenticRuns)
-        .set({ status: 'failed', errorMessage: parsed.errorMessage, completedAt: new Date() })
-        .where(eq(externalAgenticRuns.id, existing.id))
-        .returning();
-      return NextResponse.json({ run: failed, imported: false, idempotent: true });
-    }
     const [failed] = await db
-      .insert(externalAgenticRuns)
-      .values({
-        externalRunId: parsed.externalRunId,
+      .update(externalAgenticRuns)
+      .set({
         status: 'failed',
         errorMessage: parsed.errorMessage,
-        reportPdfUrl: parsed.reportPdfUrl,
+        reportPdfUrl: parsed.reportPdfUrl ?? existing.reportPdfUrl,
         completedAt: new Date(),
       })
+      .where(eq(externalAgenticRuns.id, existing.id))
       .returning();
-    return NextResponse.json({ run: failed, imported: false }, { status: 202 });
+    return NextResponse.json({ run: failed, imported: false, idempotent: existing.status === 'failed' });
   }
 
   const hash = manifestHash(parsed.manifest);
-  if (existing) {
-    if (existing.manifestHash && existing.manifestHash !== hash) {
-      return NextResponse.json(
-        { error: 'externalRunId was reused with a different manifest' },
-        { status: 409 }
-      );
-    }
+  if (existing.manifestHash && existing.manifestHash !== hash) {
+    return NextResponse.json(
+      { error: 'externalRunId was reused with a different manifest' },
+      { status: 409 }
+    );
+  }
+  if (existing.importedAt) {
     return NextResponse.json({
       run: existing,
-      imported: Boolean(existing.importedAt),
+      imported: true,
       idempotent: true,
     });
+  }
+
+  const request = AgenticRunRequest.safeParse(existing.requestJson);
+  if (!request.success) {
+    return NextResponse.json({ error: 'Stored run request is missing or invalid' }, { status: 409 });
   }
 
   const [thesis] = await db
     .select({ id: thesisVersions.id })
     .from(thesisVersions)
-    .where(eq(thesisVersions.versionNumber, parsed.manifest.thesisVersion))
+    .where(and(
+      eq(thesisVersions.ownerId, existing.ownerId),
+      eq(thesisVersions.versionNumber, parsed.manifest.thesisVersion)
+    ))
     .limit(1);
 
   if (!thesis) {
@@ -89,9 +96,8 @@ export async function POST(req: Request) {
   try {
     const result = await db.transaction(async (tx) => {
       const [run] = await tx
-        .insert(externalAgenticRuns)
-        .values({
-          externalRunId: parsed.externalRunId,
+        .update(externalAgenticRuns)
+        .set({
           status: 'importing',
           thesisVersion: String(parsed.manifest.thesisVersion),
           manifestSchemaVersion: parsed.manifest.schemaVersion,
@@ -100,6 +106,7 @@ export async function POST(req: Request) {
           reportPdfUrl: parsed.reportPdfUrl,
           completedAt: new Date(parsed.manifest.generatedAt),
         })
+        .where(eq(externalAgenticRuns.id, existing.id))
         .returning();
 
       let analysisCount = 0;
@@ -107,7 +114,10 @@ export async function POST(req: Request) {
         const [portfolio] = await tx
           .select({ id: portfolios.id })
           .from(portfolios)
-          .where(eq(portfolios.id, portfolioManifest.portfolioId))
+          .where(and(
+            eq(portfolios.id, portfolioManifest.portfolioId),
+            eq(portfolios.ownerId, existing.ownerId)
+          ))
           .limit(1);
         if (!portfolio) throw new Error(`Unknown portfolio: ${portfolioManifest.portfolioId}`);
 
@@ -119,10 +129,19 @@ export async function POST(req: Request) {
         });
 
         for (const output of portfolioManifest.analyses) {
+          const requestedSecurity = request.data.securities.filter((security) =>
+            security.portfolioId === portfolioManifest.portfolioId && security.ticker === output.ticker
+          );
+          if (requestedSecurity.length !== 1) {
+            throw new Error(`Ticker ${output.ticker} was not uniquely present in the dashboard run request`);
+          }
           const securitiesForTicker = await tx
             .select()
             .from(securities)
-            .where(eq(securities.ticker, output.ticker));
+            .where(and(
+              eq(securities.ticker, output.ticker),
+              eq(securities.exchange, requestedSecurity[0].exchange)
+            ));
           if (securitiesForTicker.length !== 1) {
             throw new Error(
               `Security ticker ${output.ticker} must resolve to exactly one dashboard security; found ${securitiesForTicker.length}`
@@ -132,13 +151,19 @@ export async function POST(req: Request) {
           const [previous] = await tx
             .select({ id: aiAnalyses.id })
             .from(aiAnalyses)
-            .where(eq(aiAnalyses.securityId, security.id))
+            .where(and(
+              eq(aiAnalyses.ownerId, existing.ownerId),
+              eq(aiAnalyses.portfolioId, portfolio.id),
+              eq(aiAnalyses.securityId, security.id)
+            ))
             .orderBy(desc(aiAnalyses.analysisTimestamp))
             .limit(1);
 
           const [analysis] = await tx
             .insert(aiAnalyses)
             .values({
+              ownerId: existing.ownerId,
+              portfolioId: portfolio.id,
               securityId: security.id,
               thesisVersionId: thesis.id,
               portfolioCandidate: output.portfolioCandidate,
@@ -167,6 +192,7 @@ export async function POST(req: Request) {
 
           await tx.insert(externalAgenticAnalyses).values({
             runId: run.id,
+            portfolioId: portfolio.id,
             securityId: security.id,
             analysisId: analysis.id,
             outputJson: output,
@@ -181,7 +207,7 @@ export async function POST(req: Request) {
         .where(eq(externalAgenticRuns.id, run.id))
         .returning();
 
-      return { run: imported, analysisCount, actor };
+      return { run: imported, analysisCount, actor: 'agentic-service' };
     });
 
     return NextResponse.json({ ...result, imported: true }, { status: 201 });

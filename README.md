@@ -2,8 +2,11 @@
 
 AI-assisted investment management for two equity portfolios and a fixed-income sleeve, built on a deterministic quantitative engine.
 
-**Stack:** Next.js 15 · TypeScript · Drizzle ORM · Postgres (Neon/Vercel) · Vercel
-**Tests:** 51 passing across the quant engine, FX layer, and Agenteki guards.
+**Stack:** Next.js 15 · TypeScript · Drizzle ORM · PostgreSQL · Railway
+
+The Next.js application owns the dashboard, deterministic portfolio calculations,
+authentication and persistence. A separately deployed agentic service owns thesis
+extraction, security reasoning, synthesis and PDF generation.
 
 ---
 
@@ -11,11 +14,11 @@ AI-assisted investment management for two equity portfolios and a fixed-income s
 
 **The AI never calculates. The calculation engine never interprets.**
 
-Every number is produced by deterministic TypeScript in `src/lib/quant/` and stored in Postgres. Agenteki reads those values as grounding, writes structured interpretation back, and is never permitted to compute a weight, return, Sharpe ratio, or VaR figure.
+Every number is produced by deterministic TypeScript in `src/lib/quant/` and stored in Postgres. The external agentic service receives those values as grounding, returns validated structured interpretation, and is never permitted to compute a weight, return, Sharpe ratio, or VaR figure.
 
 This is enforced in three places, not just asked for in a prompt:
 
-1. `src/lib/quant/` imports nothing from `src/lib/agenteki/` or `src/lib/fx/`.
+1. `src/lib/quant/` imports nothing from the agentic integration or `src/lib/fx/`.
 2. `validateGrounding()` rejects any analysis citing a metric that was not supplied — catching the specific failure mode of a fluent, plausible analysis referencing a Sharpe ratio nobody computed.
 3. The output schema requires a non-empty `groundedIn` array. An analysis grounded in nothing is an opinion, and opinions are not stored as analysis.
 
@@ -35,9 +38,10 @@ The sole exception is the display total on the Overview page: converted live at 
 
 ```bash
 npm install
-cp .env.example .env.local        # fill in DATABASE_URL
-npm run db:push                   # create tables
-npm run seed                      # 2 portfolios, 6 securities, 400 days of prices
+cp .env.example .env.local
+npm run db:migrate
+npm run admin:create              # requires INITIAL_ADMIN_EMAIL/PASSWORD
+npm run seed                      # optional demo portfolios and prices
 npm run dev
 ```
 
@@ -55,28 +59,28 @@ npm test
 
 ---
 
-## Deploying to Vercel
+## Deploying to Railway
 
-1. Push to GitHub.
-2. Import the repo at vercel.com → **New Project**.
-3. Add a Postgres database: **Storage → Create → Postgres** (or connect Neon). `DATABASE_URL` is injected automatically.
-4. Add environment variables under **Settings → Environment Variables**:
-   - `ANTHROPIC_API_KEY` — Agenteki returns 503 without it; everything else still runs
-   - `CRON_SECRET` — a long random string; without it `/api/cron/*` is publicly callable
-   - `MARKET_DATA_PROVIDER` — `stub` until ADR-005 is resolved
-5. Deploy. `vercel.json` registers both cron jobs automatically.
-6. Run `npm run db:push` against the production `DATABASE_URL` once.
+The recommended Railway project contains four services:
 
-> **Vercel scopes environment variables per environment.** A variable set on Production is invisible to Preview. `src/lib/env.ts` fails at startup naming the missing key rather than surfacing an `undefined` three layers deep.
+```text
+dashboard (public Next.js) ──private HTTP──> agentic-system (private API)
+        │                                      │
+        └── Railway PostgreSQL                 └── worker/storage owned by agentic service
+        └── optional refresh-cron
+```
 
-### Cron schedule
+`railway.toml` builds standalone Next.js, runs committed Drizzle migrations as
+the pre-deploy command, starts the standalone server on Railway's injected port,
+and checks `/api/health`. Set `AGENTIC_SYSTEM_BASE_URL` to the agentic service's
+Railway private domain. Do not expose that service directly to the browser.
 
-| Job | Schedule (UTC) | Purpose |
-|---|---|---|
-| `/api/cron/refresh` | `0 21 * * 1-5` | Prices → FX → recompute all metrics |
-| `/api/cron/agenteki` | `0 22 * * 1-5` | Drain the analysis queue |
+After the first deployment, run `npm run admin:create` once as a Railway command,
+then remove `INITIAL_ADMIN_PASSWORD` from the service variables. For the optional
+market refresh, create a Railway Cron service from this repository with command
+`npm run cron:refresh` and a weekday schedule such as `0 21 * * 1-5` UTC.
 
-21:00 UTC sits after both SIX Swiss and B3 close. **Vercel's Hobby tier limits cron frequency** — verify the current allowance for your plan; the schedules may need widening.
+See `docs/RAILWAY-DEPLOYMENT.md` for the exact variable and service checklist.
 
 ---
 
@@ -90,12 +94,12 @@ src/lib/quant/       Deterministic engine. No LLM calls. 32 tests.
   weights.ts         Position/sector/country weights, HHI, currency guard
 
 src/lib/fx/          The ONLY place currencies mix. ECB rates + displayTotal().
-src/lib/agenteki/    Structured output schema + hand-rolled pipeline (ADR-006)
+src/lib/integrations External schemas, grounding guards, HTTP client and manifest adapter
 src/lib/connectors/  PriceProvider interface + deterministic stub (ADR-005 open)
 src/lib/services/    Recompute chain, distributed job lock
-src/lib/db/          Drizzle schema — 12 tables
-src/app/api/         Route handlers, including two cron workers
-tests/               51 tests, all against hand-checkable values
+src/lib/db/          Drizzle schema, ownership model and revocable sessions
+src/app/api/         Session-protected dashboard and integration routes
+tests/               Deterministic quant, FX, contract and authentication tests
 ```
 
 ### Frontend pages
@@ -132,9 +136,11 @@ as a known gap.
 
 **Why a `job_locks` table instead of `pg_try_advisory_lock`.** Advisory locks are session-scoped and release when the connection closes. Serverless connections close constantly, often mid-job. A row with an explicit TTL survives that.
 
-**Why `analysis_jobs` is separate from `ai_analyses`.** The architecture called for a `status` column on the analyses table. A job can fail, retry, or be cancelled without ever producing an analysis; merging the two conflates "what the AI concluded" with "whether the AI ran." A failed run now leaves a diagnosable record rather than a half-populated result row.
-
-**Why the Agenteki worker processes only 3 jobs per invocation.** Serverless functions have a wall-clock ceiling. An unbounded queue drain gets killed mid-job, stranding rows in `running`. A small batch finishes cleanly and the next tick picks up the rest.
+**Why the dashboard does not contain an agent worker.** Reasoning jobs are owned by
+the separately deployed agentic service. The dashboard starts a run over private
+HTTP, stores its external identifier, validates the callback manifest and imports
+it transactionally. This keeps either system replaceable without shared code or
+direct cross-service database writes.
 
 ---
 
@@ -145,8 +151,8 @@ Stated plainly, because a spec that overstates completeness is worse than no spe
 - **No real market data.** `StubProvider` generates a reproducible pseudo-random walk seeded from the ticker. Every row is tagged `source: 'stub'`. ADR-005 is open — Twelve Data and EODHD both list XSWX and BVMF, but fundamentals depth for those two exchanges specifically is unverified.
 - **Risk-free rates are hardcoded** in `recompute.ts`. Sharpe is directionally useful and not yet trustworthy in absolute terms.
 - **TWR ignores cash flows.** The function supports them; the recompute service doesn't yet pass transactions in. Until it does, TWR equals cumulative return. The metric carries a caveat saying so.
-- **No authentication.** Single-user, but a deployed Vercel URL is public. Add Vercel Password Protection or an auth layer before putting real holdings in.
-- **Agenteki has never run against the live API.** The schema validation and grounding guard are tested; the end-to-end call with a real key is not.
+- **External agentic deployment is required.** The dashboard integration is complete, but no analysis can run until the separately owned service implements `docs/AGENTIC-SYSTEM-HANDOFF.md`.
+- **Railway production credentials are not in Git.** PostgreSQL, session, service and cron secrets must be configured in Railway before deployment.
 
 ---
 
@@ -157,6 +163,8 @@ Stated plainly, because a spec that overstates completeness is worse than no spe
 | `docs/decision-log.md` | ADR-001 → ADR-011, full reasoning and trade-offs |
 | `docs/architecture.md` | Components, data flow, dashboard IA, phasing |
 | `docs/V0-DASHBOARD-BRIEF.md` | **Paste this into v0** — frontend spec only |
+| `docs/AGENTIC-SYSTEM-HANDOFF.md` | Contract and strict repository boundary for the agentic-layer LLM |
+| `docs/RAILWAY-DEPLOYMENT.md` | Railway services, variables, migration and bootstrap checklist |
 | `docs/platform-comparison.md` | base44 / Replit / Vercel / Manus / Kimi evaluation |
 | `docs/superseded/` | The Python/Replit design, retained for its reasoning. Not live guidance. |
 | `CONTRIBUTING.md` | The architectural invariants that must not be broken |

@@ -1,20 +1,20 @@
 import { NextResponse } from 'next/server';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { portfolios } from '@/lib/db/schema';
 import { externalAgenticRuns, portfolioAnalysisSyntheses } from '@/lib/db/workflow-schema';
-import { assertMutationAuthorized } from '@/lib/auth';
+import { authenticateRequest, portfolioIsOwned } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
 export async function GET(req: Request) {
-  try {
-    assertMutationAuthorized(req);
-  } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 401 });
-  }
+  const session = await authenticateRequest(req);
+  if (!session.ok) return session.response;
 
   const portfolioId = new URL(req.url).searchParams.get('portfolioId');
+  if (portfolioId && !(await portfolioIsOwned(session.auth.userId, portfolioId))) {
+    return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 });
+  }
   const base = db
     .select({
       id: portfolioAnalysisSyntheses.id,
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
       portfolioName: portfolios.name,
       thesisVersion: portfolioAnalysisSyntheses.thesisVersion,
       synthesis: portfolioAnalysisSyntheses.synthesisJson,
-      reportPdfUrl: externalAgenticRuns.reportPdfUrl,
+      reportAvailable: externalAgenticRuns.reportPdfUrl,
       generatedAt: externalAgenticRuns.completedAt,
       importedAt: externalAgenticRuns.importedAt,
     })
@@ -33,9 +33,20 @@ export async function GET(req: Request) {
 
   const rows = portfolioId
     ? await base
-        .where(eq(portfolioAnalysisSyntheses.portfolioId, portfolioId))
+        .where(and(
+          eq(externalAgenticRuns.ownerId, session.auth.userId),
+          eq(portfolioAnalysisSyntheses.portfolioId, portfolioId)
+        ))
         .orderBy(desc(externalAgenticRuns.completedAt))
-    : await base.orderBy(desc(externalAgenticRuns.completedAt)).limit(50);
+    : await base.where(eq(externalAgenticRuns.ownerId, session.auth.userId))
+        .orderBy(desc(externalAgenticRuns.completedAt)).limit(50);
 
-  return NextResponse.json({ syntheses: rows });
+  return NextResponse.json({
+    syntheses: rows.map(({ reportAvailable, ...row }) => ({
+      ...row,
+      reportUrl: reportAvailable
+        ? `/api/integrations/agentic/reports?externalRunId=${encodeURIComponent(row.runId)}`
+        : null,
+    })),
+  });
 }

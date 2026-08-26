@@ -12,5 +12,5 @@ export function validateManifest(input: unknown): AgenticImportRequest {
 }
 
 export function externalAgenticUrl(baseUrl: string, path: string): string {
-  return new URL(path.replace(/^\\//, ''), baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
+  return new URL(path.replace(/^\/+/, ''), baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
 }

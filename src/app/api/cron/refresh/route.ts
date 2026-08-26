@@ -9,14 +9,12 @@ import { fetchEcbRates } from '@/lib/fx';
 import { recordFundamentalObservations, recordPriceObservation, recordUnavailableObservation } from '@/lib/services/provenance';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
 
 /**
  * Daily refresh: prices -> fundamentals/provenance -> FX -> recompute.
  *
- * Runs under a lock because Vercel Cron is at-least-once with no concurrency
- * guarantee. Two overlapping runs writing FX rates is exactly the silent
- * corruption this guards against.
+ * Runs under a lock because scheduled jobs can overlap or be retried. Two
+ * refreshes writing the same observations concurrently would corrupt lineage.
  */
 export async function GET(req: Request) {
   try {

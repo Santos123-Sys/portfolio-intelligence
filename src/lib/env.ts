@@ -1,26 +1,22 @@
 /**
  * Environment validation. Fails loudly at startup, naming the missing key.
  *
- * Vercel scopes env vars per environment (Production / Preview / Development).
- * A variable set on one is not visible to the others. This module exists so
- * that mistake surfaces as a named error rather than an undefined at runtime.
+ * This module keeps Railway/runtime configuration failures explicit rather than
+ * allowing an undefined credential to fail deep inside a request.
  */
 import { z } from 'zod';
 
 const schema = z.object({
   DATABASE_URL: z.string().url('DATABASE_URL must be a valid Postgres connection string'),
-  ANTHROPIC_API_KEY: z.string().min(1).optional(),
   MARKET_DATA_API_KEY: z.string().min(1).optional(),
   MARKET_DATA_PROVIDER: z.enum(['stub', 'twelvedata', 'eodhd', 'yahoo-search']).default('stub'),
   WEB_SEARCH_PROVIDER: z.enum(['none', 'brave']).default('none'),
   WEB_SEARCH_API_KEY: z.string().min(1).optional(),
-  /** Shared secret for write APIs until full user login is introduced. */
-  MUTATION_API_KEY: z.string().min(16, 'MUTATION_API_KEY must be at least 16 chars').optional(),
+  SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must contain at least 32 characters'),
   CRON_SECRET: z.string().min(16, 'CRON_SECRET must be at least 16 chars').optional(),
-  AGENT_VERSION: z.string().default('agenteki-0.1.0'),
   /** External Agentic System integration; the dashboard never owns its prompts. */
   AGENTIC_SYSTEM_BASE_URL: z.string().url().optional(),
-  AGENTIC_SYSTEM_API_KEY: z.string().min(1).optional(),
+  AGENTIC_SYSTEM_API_KEY: z.string().min(32, 'AGENTIC_SYSTEM_API_KEY must contain at least 32 characters').optional(),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
 
@@ -37,15 +33,14 @@ export function getEnv(): Env {
       .join('\n');
     throw new Error(
       `Environment validation failed:\n${missing}\n\n` +
-        `On Vercel, set these under Project Settings > Environment Variables, ` +
-        `and confirm the correct environment (Production / Preview / Development) is ticked.`
+      `Set the missing values on the Railway dashboard service and redeploy.`
     );
   }
   cached = parsed.data;
   return cached;
 }
 
-/** Guards cron routes. Vercel sends CRON_SECRET as a bearer token. */
+/** Guards scheduled refresh routes with a bearer token. */
 export function assertCronAuthorized(req: Request): void {
   const env = getEnv();
   if (!env.CRON_SECRET) {

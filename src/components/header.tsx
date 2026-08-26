@@ -62,6 +62,20 @@ function ThemeToggle() {
   );
 }
 
+function LogoutButton() {
+  const [busy, setBusy] = useState(false);
+  async function logout() {
+    setBusy(true);
+    await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => undefined);
+    window.location.assign('/login');
+  }
+  return (
+    <button type="button" className="theme-toggle" onClick={logout} disabled={busy}>
+      {busy ? 'Signing out…' : 'Sign out'}
+    </button>
+  );
+}
+
 export function Header() {
   const pathname = usePathname();
   const { viewing } = usePortfolioBreadcrumb();
@@ -106,7 +120,10 @@ export function Header() {
           </div>
         </nav>
 
-        <ThemeToggle />
+        <div className="header-actions">
+          <ThemeToggle />
+          <LogoutButton />
+        </div>
       </div>
 
       {pathname !== '/' && (

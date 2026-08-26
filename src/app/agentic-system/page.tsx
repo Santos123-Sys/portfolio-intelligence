@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface ExternalRun {
   externalRunId: string;
@@ -9,33 +9,88 @@ interface ExternalRun {
   requestedAt: string;
   completedAt: string | null;
   importedAt: string | null;
+  reportUrl: string | null;
 }
 
 export default function AgenticSystemPage() {
   const [runs, setRuns] = useState<ExternalRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+
+  const loadRuns = useCallback(async (signal?: AbortSignal) => {
+    const response = await fetch('/api/integrations/agentic/runs', { signal });
+    if (!response.ok) throw new Error(`Runs API returned ${response.status}`);
+    const data = (await response.json()) as { runs: ExternalRun[] };
+    if (!signal?.aborted) setRuns(data.runs);
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch('/api/integrations/agentic/runs')
-      .then((response) => {
-        if (!response.ok) throw new Error(`API returned ${response.status}`);
-        return response.json();
-      })
-      .then((data: { runs: ExternalRun[] }) => {
-        if (!cancelled) setRuns(data.runs);
-      })
-      .catch((e) => {
-        if (!cancelled) setError((e as Error).message);
+    const controller = new AbortController();
+    loadRuns(controller.signal)
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError((cause as Error).message);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    return () => controller.abort();
+  }, [loadRuns]);
+
+  async function startRun() {
+    setStarting(true);
+    setError(null);
+    try {
+      const [thesisResponse, portfolioResponse, positionResponse] = await Promise.all([
+        fetch('/api/thesis'),
+        fetch('/api/portfolios'),
+        fetch('/api/positions'),
+      ]);
+      if (!thesisResponse.ok || !portfolioResponse.ok || !positionResponse.ok) {
+        throw new Error('Unable to prepare the run from current dashboard data');
+      }
+      const thesisBody = (await thesisResponse.json()) as {
+        versions: Array<{ id: string; versionNumber: number; criteriaJson: unknown }>;
+      };
+      const portfolioBody = (await portfolioResponse.json()) as {
+        portfolios: Array<{ id: string; name: string; baseCurrency: string; investmentObjective: string | null }>;
+      };
+      const positionBody = (await positionResponse.json()) as {
+        positions: Array<{ portfolioId: string; ticker: string; exchange: string }>;
+      };
+      const latestThesis = thesisBody.versions[0];
+      if (!latestThesis) throw new Error('Create and confirm an investment thesis before starting analysis');
+      if (positionBody.positions.length === 0) throw new Error('No portfolio positions are available for analysis');
+
+      const securityMap = new Map<string, { ticker: string; exchange: string; portfolioId: string }>();
+      for (const position of positionBody.positions) {
+        securityMap.set(`${position.portfolioId}:${position.exchange}:${position.ticker}`, position);
+      }
+      const response = await fetch('/api/integrations/agentic/runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          thesis: { versionId: latestThesis.id, criteria: latestThesis.criteriaJson },
+          securities: [...securityMap.values()],
+          portfolios: portfolioBody.portfolios.map((portfolio) => ({
+            id: portfolio.id,
+            name: portfolio.name,
+            baseCurrency: portfolio.baseCurrency,
+            investmentObjective: portfolio.investmentObjective ?? '',
+          })),
+        }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: unknown };
+        throw new Error(typeof body.error === 'string' ? body.error : `Start request failed (${response.status})`);
+      }
+      await loadRuns();
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setStarting(false);
+    }
+  }
 
   return (
     <main>
@@ -64,6 +119,9 @@ export default function AgenticSystemPage() {
           <h2>Decision authority</h2>
           <p>Imported analysis informs candidate review and security detail. It cannot modify holdings or execute trades.</p>
           <p className="note">Accept, reject and watchlist decisions remain explicit human mutations.</p>
+          <button type="button" className="action-button" onClick={startRun} disabled={starting}>
+            {starting ? 'Starting analysis…' : 'Analyze current portfolios'}
+          </button>
         </section>
       </div>
 
@@ -89,6 +147,7 @@ export default function AgenticSystemPage() {
                   <th>Requested</th>
                   <th>Completed</th>
                   <th>Imported</th>
+                  <th>Report</th>
                 </tr>
               </thead>
               <tbody>
@@ -104,6 +163,7 @@ export default function AgenticSystemPage() {
                     <td>{new Date(run.requestedAt).toLocaleString()}</td>
                     <td>{run.completedAt ? new Date(run.completedAt).toLocaleString() : '—'}</td>
                     <td>{run.importedAt ? new Date(run.importedAt).toLocaleString() : '—'}</td>
+                    <td>{run.reportUrl ? <a className="text-link" href={run.reportUrl} target="_blank" rel="noreferrer">Open PDF</a> : '—'}</td>
                   </tr>
                 ))}
               </tbody>

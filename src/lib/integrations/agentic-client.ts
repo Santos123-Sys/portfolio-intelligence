@@ -49,3 +49,21 @@ export async function fetchExternalAgenticRun(externalRunId: string): Promise<Ex
 
   return ExternalRunStatus.parse(await response.json());
 }
+
+export async function fetchExternalAgenticReport(externalRunId: string): Promise<Response> {
+  const env = getEnv();
+  if (!env.AGENTIC_SYSTEM_BASE_URL) throw new Error('AGENTIC_SYSTEM_BASE_URL is not configured');
+  const response = await fetch(
+    externalAgenticUrl(env.AGENTIC_SYSTEM_BASE_URL, `/v1/analysis-runs/${encodeURIComponent(externalRunId)}/report`),
+    {
+      headers: env.AGENTIC_SYSTEM_API_KEY
+        ? { authorization: `Bearer ${env.AGENTIC_SYSTEM_API_KEY}` }
+        : {},
+      cache: 'no-store',
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`External report endpoint returned ${response.status}: ${(await response.text()).slice(0, 400)}`);
+  }
+  return response;
+}

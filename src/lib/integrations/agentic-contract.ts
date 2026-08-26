@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AnalysisOutput, ThesisCriteria } from '@/lib/agenteki/schemas';
+import { AnalysisOutput, ThesisCriteria } from './analysis-contract';
 
 const synthesis = z.object({
   executiveSummary: z.string().min(1),
@@ -54,7 +54,7 @@ export type AgenticImportRequest = z.infer<typeof AgenticImportRequest>;
 
 export const AgenticRunRequest = z.object({
   thesis: z.object({
-    versionId: z.string().uuid().optional(),
+    versionId: z.string().uuid(),
     criteria: ThesisCriteria,
   }),
   securities: z.array(z.object({

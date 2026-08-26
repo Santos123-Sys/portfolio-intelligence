@@ -1,22 +1,21 @@
 import { NextResponse } from 'next/server';
-import { getEnv } from '@/lib/env';
+import { sql } from 'drizzle-orm';
+import { db } from '@/lib/db';
 
 export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    const env = getEnv();
+    await db.execute(sql`select 1`);
     return NextResponse.json({
       status: 'ok',
-      provider: env.MARKET_DATA_PROVIDER,
-      agentVersion: env.AGENT_VERSION,
-      llmConfigured: Boolean(env.ANTHROPIC_API_KEY),
+      database: 'reachable',
       timestamp: new Date().toISOString(),
     });
   } catch (e) {
     return NextResponse.json(
-      { status: 'misconfigured', error: (e as Error).message },
-      { status: 500 }
+      { status: 'unhealthy', database: 'unreachable', timestamp: new Date().toISOString() },
+      { status: 503 }
     );
   }
 }

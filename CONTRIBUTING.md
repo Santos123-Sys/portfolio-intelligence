@@ -1,10 +1,18 @@
 # Working on this codebase
 
+## Repository ownership boundary
+
+- Dashboard work owns the repository root, `src/**`, `scripts/**`, `drizzle/**`
+  and `railway.toml`.
+- Agentic-system work owns only `services/agentic/**`.
+- Cross-boundary changes require an explicit contract proposal first; neither
+  service writes directly into the other's database.
+
 ## The invariants
 
 These are not style preferences. Breaking one produces numbers that look right and are not.
 
-1. **`src/lib/quant/` must never import from `src/lib/agenteki/`.** The calculation
+1. **`src/lib/quant/` must never import from `src/lib/integrations/`.** The calculation
    layer is deterministic and independently testable. Adding an LLM call there
    collapses the entire architecture.
 
@@ -19,13 +27,14 @@ These are not style preferences. Breaking one produces numbers that look right a
 4. **`groundedIn` may never be empty.** An analysis grounded in nothing is an
    opinion. The schema enforces this; do not relax it.
 
-5. **Agenteki must not run inside an HTTP request handler.** Enqueue a job, return
-   202, let the cron worker execute it.
+5. **The dashboard must never run agent prompts.** It starts and polls the
+   separately deployed agentic service, validates its callback, and imports the
+   manifest transactionally.
 
 ## Before opening a PR
 
 ```bash
-npm test          # all 51 must pass
+npm test
 npm run typecheck
 npm run build
 ```

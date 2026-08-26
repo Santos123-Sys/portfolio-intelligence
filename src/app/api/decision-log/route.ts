@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { desc, ilike, or } from 'drizzle-orm';
+import { and, desc, ilike, or } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { decisionLog, securities, portfolios } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
+import { authenticateRequest } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -15,6 +16,8 @@ export const runtime = 'nodejs';
  * doesn't hide older matches from a search.
  */
 export async function GET(req: Request) {
+  const session = await authenticateRequest(req);
+  if (!session.ok) return session.response;
   const url = new URL(req.url);
   const q = url.searchParams.get('q')?.trim();
 
@@ -36,10 +39,10 @@ export async function GET(req: Request) {
 
   const rows = q
     ? await base
-        .where(or(ilike(decisionLog.title, `%${q}%`), ilike(decisionLog.reasoning, `%${q}%`)))
+        .where(and(eq(decisionLog.ownerId, session.auth.userId), or(ilike(decisionLog.title, `%${q}%`), ilike(decisionLog.reasoning, `%${q}%`))))
         .orderBy(desc(decisionLog.decisionDate))
         .limit(50)
-    : await base.orderBy(desc(decisionLog.decisionDate)).limit(50);
+    : await base.where(eq(decisionLog.ownerId, session.auth.userId)).orderBy(desc(decisionLog.decisionDate)).limit(50);
 
   return NextResponse.json({ decisions: rows });
 }

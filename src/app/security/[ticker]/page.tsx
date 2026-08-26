@@ -236,7 +236,7 @@ export default function SecurityDetailPage({ params }: { params: Promise<{ ticke
         <div className="card">
           <h2>AI Analysis</h2>
           {!latestAnalysis ? (
-            <p className="note">No AI analysis yet. POST /api/analysis to enqueue one.</p>
+            <p className="note">No imported analysis yet. Start an external run from the Agentic System workspace.</p>
           ) : (
             <>
               <p className="note">

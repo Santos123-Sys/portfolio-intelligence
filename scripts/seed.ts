@@ -6,8 +6,10 @@
  * mistaken for market data.
  */
 import { db } from '../src/lib/db';
-import { portfolios, securities, positions, thesisVersions, priceHistory, decisionLog } from '../src/lib/db/schema';
+import { portfolios, securities, positions, thesisVersions, priceHistory, decisionLog, users } from '../src/lib/db/schema';
 import { StubProvider } from '../src/lib/connectors/stub';
+import { hashPassword } from '../src/lib/password';
+import { eq } from 'drizzle-orm';
 
 const SECURITIES = [
   { ticker: 'NESN', companyName: 'Nestlé S.A.', exchange: 'XSWX', currency: 'CHF', sector: 'Consumer Staples', country: 'CH', qty: 120, cost: 92.4 },
@@ -21,17 +23,36 @@ const SECURITIES = [
 async function main() {
   console.log('Seeding…');
 
+  const email = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.INITIAL_ADMIN_PASSWORD;
+  const displayName = process.env.INITIAL_ADMIN_NAME?.trim() || 'Portfolio Owner';
+  if (!email || !password) {
+    throw new Error('INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD are required for an ownership-safe seed');
+  }
+  let [owner] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (!owner) {
+    [owner] = await db.insert(users).values({
+      email,
+      displayName,
+      passwordHash: await hashPassword(password),
+      role: 'owner',
+    }).returning();
+  }
+
   const [swiss] = await db.insert(portfolios).values({
+    ownerId: owner.id,
     name: 'Swiss Quality & Stability', portfolioType: 'swiss_quality', baseCurrency: 'CHF',
     investmentObjective: 'Capital preservation and stable compounding via high-quality Swiss businesses',
   }).returning();
 
   const [brazil] = await db.insert(portfolios).values({
+    ownerId: owner.id,
     name: 'Brazilian Growth', portfolioType: 'brazilian_growth', baseCurrency: 'BRL',
     investmentObjective: 'Capital appreciation via structurally growing Brazilian businesses',
   }).returning();
 
   await db.insert(thesisVersions).values({
+    ownerId: owner.id,
     versionNumber: 1,
     criteriaJson: {
       version: 1,
@@ -80,6 +101,7 @@ async function main() {
   // state on first run — this table is append-only from here on.
   await db.insert(decisionLog).values([
     {
+      ownerId: owner.id,
       title: 'Initiated Swiss Quality & Stability portfolio',
       decision: 'Fund the portfolio with an initial allocation to NESN, ROG and NOVN.',
       reasoning:
@@ -90,6 +112,7 @@ async function main() {
       relatedPortfolioId: swiss.id,
     },
     {
+      ownerId: owner.id,
       title: 'Initiated Brazilian Growth portfolio',
       decision: 'Fund the portfolio with an initial allocation to WEGE3, RADL3 and TOTS3.',
       reasoning:
