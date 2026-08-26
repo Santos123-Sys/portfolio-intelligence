@@ -1,0 +1,36 @@
+/* Minimal baseline. v0 will replace this — see V0-DASHBOARD-BRIEF.md. */
+:root {
+  --bg: #0b0d10;
+  --panel: #14181d;
+  --border: #232a32;
+  --text: #e6e9ee;
+  --muted: #8b949e;
+  --accent: #4a9eff;
+  --warn: #d9a441;
+  --danger: #e05c5c;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* Tabular figures so numeric columns align — see the v0 brief. */
+  font-variant-numeric: tabular-nums;
+}
+main { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
+h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 0.25rem; }
+.sub { color: var(--muted); font-size: 0.875rem; margin: 0 0 2rem; }
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
+.card h2 { font-size: 0.8125rem; font-weight: 500; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.75rem; }
+.big { font-size: 1.75rem; font-weight: 600; }
+.cur { font-size: 0.875rem; color: var(--muted); margin-left: 0.35rem; }
+.note { font-size: 0.75rem; color: var(--muted); margin-top: 0.5rem; line-height: 1.5; }
+.caveat { font-size: 0.75rem; color: var(--warn); margin-top: 0.5rem; line-height: 1.5; }
+table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+th { text-align: left; color: var(--muted); font-weight: 500; padding: 0.5rem;
+  border-bottom: 1px solid var(--border); }
+td { padding: 0.5rem; border-bottom: 1px solid var(--border); }
+td.num, th.num { text-align: right; }
