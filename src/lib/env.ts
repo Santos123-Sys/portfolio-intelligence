@@ -18,6 +18,9 @@ const schema = z.object({
   MUTATION_API_KEY: z.string().min(16, 'MUTATION_API_KEY must be at least 16 chars').optional(),
   CRON_SECRET: z.string().min(16, 'CRON_SECRET must be at least 16 chars').optional(),
   AGENT_VERSION: z.string().default('agenteki-0.1.0'),
+  /** External Agentic System integration; the dashboard never owns its prompts. */
+  AGENTIC_SYSTEM_BASE_URL: z.string().url().optional(),
+  AGENTIC_SYSTEM_API_KEY: z.string().min(1).optional(),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
 
