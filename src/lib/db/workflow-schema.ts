@@ -72,3 +72,59 @@ export const candidateReanalysisRequests = pgTable(
   },
   (t) => ({ decisionIdx: index('candidate_reanalysis_decision_idx').on(t.decisionId) })
 );
+
+
+/** Dashboard record of a run owned by the external agentic system. */
+export const externalAgenticRuns = pgTable(
+  'external_agentic_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    externalRunId: text('external_run_id').notNull().unique(),
+    status: text('status').notNull().default('queued'),
+    thesisVersion: text('thesis_version'),
+    manifestSchemaVersion: text('manifest_schema_version'),
+    manifestHash: text('manifest_hash'),
+    manifestJson: jsonb('manifest_json'),
+    reportPdfUrl: text('report_pdf_url'),
+    requestedAt: timestamp('requested_at').defaultNow().notNull(),
+    completedAt: timestamp('completed_at'),
+    importedAt: timestamp('imported_at'),
+    errorMessage: text('error_message'),
+  },
+  (t) => ({
+    statusIdx: index('external_agentic_runs_status_idx').on(t.status, t.requestedAt),
+    hashIdx: index('external_agentic_runs_manifest_hash_idx').on(t.manifestHash),
+  })
+);
+
+/** Portfolio-level synthesis imported from the external manifest. */
+export const portfolioAnalysisSyntheses = pgTable(
+  'portfolio_analysis_syntheses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id').references(() => externalAgenticRuns.id, { onDelete: 'cascade' }).notNull(),
+    portfolioId: uuid('portfolio_id').references(() => portfolios.id, { onDelete: 'cascade' }).notNull(),
+    thesisVersion: text('thesis_version').notNull(),
+    synthesisJson: jsonb('synthesis_json').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    runPortfolioIdx: index('portfolio_synthesis_run_portfolio_idx').on(t.runId, t.portfolioId),
+  })
+);
+
+/** Complete external output retained for audit and fields not projected into ai_analyses. */
+export const externalAgenticAnalyses = pgTable(
+  'external_agentic_analyses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id').references(() => externalAgenticRuns.id, { onDelete: 'cascade' }).notNull(),
+    securityId: uuid('security_id').references(() => securities.id, { onDelete: 'cascade' }).notNull(),
+    analysisId: uuid('analysis_id').references(() => aiAnalyses.id, { onDelete: 'cascade' }).notNull(),
+    outputJson: jsonb('output_json').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    runSecurityIdx: index('external_analysis_run_security_idx').on(t.runId, t.securityId),
+  })
+);
