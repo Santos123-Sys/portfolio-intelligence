@@ -6,8 +6,8 @@ integration contract with the completed dashboard layer.
 ## 1. Repository boundary
 
 You own **only** `services/agentic/**` in `Santos123-Sys/portfolio-intelligence`.
-Do not modify `src/**`, `scripts/**`, `drizzle/**`, `next.config.ts`,
-`railway.toml`, or dashboard dependencies. If the contract needs revision,
+Do not modify `src/**`, `scripts/**`, `drizzle/**`, `docs/**`, root deployment
+configuration, or dashboard dependencies. If the contract needs revision,
 describe the proposed change without editing dashboard-owned files.
 
 ## 2. Service responsibility
@@ -75,16 +75,23 @@ URL.
 
 ## 8. Completion callback
 
+Configure this variable on the `agentic-system` Railway service using a Railway
+reference variable (do not substitute the agentic service's own `$PORT`):
+
+```text
+DASHBOARD_IMPORT_URL=http://${{dashboard.RAILWAY_PRIVATE_DOMAIN}}:${{dashboard.PORT}}/api/integrations/agentic/import
+```
+
 After durable completion, call the dashboard over Railway private networking:
 
 ```text
-POST http://dashboard.railway.internal:$PORT/api/integrations/agentic/import
+POST $DASHBOARD_IMPORT_URL
 Authorization: Bearer <AGENTIC_SYSTEM_API_KEY>
 Content-Type: application/json
 ```
 
-Use the dashboard service reference in Railway rather than hard-coding the host
-or port.
+Use plain HTTP on the private network. Never hard-code the dashboard host or
+port.
 
 ## 9. Completed callback body
 

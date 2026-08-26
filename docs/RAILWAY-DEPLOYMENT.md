@@ -14,12 +14,21 @@ The agentic service and its workers/storage remain independently owned. See
 
 ## Dashboard service
 
-Create a Railway service from the repository root. `railway.toml` supplies:
+Create a Railway service from the repository root. In Railway service settings,
+configure:
 
-- build: `npm run build`
-- pre-deploy: `npm run db:migrate`
-- start: `npm run start:standalone`
-- health check: `/api/health`
+- builder: Railpack (the default)
+- build command: `npm run build`
+- pre-deploy command: `npm run db:migrate`
+- start command: `npm run start:standalone`
+- health check: `/api/health` with a 300-second timeout
+- restart policy: On Failure, at most 10 retries
+
+Railway's legacy `railway.toml` Config as Code is deprecated and unavailable to
+new services. Once the Railway project exists, use `railway config init` or
+`railway config pull` if you want to manage the complete project with the
+current `.railway/railway.ts` Infrastructure as Code workflow. Do not apply an
+incomplete project definition: omitted resources can be treated as deletions.
 
 Configure:
 
@@ -57,9 +66,11 @@ stub seed against a database already containing real portfolio data.
 ## Market refresh cron
 
 Create a second service from the same repository with start command
-`npm run cron:refresh`. Configure `DASHBOARD_INTERNAL_URL` using the dashboard
-private domain and share the same `CRON_SECRET`. Set the Railway cron schedule to
-`0 21 * * 1-5` UTC or a schedule appropriate for the tracked exchanges.
+`npm run cron:refresh`. Configure
+`DASHBOARD_INTERNAL_URL=http://${{dashboard.RAILWAY_PRIVATE_DOMAIN}}:${{dashboard.PORT}}`
+using a Railway reference variable and share the same `CRON_SECRET`. Set the
+Railway cron schedule to `0 21 * * 1-5` UTC or a schedule appropriate for the
+tracked exchanges.
 
 ## Deployment verification
 

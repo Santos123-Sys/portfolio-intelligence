@@ -70,10 +70,11 @@ dashboard (public Next.js) ──private HTTP──> agentic-system (private API
         └── optional refresh-cron
 ```
 
-`railway.toml` builds standalone Next.js, runs committed Drizzle migrations as
-the pre-deploy command, starts the standalone server on Railway's injected port,
-and checks `/api/health`. Set `AGENTIC_SYSTEM_BASE_URL` to the agentic service's
-Railway private domain. Do not expose that service directly to the browser.
+Configure the dashboard service with Railway's default Railpack builder,
+`npm run build`, `npm run db:migrate` as its pre-deploy command,
+`npm run start:standalone`, and `/api/health` as its healthcheck. Set
+`AGENTIC_SYSTEM_BASE_URL` to the agentic service's Railway private domain. Do
+not expose that service directly to the browser.
 
 After the first deployment, run `npm run admin:create` once as a Railway command,
 then remove `INITIAL_ADMIN_PASSWORD` from the service variables. For the optional
