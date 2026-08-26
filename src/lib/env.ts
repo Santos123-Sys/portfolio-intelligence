@@ -11,7 +11,11 @@ const schema = z.object({
   DATABASE_URL: z.string().url('DATABASE_URL must be a valid Postgres connection string'),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   MARKET_DATA_API_KEY: z.string().min(1).optional(),
-  MARKET_DATA_PROVIDER: z.enum(['stub', 'twelvedata', 'eodhd']).default('stub'),
+  MARKET_DATA_PROVIDER: z.enum(['stub', 'twelvedata', 'eodhd', 'yahoo-search']).default('stub'),
+  WEB_SEARCH_PROVIDER: z.enum(['none', 'brave']).default('none'),
+  WEB_SEARCH_API_KEY: z.string().min(1).optional(),
+  /** Shared secret for write APIs until full user login is introduced. */
+  MUTATION_API_KEY: z.string().min(16, 'MUTATION_API_KEY must be at least 16 chars').optional(),
   CRON_SECRET: z.string().min(16, 'CRON_SECRET must be at least 16 chars').optional(),
   AGENT_VERSION: z.string().default('agenteki-0.1.0'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
