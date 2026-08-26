@@ -20,8 +20,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: (e as Error).message }, { status: 401 });
   }
 
-  const parsed = validateManifest(await req.json().catch(() => ({})));
-  const hash = manifestHash(parsed.manifest);
+  let parsed;
+  try {
+    parsed = validateManifest(await req.json().catch(() => ({})));
+  } catch (e) {
+    return NextResponse.json(
+      { error: 'Invalid Agentic System handoff', detail: (e as Error).message },
+      { status: 400 }
+    );
+  }
 
   const [existing] = await db
     .select()
@@ -29,7 +36,36 @@ export async function POST(req: Request) {
     .where(eq(externalAgenticRuns.externalRunId, parsed.externalRunId))
     .limit(1);
 
+  if (parsed.status === 'failed') {
+    if (existing) {
+      const [failed] = await db
+        .update(externalAgenticRuns)
+        .set({ status: 'failed', errorMessage: parsed.errorMessage, completedAt: new Date() })
+        .where(eq(externalAgenticRuns.id, existing.id))
+        .returning();
+      return NextResponse.json({ run: failed, imported: false, idempotent: true });
+    }
+    const [failed] = await db
+      .insert(externalAgenticRuns)
+      .values({
+        externalRunId: parsed.externalRunId,
+        status: 'failed',
+        errorMessage: parsed.errorMessage,
+        reportPdfUrl: parsed.reportPdfUrl,
+        completedAt: new Date(),
+      })
+      .returning();
+    return NextResponse.json({ run: failed, imported: false }, { status: 202 });
+  }
+
+  const hash = manifestHash(parsed.manifest);
   if (existing) {
+    if (existing.manifestHash && existing.manifestHash !== hash) {
+      return NextResponse.json(
+        { error: 'externalRunId was reused with a different manifest' },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({
       run: existing,
       imported: Boolean(existing.importedAt),
