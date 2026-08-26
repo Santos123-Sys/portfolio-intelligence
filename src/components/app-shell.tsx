@@ -5,6 +5,7 @@ const navigation = [
   ['/', 'Overview'],
   ['/investment-thesis', 'Investment Thesis'],
   ['/ai-stock-discovery', 'AI Stock Discovery'],
+  ['/agentic-system', 'Agentic System'],
   ['/candidates', 'Candidates'],
   ['/portfolio', 'Portfolio'],
   ['/risk-kpis', 'Risk & KPIs'],
