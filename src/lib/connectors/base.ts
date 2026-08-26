@@ -10,10 +10,23 @@
  * Anything written directly against a vendor SDK died that day.
  */
 
+export type DataStatus = 'OK' | 'DATA_UNAVAILABLE' | 'PARSE_UNCERTAIN' | 'ERROR';
+
+export interface DataProvenance {
+  provider: string;
+  sourceName?: string;
+  sourceUrl?: string;
+  query?: string;
+  status: DataStatus;
+  evidenceSnippet?: string;
+  rawPayload?: unknown;
+}
+
 export interface DailyBar {
   date: string; // ISO yyyy-mm-dd
   close: number;
   currency: string;
+  provenance?: DataProvenance;
 }
 
 export interface Fundamentals {
