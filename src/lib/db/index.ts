@@ -1,7 +1,8 @@
 import { drizzle } from 'drizzle-orm/neon-http';
 import { neon } from '@neondatabase/serverless';
 import { getEnv } from '../env';
-import * as schema from './schema';
+import * as coreSchema from './schema';
+import * as agenticSchema from './agentic-schema';
 
 /**
  * Neon's HTTP driver rather than a TCP pool. Serverless functions create and
@@ -10,5 +11,6 @@ import * as schema from './schema';
  * that entirely, at the cost of no transactions across requests.
  */
 const sql = neon(getEnv().DATABASE_URL);
+const schema = { ...coreSchema, ...agenticSchema };
 export const db = drizzle(sql, { schema });
 export { schema };
