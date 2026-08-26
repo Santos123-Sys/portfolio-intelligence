@@ -10,6 +10,7 @@ import { portfolios, positions, securities, priceHistory, riskMetrics } from '..
 import { positionWeights, WeightableHolding } from '../quant/weights';
 import { toReturnSeries, timeWeightedReturn } from '../quant/returns';
 import { volatility, sharpeRatio, maxDrawdown, valueAtRisk } from '../quant/risk';
+import { expectedShortfall } from '../quant/tail-risk';
 import { Currency, ValuationPoint } from '../quant/types';
 
 /** Risk-free rate per currency. Replace with a live source before relying on Sharpe. */
@@ -17,12 +18,7 @@ const RISK_FREE: Record<string, number> = { CHF: 0.005, BRL: 0.105, EUR: 0.02, U
 
 export async function recomputePositionValues(portfolioId: string) {
   const rows = await db
-    .select({
-      positionId: positions.id,
-      quantity: positions.quantity,
-      securityId: securities.id,
-      currency: securities.currency,
-    })
+    .select({ positionId: positions.id, quantity: positions.quantity, securityId: securities.id, currency: securities.currency })
     .from(positions)
     .innerJoin(securities, eq(positions.securityId, securities.id))
     .where(eq(positions.portfolioId, portfolioId));
@@ -37,8 +33,7 @@ export async function recomputePositionValues(portfolioId: string) {
       .limit(1);
     if (!latest) continue;
     const mv = Number(r.quantity) * Number(latest.close);
-    await db
-      .update(positions)
+    await db.update(positions)
       .set({ marketValueNative: String(mv), lastPricedAt: new Date(), updatedAt: new Date() })
       .where(eq(positions.id, r.positionId));
     updated++;
@@ -48,69 +43,38 @@ export async function recomputePositionValues(portfolioId: string) {
 
 export async function recomputeWeights(portfolioId: string) {
   const rows = await db
-    .select({
-      id: positions.id,
-      ticker: securities.ticker,
-      companyName: securities.companyName,
-      currency: securities.currency,
-      marketValueNative: positions.marketValueNative,
-      sector: securities.sector,
-      country: securities.country,
-      portfolioId: positions.portfolioId,
-    })
+    .select({ id: positions.id, ticker: securities.ticker, companyName: securities.companyName, currency: securities.currency, marketValueNative: positions.marketValueNative, sector: securities.sector, country: securities.country, portfolioId: positions.portfolioId })
     .from(positions)
     .innerJoin(securities, eq(positions.securityId, securities.id))
     .where(eq(positions.portfolioId, portfolioId));
 
-  const holdings: WeightableHolding[] = rows
-    .filter((r) => r.marketValueNative !== null)
-    .map((r) => ({
-      id: r.id,
-      ticker: r.ticker,
-      companyName: r.companyName,
-      currency: r.currency as Currency,
-      marketValueNative: Number(r.marketValueNative),
-      sector: r.sector ?? 'Unclassified',
-      country: r.country ?? 'Unknown',
-      portfolioId: r.portfolioId,
-    }));
+  const holdings: WeightableHolding[] = rows.filter((r) => r.marketValueNative !== null).map((r) => ({
+    id: r.id,
+    ticker: r.ticker,
+    companyName: r.companyName,
+    currency: r.currency as Currency,
+    marketValueNative: Number(r.marketValueNative),
+    sector: r.sector ?? 'Unclassified',
+    country: r.country ?? 'Unknown',
+    portfolioId: r.portfolioId,
+  }));
 
   if (holdings.length === 0) return { updated: 0 };
-
-  // Throws on mixed currencies — ADR-002 enforced at runtime.
   const weights = positionWeights(holdings);
-  for (const w of weights) {
-    await db.update(positions).set({ weight: w.weight }).where(eq(positions.id, w.key));
-  }
+  for (const w of weights) await db.update(positions).set({ weight: w.weight }).where(eq(positions.id, w.key));
   return { updated: weights.length };
 }
 
-/** Portfolio valuation series, reconstructed from stored prices. */
-export async function buildValuationSeries(
-  portfolioId: string,
-  fromDate: string
-): Promise<ValuationPoint[]> {
-  const rows = await db
-    .select({
-      quantity: positions.quantity,
-      securityId: positions.securityId,
-    })
-    .from(positions)
-    .where(eq(positions.portfolioId, portfolioId));
-
+export async function buildValuationSeries(portfolioId: string, fromDate: string): Promise<ValuationPoint[]> {
+  const rows = await db.select({ quantity: positions.quantity, securityId: positions.securityId }).from(positions).where(eq(positions.portfolioId, portfolioId));
   const byDate = new Map<string, number>();
   for (const p of rows) {
-    const bars = await db
-      .select({ priceDate: priceHistory.priceDate, close: priceHistory.close })
+    const bars = await db.select({ priceDate: priceHistory.priceDate, close: priceHistory.close })
       .from(priceHistory)
       .where(and(eq(priceHistory.securityId, p.securityId), gte(priceHistory.priceDate, fromDate)));
-    for (const b of bars) {
-      byDate.set(b.priceDate, (byDate.get(b.priceDate) ?? 0) + Number(p.quantity) * Number(b.close));
-    }
+    for (const b of bars) byDate.set(b.priceDate, (byDate.get(b.priceDate) ?? 0) + Number(p.quantity) * Number(b.close));
   }
-  return [...byDate.entries()]
-    .map(([date, value]) => ({ date, value }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  return [...byDate.entries()].map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export async function recomputeRiskMetrics(portfolioId: string, lookbackDays = 365) {
@@ -120,10 +84,7 @@ export async function recomputeRiskMetrics(portfolioId: string, lookbackDays = 3
   const currency = pf.baseCurrency as Currency;
   const fromDate = new Date(Date.now() - lookbackDays * 864e5).toISOString().slice(0, 10);
   const series = await buildValuationSeries(portfolioId, fromDate);
-
-  if (series.length < 3) {
-    return { written: 0, reason: `Only ${series.length} valuation points; need at least 3` };
-  }
+  if (series.length < 3) return { written: 0, reason: `Only ${series.length} valuation points; need at least 3` };
 
   const returns = toReturnSeries(series);
   const values = series.map((p) => p.value);
@@ -135,40 +96,25 @@ export async function recomputeRiskMetrics(portfolioId: string, lookbackDays = 3
     maxDrawdown(values, ctx),
     valueAtRisk(returns, ctx, { method: 'historical', confidenceLevel: 0.95, horizonDays: 1 }),
     valueAtRisk(returns, ctx, { method: 'parametric', confidenceLevel: 0.95, horizonDays: 1 }),
+    expectedShortfall(returns, ctx, 0.95),
   ];
 
-  // Sharpe can legitimately fail (zero volatility); that must not kill the batch.
-  try {
-    metrics.push(sharpeRatio(returns, RISK_FREE[currency] ?? 0, ctx));
-  } catch { /* recorded by absence */ }
+  try { metrics.push(sharpeRatio(returns, RISK_FREE[currency] ?? 0, ctx)); } catch { /* zero volatility */ }
 
   const twr = timeWeightedReturn(series);
-
   for (const m of metrics) {
     await db.insert(riskMetrics).values({
-      portfolioId,
-      metricName: m.metricName,
-      value: m.value,
-      currency: m.currency,
-      methodology: m.methodology,
-      confidenceLevel: m.confidenceLevel,
-      horizonDays: m.horizonDays,
-      lookbackDays: m.lookbackDays,
-      annualizationFactor: m.annualizationFactor,
-      caveat: m.caveat,
-      computedAt: new Date(m.computedAt),
-      dataAsOf: new Date(m.dataAsOf),
+      portfolioId, metricName: m.metricName, value: m.value, currency: m.currency,
+      methodology: m.methodology, confidenceLevel: m.confidenceLevel, horizonDays: m.horizonDays,
+      lookbackDays: m.lookbackDays, annualizationFactor: m.annualizationFactor, caveat: m.caveat,
+      computedAt: new Date(m.computedAt), dataAsOf: new Date(m.dataAsOf),
     });
   }
 
   await db.insert(riskMetrics).values({
-    portfolioId,
-    metricName: 'TWR',
-    value: twr,
-    currency,
+    portfolioId, metricName: 'TWR', value: twr, currency,
     methodology: `Geometrically linked sub-period returns across ${series.length} valuations, no external cash flows supplied`,
-    confidenceLevel: null, horizonDays: null,
-    lookbackDays: series.length, annualizationFactor: null,
+    confidenceLevel: null, horizonDays: null, lookbackDays: series.length, annualizationFactor: null,
     caveat: 'Cash flows not yet wired in; TWR equals cumulative return until transactions are loaded',
     computedAt: new Date(), dataAsOf: new Date(dataAsOf),
   });
