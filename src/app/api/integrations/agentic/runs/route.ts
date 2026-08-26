@@ -12,6 +12,12 @@ export async function GET(req: Request) {
   const externalRunId = new URL(req.url).searchParams.get('externalRunId');
 
   if (externalRunId) {
+    try {
+      assertMutationAuthorized(req);
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 401 });
+    }
+
     const [local] = await db
       .select()
       .from(externalAgenticRuns)
@@ -39,7 +45,14 @@ export async function GET(req: Request) {
   }
 
   const runs = await db
-    .select()
+    .select({
+      externalRunId: externalAgenticRuns.externalRunId,
+      status: externalAgenticRuns.status,
+      thesisVersion: externalAgenticRuns.thesisVersion,
+      requestedAt: externalAgenticRuns.requestedAt,
+      completedAt: externalAgenticRuns.completedAt,
+      importedAt: externalAgenticRuns.importedAt,
+    })
     .from(externalAgenticRuns)
     .orderBy(desc(externalAgenticRuns.requestedAt))
     .limit(50);
