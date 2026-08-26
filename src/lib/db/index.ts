@@ -1,17 +1,15 @@
-import { drizzle } from 'drizzle-orm/neon-http';
-import { neon } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
 import { getEnv } from '../env';
 import * as coreSchema from './schema';
 import * as agenticSchema from './agentic-schema';
 import * as workflowSchema from './workflow-schema';
 
 /**
- * Neon's HTTP driver rather than a TCP pool. Serverless functions create and
- * destroy connections constantly; a traditional pool exhausts Postgres
- * max_connections under even light concurrency. HTTP is stateless and sidesteps
- * that entirely, at the cost of no transactions across requests.
+ * For production (Vercel/Neon), use neon-http.
+ * For local development, use postgres-js TCP driver.
  */
-const sql = neon(getEnv().DATABASE_URL);
+const queryClient = postgres(getEnv().DATABASE_URL);
 const schema = { ...coreSchema, ...agenticSchema, ...workflowSchema };
-export const db = drizzle(sql, { schema });
+export const db = drizzle(queryClient, { schema });
 export { schema };
