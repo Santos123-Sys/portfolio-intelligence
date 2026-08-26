@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AnalysisOutput, PortfolioRole, ThesisCriteria } from '@/lib/agenteki/schemas';
+import { AnalysisOutput, ThesisCriteria } from '@/lib/agenteki/schemas';
 
 const synthesis = z.object({
   executiveSummary: z.string().min(1),
@@ -34,12 +34,21 @@ export const PortfolioAnalysisManifest = z.object({
 
 export type PortfolioAnalysisManifest = z.infer<typeof PortfolioAnalysisManifest>;
 
-export const AgenticImportRequest = z.object({
-  externalRunId: z.string().min(1),
-  status: z.enum(['completed', 'failed']).default('completed'),
-  manifest: PortfolioAnalysisManifest,
-  reportPdfUrl: z.string().url().optional(),
-});
+export const AgenticImportRequest = z.discriminatedUnion('status', [
+  z.object({
+    externalRunId: z.string().min(1),
+    status: z.literal('completed'),
+    manifest: PortfolioAnalysisManifest,
+    reportPdfUrl: z.string().url().optional(),
+  }),
+  z.object({
+    externalRunId: z.string().min(1),
+    status: z.literal('failed'),
+    errorMessage: z.string().min(1),
+    manifest: PortfolioAnalysisManifest.optional(),
+    reportPdfUrl: z.string().url().optional(),
+  }),
+]);
 
 export type AgenticImportRequest = z.infer<typeof AgenticImportRequest>;
 
