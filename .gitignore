@@ -2,11 +2,14 @@ node_modules/
 .next/
 out/
 build/
+packages/*/dist/
+services/*/dist/
 .env
 .env*.local
 .vercel
 *.tsbuildinfo
 next-env.d.ts
 coverage/
+tmp/
 .DS_Store
 drizzle/meta/_journal.json.bak

@@ -88,7 +88,7 @@ Update this file as decisions get made or revisited. Don't delete superseded ent
 
 ## ADR-006: Agent orchestration — hand-rolled pipeline vs. framework
 
-**Decision:** Recommend hand-rolled (plain functions calling the Anthropic API with structured tool-use output at each stage) over a framework like LangGraph/CrewAI/AutoGen, given Agenteki's workflow is a fixed DAG, not a dynamically branching multi-agent system.
+**Decision:** Use hand-rolled orchestration (plain functions calling one OpenAI Responses API model with structured output at each stage) over LangGraph/CrewAI/AutoGen, because Agenteki is a fixed DAG rather than a dynamically branching multi-agent system.
 
 **Reason:** Less infrastructure code, easier to debug, no framework lock-in, for a workflow that (per your own diagram) is linear.
 

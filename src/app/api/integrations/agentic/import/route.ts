@@ -9,7 +9,10 @@ import {
 } from '@/lib/db/workflow-schema';
 import { assertAgenticServiceAuthorized } from '@/lib/auth';
 import { manifestHash, validateManifest } from '@/lib/integrations/agentic-adapter';
-import { AgenticRunRequest } from '@/lib/integrations/agentic-contract';
+import {
+  AgenticRunRequest,
+  validateManifestAgainstRequest,
+} from '@/lib/integrations/agentic-contract';
 
 export const runtime = 'nodejs';
 
@@ -44,12 +47,17 @@ export async function POST(req: Request) {
   }
 
   if (parsed.status === 'failed') {
+    if (existing.importedAt) {
+      return NextResponse.json(
+        { error: 'An imported completed run cannot transition to failed' },
+        { status: 409 }
+      );
+    }
     const [failed] = await db
       .update(externalAgenticRuns)
       .set({
         status: 'failed',
         errorMessage: parsed.errorMessage,
-        reportPdfUrl: parsed.reportPdfUrl ?? existing.reportPdfUrl,
         completedAt: new Date(),
       })
       .where(eq(externalAgenticRuns.id, existing.id))
@@ -76,12 +84,21 @@ export async function POST(req: Request) {
   if (!request.success) {
     return NextResponse.json({ error: 'Stored run request is missing or invalid' }, { status: 409 });
   }
+  try {
+    validateManifestAgainstRequest(parsed.manifest, request.data);
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Manifest does not match the dashboard-supplied run evidence', detail: (error as Error).message },
+      { status: 422 }
+    );
+  }
 
   const [thesis] = await db
     .select({ id: thesisVersions.id })
     .from(thesisVersions)
     .where(and(
       eq(thesisVersions.ownerId, existing.ownerId),
+      eq(thesisVersions.id, request.data.thesis.versionId),
       eq(thesisVersions.versionNumber, parsed.manifest.thesisVersion)
     ))
     .limit(1);
@@ -148,6 +165,10 @@ export async function POST(req: Request) {
             );
           }
           const security = securitiesForTicker[0];
+          const grounding = request.data.groundingBundles.find((item) =>
+            item.portfolioId === portfolio.id && item.bundle.ticker === output.ticker
+          );
+          if (!grounding) throw new Error(`Grounding bundle missing for ${output.ticker}`);
           const [previous] = await tx
             .select({ id: aiAnalyses.id })
             .from(aiAnalyses)
@@ -185,7 +206,7 @@ export async function POST(req: Request) {
               externalRunId: run.id,
               supersedesId: previous?.id ?? null,
               analysisTimestamp: new Date(parsed.manifest.generatedAt),
-              dataTimestamp: new Date(parsed.manifest.generatedAt),
+              dataTimestamp: new Date(grounding.bundle.dataAsOf),
               agentVersion: 'external-agentic-system',
             })
             .returning();
@@ -212,6 +233,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ...result, imported: true }, { status: 201 });
   } catch (e) {
+    const [current] = await db.select().from(externalAgenticRuns)
+      .where(eq(externalAgenticRuns.id, existing.id)).limit(1);
+    if (current?.importedAt && current.manifestHash === hash) {
+      return NextResponse.json({ run: current, imported: true, idempotent: true });
+    }
     return NextResponse.json(
       { error: `Agentic manifest import failed: ${(e as Error).message}` },
       { status: 422 }

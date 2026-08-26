@@ -3,25 +3,40 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "services/*"
+  ],
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run build:contract && next build",
+    "build:contract": "npm run build --workspace @portfolio-intelligence/agentic-contract",
+    "build:agentic": "npm run build:contract && npm run build --workspace @portfolio-intelligence/agentic-service",
     "postbuild": "node scripts/prepare-standalone.mjs",
     "start": "next start",
     "start:standalone": "HOSTNAME=0.0.0.0 node .next/standalone/server.js",
     "lint": "next lint",
-    "test": "vitest run",
+    "test": "npm run build:contract && vitest run && npm run test --workspace @portfolio-intelligence/agentic-service",
+    "test:dashboard": "npm run build:contract && vitest run",
+    "test:agentic": "npm run build:contract && npm run test --workspace @portfolio-intelligence/agentic-service",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "npm run build:contract && tsc --noEmit && npm run typecheck --workspace @portfolio-intelligence/agentic-service",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "seed": "tsx scripts/seed.ts",
     "admin:create": "tsx scripts/create-admin.ts",
-    "cron:refresh": "node scripts/railway-refresh.mjs"
+    "cron:refresh": "node scripts/railway-refresh.mjs",
+    "agentic:migrate": "npm run db:migrate --workspace @portfolio-intelligence/agentic-service",
+    "agentic:api": "npm run start:api --workspace @portfolio-intelligence/agentic-service",
+    "agentic:worker": "npm run start:worker --workspace @portfolio-intelligence/agentic-service"
   },
   "dependencies": {
+    "@portfolio-intelligence/agentic-contract": "0.1.0",
     "drizzle-orm": "^0.38.3",
     "next": "^15.1.6",
     "postgres": "^3.4.9",

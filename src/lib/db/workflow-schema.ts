@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, numeric, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, numeric, jsonb, index, uniqueIndex, integer } from 'drizzle-orm/pg-core';
 import { aiAnalyses, portfolios, securities, thesisVersions, users } from './schema';
 
 /**
@@ -61,6 +61,30 @@ export const thesisMutationAudit = pgTable(
     metadata: jsonb('metadata'),
   },
   (t) => ({ thesisAuditIdx: index('thesis_mutation_audit_thesis_idx').on(t.thesisVersionId, t.createdAt) })
+);
+
+/** Pending model extraction. It becomes canonical only after explicit human confirmation. */
+export const externalThesisExtractions = pgTable(
+  'external_thesis_extractions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    externalExtractionId: text('external_extraction_id').notNull().unique(),
+    status: text('status').notNull().default('queued'),
+    requestedVersion: integer('requested_version').notNull(),
+    sourceFileName: text('source_file_name').notNull(),
+    sourceMimeType: text('source_mime_type').notNull(),
+    resultJson: jsonb('result_json'),
+    errorMessage: text('error_message'),
+    requestedAt: timestamp('requested_at', { withTimezone: true }).defaultNow().notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    confirmedThesisVersionId: uuid('confirmed_thesis_version_id')
+      .references(() => thesisVersions.id, { onDelete: 'set null' }),
+  },
+  (t) => ({
+    ownerStatusIdx: index('external_thesis_extractions_owner_status_idx').on(t.ownerId, t.status, t.requestedAt),
+  })
 );
 
 /** Dashboard record of a run owned by the external agentic system. */

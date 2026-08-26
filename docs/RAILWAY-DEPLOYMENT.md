@@ -1,84 +1,134 @@
 # Railway Deployment Runbook
 
-## Service topology
+## Topology
+
+Create one Railway project and one environment with these resources:
 
 ```text
 Internet -> dashboard (public Next.js)
-              |-- Railway PostgreSQL
-              |-- private HTTP -> agentic-system
-              `-- private HTTP <- refresh-cron
+              |-- dashboard-postgres
+              |-- private HTTP -> agentic-api
+              `-- optional refresh-cron
+
+agentic-api <-> agentic-postgres <-> agentic-worker -> OpenAI
+      |                                  |
+      `---------- agentic-artifacts -----'
+                         |
+agentic-worker --private callback--> dashboard
 ```
 
-The agentic service and its workers/storage remain independently owned. See
-`AGENTIC-SYSTEM-HANDOFF.md`.
+`dashboard-postgres` and `agentic-postgres` must remain distinct. Private
+networking is transport, not authorization: the shared service bearer key is
+required on every `/v1/**` request and on the callback.
 
-## Dashboard service
+## Repository and service settings
 
-Create a Railway service from the repository root. In Railway service settings,
-configure:
+Connect all three application services to this repository with root directory
+`/`. Set each service's Railway config file path:
 
-- builder: Railpack (the default)
-- build command: `npm run build`
-- pre-deploy command: `npm run db:migrate`
-- start command: `npm run start:standalone`
-- health check: `/api/health` with a 300-second timeout
-- restart policy: On Failure, at most 10 retries
+| Service | Config file | Public domain |
+|---|---|---|
+| `dashboard` | `/railway.dashboard.json` | Yes |
+| `agentic-api` | `/railway.agentic-api.json` | No |
+| `agentic-worker` | `/railway.agentic-worker.json` | No |
 
-Railway's legacy `railway.toml` Config as Code is deprecated and unavailable to
-new services. Once the Railway project exists, use `railway config init` or
-`railway config pull` if you want to manage the complete project with the
-current `.railway/railway.ts` Infrastructure as Code workflow. Do not apply an
-incomplete project definition: omitted resources can be treated as deletions.
+The files select Railpack, build the correct workspace, run committed
+migrations, define start commands and set health/restart policy. Both agentic
+services may run the migration command concurrently; the migrator holds a
+PostgreSQL advisory lock.
 
-Configure:
+## Dashboard variables
 
 ```text
-DATABASE_URL=${{Postgres.DATABASE_URL}}
-SESSION_SECRET=<32+ random characters>
-AGENTIC_SYSTEM_BASE_URL=http://${{agentic-system.RAILWAY_PRIVATE_DOMAIN}}:${{agentic-system.PORT}}
-AGENTIC_SYSTEM_API_KEY=<same 32+ character secret on both services>
-CRON_SECRET=<32+ random characters>
+DATABASE_URL=${{dashboard-postgres.DATABASE_URL}}
+SESSION_SECRET=<32+ random bytes>
+AGENTIC_SYSTEM_API_KEY=<same 32+ random bytes on all three app services>
+AGENTIC_SYSTEM_BASE_URL=http://${{agentic-api.RAILWAY_PRIVATE_DOMAIN}}:${{agentic-api.PORT}}
+CRON_SECRET=<32+ random bytes if refresh-cron is enabled>
 MARKET_DATA_PROVIDER=stub
 WEB_SEARCH_PROVIDER=none
+NODE_ENV=production
 ```
 
-Private Railway DNS is runtime-only. The Next.js build must not contact the
-agentic service.
+The browser never calls `agentic-api`. Only dashboard route handlers use its
+private URL.
+
+## Agentic API variables
+
+```text
+AGENTIC_DATABASE_URL=${{agentic-postgres.DATABASE_URL}}
+AGENTIC_SYSTEM_API_KEY=<shared service secret>
+AGENTIC_INTERNAL_BASE_URL=http://${{agentic-api.RAILWAY_PRIVATE_DOMAIN}}:${{agentic-api.PORT}}
+NODE_ENV=production
+
+BUCKET=${{agentic-artifacts.BUCKET}}
+ENDPOINT=${{agentic-artifacts.ENDPOINT}}
+REGION=${{agentic-artifacts.REGION}}
+ACCESS_KEY_ID=${{agentic-artifacts.ACCESS_KEY_ID}}
+SECRET_ACCESS_KEY=${{agentic-artifacts.SECRET_ACCESS_KEY}}
+```
+
+The API needs bucket credentials because it streams private reports. Railway
+injects `PORT`; do not hard-code it.
+
+## Agentic worker variables
+
+```text
+AGENTIC_DATABASE_URL=${{agentic-postgres.DATABASE_URL}}
+AGENTIC_SYSTEM_API_KEY=<shared service secret>
+OPENAI_API_KEY=<secret>
+OPENAI_MODEL=gpt-5.6
+OPENAI_REASONING_EFFORT=medium
+DASHBOARD_IMPORT_URL=http://${{dashboard.RAILWAY_PRIVATE_DOMAIN}}:${{dashboard.PORT}}/api/integrations/agentic/import
+AGENTIC_INTERNAL_BASE_URL=http://${{agentic-api.RAILWAY_PRIVATE_DOMAIN}}:${{agentic-api.PORT}}
+AGENTIC_CALLBACK_MAX_ATTEMPTS=8
+NODE_ENV=production
+
+BUCKET=${{agentic-artifacts.BUCKET}}
+ENDPOINT=${{agentic-artifacts.ENDPOINT}}
+REGION=${{agentic-artifacts.REGION}}
+ACCESS_KEY_ID=${{agentic-artifacts.ACCESS_KEY_ID}}
+SECRET_ACCESS_KEY=${{agentic-artifacts.SECRET_ACCESS_KEY}}
+```
+
+The callback URL must reference the dashboard service's domain and port, not
+the worker's own `$PORT`.
 
 ## First administrator
 
-Temporarily configure `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD` and
-optionally `INITIAL_ADMIN_NAME`, then run this one-off command against the
-dashboard service:
+Temporarily add `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD` and optionally
+`INITIAL_ADMIN_NAME` to `dashboard`, then run:
 
 ```bash
 npm run admin:create
 ```
 
-Remove `INITIAL_ADMIN_PASSWORD` afterward. The command is idempotent and does
-not overwrite an existing password.
+Remove `INITIAL_ADMIN_PASSWORD` immediately afterward. The command is
+idempotent and does not overwrite an existing password.
 
-## Optional demo data
+## Optional refresh cron
 
-With the same initial-admin variables present, run `npm run seed`. Never run the
-stub seed against a database already containing real portfolio data.
+Create a service from the same repository with start command
+`npm run cron:refresh`, no public domain, and a Railway cron schedule such as
+`0 21 * * 1-5` UTC. Configure:
 
-## Market refresh cron
+```text
+DASHBOARD_INTERNAL_URL=http://${{dashboard.RAILWAY_PRIVATE_DOMAIN}}:${{dashboard.PORT}}
+CRON_SECRET=<same dashboard cron secret>
+```
 
-Create a second service from the same repository with start command
-`npm run cron:refresh`. Configure
-`DASHBOARD_INTERNAL_URL=http://${{dashboard.RAILWAY_PRIVATE_DOMAIN}}:${{dashboard.PORT}}`
-using a Railway reference variable and share the same `CRON_SECRET`. Set the
-Railway cron schedule to `0 21 * * 1-5` UTC or a schedule appropriate for the
-tracked exchanges.
+## End-to-end verification
 
-## Deployment verification
-
-1. Pre-deploy migration succeeds.
-2. `/api/health` returns HTTP 200 and `database: reachable`.
-3. An unauthenticated dashboard request redirects to `/login`.
-4. Login creates an HttpOnly, Secure, SameSite=Lax cookie in production.
-5. A user can only query rows carrying their owner ID.
-6. The dashboard can start and poll an agentic run over the private network.
-7. The agentic callback imports once and rejects a changed duplicate.
-8. The dashboard report proxy streams the PDF to an authenticated user.
+1. All pre-deploy migrations finish successfully.
+2. Dashboard `/api/health` and agentic API `/health` return HTTP 200.
+3. An unauthenticated dashboard request redirects to `/login`; an
+   unauthenticated agentic `/v1/**` call returns HTTP 401.
+4. Upload a thesis PDF, wait for extraction, review ambiguities and confirm it.
+5. Start “Analyze current portfolios”; observe queued -> running -> imported.
+6. Verify every requested holding has one analysis and every portfolio has one
+   synthesis.
+7. Open the proxied PDF while authenticated.
+8. Replay the same callback and verify idempotency; alter the manifest and
+   verify HTTP 409.
+9. Confirm neither service log contains a bearer key, raw thesis document or
+   raw provider payload.

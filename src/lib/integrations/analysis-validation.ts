@@ -1,33 +1,6 @@
-import {
-  AnalysisValidationError,
-  type AnalysisOutput,
-  type GroundingBundle,
-} from './analysis-contract';
+import { validateGrounding, type AnalysisOutput } from '@portfolio-intelligence/agentic-contract';
 
-/** Rejects references to metrics or fundamentals absent from the supplied bundle. */
-export function validateGrounding(output: AnalysisOutput, bundle: GroundingBundle): void {
-  const available = new Set([
-    ...Object.keys(bundle.computedMetrics),
-    ...Object.keys(bundle.fundamentals),
-  ]);
-  if (available.size === 0) return;
-
-  const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const normalizedAvailable = [...available].map(normalize);
-  const fabricated = output.groundedIn.filter((reference) => {
-    const normalized = normalize(reference);
-    return !normalizedAvailable.some((candidate) =>
-      normalized.includes(candidate) || candidate.includes(normalized)
-    );
-  });
-
-  if (fabricated.length > 0) {
-    throw new AnalysisValidationError(
-      `Grounding validation failed. The analysis cites data it was not given: ` +
-      `${fabricated.join(', ')}. Available: ${[...available].join(', ')}`
-    );
-  }
-}
+export { validateGrounding };
 
 /** Produces an explicit dashboard delta between two immutable analyses. */
 export function diffAnalyses(

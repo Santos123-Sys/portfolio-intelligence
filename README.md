@@ -4,9 +4,11 @@ AI-assisted investment management for two equity portfolios and a fixed-income s
 
 **Stack:** Next.js 15 · TypeScript · Drizzle ORM · PostgreSQL · Railway
 
-The Next.js application owns the dashboard, deterministic portfolio calculations,
-authentication and persistence. A separately deployed agentic service owns thesis
-extraction, security reasoning, synthesis and PDF generation.
+The repository is now one npm-workspace system. The Next.js service owns the
+dashboard, deterministic portfolio calculations, authentication and persistence;
+the private agentic API/worker services own thesis extraction, security reasoning,
+synthesis and PDF generation. All language-model stages use one configurable
+OpenAI model.
 
 ---
 
@@ -61,20 +63,23 @@ npm test
 
 ## Deploying to Railway
 
-The recommended Railway project contains four services:
+The recommended Railway project contains three application services, two isolated
+PostgreSQL resources and one private bucket:
 
 ```text
-dashboard (public Next.js) ──private HTTP──> agentic-system (private API)
+dashboard (public Next.js) ──private HTTP──> agentic-api (private)
         │                                      │
-        └── Railway PostgreSQL                 └── worker/storage owned by agentic service
-        └── optional refresh-cron
+ dashboard-postgres                     agentic-postgres
+                                               │
+                                        agentic-worker ──> OpenAI
+                                               │
+                                        agentic-artifacts bucket
 ```
 
-Configure the dashboard service with Railway's default Railpack builder,
-`npm run build`, `npm run db:migrate` as its pre-deploy command,
-`npm run start:standalone`, and `/api/health` as its healthcheck. Set
-`AGENTIC_SYSTEM_BASE_URL` to the agentic service's Railway private domain. Do
-not expose that service directly to the browser.
+Use `railway.dashboard.json`, `railway.agentic-api.json` and
+`railway.agentic-worker.json` as the services' config paths. They select
+Railpack, committed migrations, start commands, health checks and restart
+policies. Do not expose either agentic service to the browser.
 
 After the first deployment, run `npm run admin:create` once as a Railway command,
 then remove `INITIAL_ADMIN_PASSWORD` from the service variables. For the optional
@@ -95,7 +100,9 @@ src/lib/quant/       Deterministic engine. No LLM calls. 32 tests.
   weights.ts         Position/sector/country weights, HHI, currency guard
 
 src/lib/fx/          The ONLY place currencies mix. ECB rates + displayTotal().
-src/lib/integrations External schemas, grounding guards, HTTP client and manifest adapter
+packages/agentic-contract Shared strict Zod contract and cross-system validators
+services/agentic/      Authenticated API, PostgreSQL worker, OpenAI pipeline, PDF and storage
+src/lib/integrations   Dashboard grounding builder, HTTP client and manifest adapter
 src/lib/connectors/  PriceProvider interface + deterministic stub (ADR-005 open)
 src/lib/services/    Recompute chain, distributed job lock
 src/lib/db/          Drizzle schema, ownership model and revocable sessions
@@ -105,9 +112,9 @@ tests/               Deterministic quant, FX, contract and authentication tests
 
 ### Frontend pages
 
-The seven pages in the Master Build Specification, all client-only (Section 5.2: no
-Server Components, no server-side db access from a page — `fetch()` in `useEffect`
-against the same JSON API a curl request would hit):
+The seven pages in the Master Build Specification use authenticated APIs for
+interactive views. Read-only supporting pages may use owner-scoped Server
+Components; every query is bound to the current session:
 
 | Route | Purpose |
 |---|---|
@@ -119,13 +126,11 @@ against the same JSON API a curl request would hit):
 | `/risk` | Every risk metric, drillable into full methodology, plus the VaR/normality caveat |
 | `/decisions` | Append-only, searchable decision log |
 
-Pages built before this pass — `/portfolio`, `/risk-kpis`, `/ai-insights`,
+Supporting pages — `/portfolio`, `/risk-kpis`, `/ai-insights`,
 `/securities`, `/investment-thesis`, `/ai-stock-discovery`, `/agentic-system`,
 `/candidates` — cover ground the spec's seven pages don't (thesis upload,
 human-in-the-loop candidate review, provenance browsing) and remain reachable
-under the Header's "More" menu rather than deleted. They predate the client-only
-constraint and still fetch data as Server Components; migrating them is tracked
-as a known gap.
+under the Header's "More" menu rather than deleted.
 
 ---
 
@@ -137,11 +142,11 @@ as a known gap.
 
 **Why a `job_locks` table instead of `pg_try_advisory_lock`.** Advisory locks are session-scoped and release when the connection closes. Serverless connections close constantly, often mid-job. A row with an explicit TTL survives that.
 
-**Why the dashboard does not contain an agent worker.** Reasoning jobs are owned by
-the separately deployed agentic service. The dashboard starts a run over private
+**Why the dashboard process does not execute agent jobs.** Reasoning jobs are owned by
+the private agentic worker workspace. The dashboard starts a run over private
 HTTP, stores its external identifier, validates the callback manifest and imports
-it transactionally. This keeps either system replaceable without shared code or
-direct cross-service database writes.
+it transactionally. This preserves the database and quantitative boundaries while
+keeping deployment and schema evolution in one repository.
 
 ---
 
@@ -152,7 +157,7 @@ Stated plainly, because a spec that overstates completeness is worse than no spe
 - **No real market data.** `StubProvider` generates a reproducible pseudo-random walk seeded from the ticker. Every row is tagged `source: 'stub'`. ADR-005 is open — Twelve Data and EODHD both list XSWX and BVMF, but fundamentals depth for those two exchanges specifically is unverified.
 - **Risk-free rates are hardcoded** in `recompute.ts`. Sharpe is directionally useful and not yet trustworthy in absolute terms.
 - **TWR ignores cash flows.** The function supports them; the recompute service doesn't yet pass transactions in. Until it does, TWR equals cumulative return. The metric carries a caveat saying so.
-- **External agentic deployment is required.** The dashboard integration is complete, but no analysis can run until the separately owned service implements `docs/AGENTIC-SYSTEM-HANDOFF.md`.
+- **Railway resources are not provisioned by source code.** The integrated API and worker are implemented, but live analysis still requires the Railway services, two databases, bucket, shared secret and `OPENAI_API_KEY` described in the runbook.
 - **Railway production credentials are not in Git.** PostgreSQL, session, service and cron secrets must be configured in Railway before deployment.
 
 ---
@@ -164,7 +169,7 @@ Stated plainly, because a spec that overstates completeness is worse than no spe
 | `docs/decision-log.md` | ADR-001 → ADR-011, full reasoning and trade-offs |
 | `docs/architecture.md` | Components, data flow, dashboard IA, phasing |
 | `docs/V0-DASHBOARD-BRIEF.md` | **Paste this into v0** — frontend spec only |
-| `docs/AGENTIC-SYSTEM-HANDOFF.md` | Contract and strict repository boundary for the agentic-layer LLM |
+| `docs/AGENTIC-SYSTEM-HANDOFF.md` | Implemented 16-point dashboard/agentic contract reference |
 | `docs/RAILWAY-DEPLOYMENT.md` | Railway services, variables, migration and bootstrap checklist |
 | `docs/platform-comparison.md` | base44 / Replit / Vercel / Manus / Kimi evaluation |
 | `docs/superseded/` | The Python/Replit design, retained for its reasoning. Not live guidance. |

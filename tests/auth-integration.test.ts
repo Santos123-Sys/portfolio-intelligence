@@ -55,6 +55,20 @@ describe('external agentic integration contract', () => {
         baseCurrency: 'CHF',
         investmentObjective: 'Stable compounding',
       }],
+      groundingBundles: [{
+        portfolioId: '550e8400-e29b-41d4-a716-446655440000',
+        bundle: {
+          ticker: 'NESN',
+          companyName: 'Nestle',
+          exchange: 'XSWX',
+          currency: 'CHF',
+          sector: 'Consumer staples',
+          country: 'CH',
+          computedMetrics: { 'position:weight:position-1': 0.12 },
+          dataAsOf: '2026-08-26T00:00:00.000Z',
+          fundamentals: { 'fundamental:free_cash_flow:observation-1': 12.3 },
+        },
+      }],
     });
     expect(parsed.securities[0].exchange).toBe('XSWX');
   });

@@ -1,10 +1,12 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { portfolios, riskMetrics } from '@/lib/db/schema';
+import { requirePageSession } from '@/lib/page-auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function RiskKpisPage() {
+  const session = await requirePageSession();
   const rows = await db
     .select({
       id: riskMetrics.id,
@@ -23,6 +25,7 @@ export default async function RiskKpisPage() {
     })
     .from(riskMetrics)
     .innerJoin(portfolios, eq(riskMetrics.portfolioId, portfolios.id))
+    .where(eq(portfolios.ownerId, session.userId))
     .orderBy(desc(riskMetrics.computedAt));
 
   const latest = new Map<string, typeof rows[number]>();

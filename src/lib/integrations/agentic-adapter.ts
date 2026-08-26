@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { AgenticImportRequest, PortfolioAnalysisManifest } from './agentic-contract';
+import { AgenticImportRequest, stableStringify, type PortfolioAnalysisManifest } from './agentic-contract';
 
 export function manifestHash(manifest: PortfolioAnalysisManifest): string {
   return createHash('sha256')
-    .update(JSON.stringify(manifest))
+    .update(stableStringify(manifest))
     .digest('hex');
 }
 

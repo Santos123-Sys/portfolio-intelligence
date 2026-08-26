@@ -18,6 +18,14 @@ const schema = z.object({
   AGENTIC_SYSTEM_BASE_URL: z.string().url().optional(),
   AGENTIC_SYSTEM_API_KEY: z.string().min(32, 'AGENTIC_SYSTEM_API_KEY must contain at least 32 characters').optional(),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+}).superRefine((env, context) => {
+  if (Boolean(env.AGENTIC_SYSTEM_BASE_URL) !== Boolean(env.AGENTIC_SYSTEM_API_KEY)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['AGENTIC_SYSTEM_BASE_URL'],
+      message: 'AGENTIC_SYSTEM_BASE_URL and AGENTIC_SYSTEM_API_KEY must be configured together',
+    });
+  }
 });
 
 export type Env = z.infer<typeof schema>;
@@ -26,7 +34,15 @@ let cached: Env | null = null;
 
 export function getEnv(): Env {
   if (cached) return cached;
-  const parsed = schema.safeParse(process.env);
+  const optional = (value: string | undefined) => value?.trim() || undefined;
+  const parsed = schema.safeParse({
+    ...process.env,
+    MARKET_DATA_API_KEY: optional(process.env.MARKET_DATA_API_KEY),
+    WEB_SEARCH_API_KEY: optional(process.env.WEB_SEARCH_API_KEY),
+    CRON_SECRET: optional(process.env.CRON_SECRET),
+    AGENTIC_SYSTEM_BASE_URL: optional(process.env.AGENTIC_SYSTEM_BASE_URL),
+    AGENTIC_SYSTEM_API_KEY: optional(process.env.AGENTIC_SYSTEM_API_KEY),
+  });
   if (!parsed.success) {
     const missing = parsed.error.issues
       .map((i) => `  - ${i.path.join('.')}: ${i.message}`)

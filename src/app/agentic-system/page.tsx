@@ -10,6 +10,7 @@ interface ExternalRun {
   completedAt: string | null;
   importedAt: string | null;
   reportUrl: string | null;
+  errorMessage: string | null;
 }
 
 export default function AgenticSystemPage() {
@@ -34,51 +35,23 @@ export default function AgenticSystemPage() {
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
-    return () => controller.abort();
+    const interval = window.setInterval(() => {
+      void loadRuns(controller.signal).catch(() => undefined);
+    }, 5_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
   }, [loadRuns]);
 
   async function startRun() {
     setStarting(true);
     setError(null);
     try {
-      const [thesisResponse, portfolioResponse, positionResponse] = await Promise.all([
-        fetch('/api/thesis'),
-        fetch('/api/portfolios'),
-        fetch('/api/positions'),
-      ]);
-      if (!thesisResponse.ok || !portfolioResponse.ok || !positionResponse.ok) {
-        throw new Error('Unable to prepare the run from current dashboard data');
-      }
-      const thesisBody = (await thesisResponse.json()) as {
-        versions: Array<{ id: string; versionNumber: number; criteriaJson: unknown }>;
-      };
-      const portfolioBody = (await portfolioResponse.json()) as {
-        portfolios: Array<{ id: string; name: string; baseCurrency: string; investmentObjective: string | null }>;
-      };
-      const positionBody = (await positionResponse.json()) as {
-        positions: Array<{ portfolioId: string; ticker: string; exchange: string }>;
-      };
-      const latestThesis = thesisBody.versions[0];
-      if (!latestThesis) throw new Error('Create and confirm an investment thesis before starting analysis');
-      if (positionBody.positions.length === 0) throw new Error('No portfolio positions are available for analysis');
-
-      const securityMap = new Map<string, { ticker: string; exchange: string; portfolioId: string }>();
-      for (const position of positionBody.positions) {
-        securityMap.set(`${position.portfolioId}:${position.exchange}:${position.ticker}`, position);
-      }
       const response = await fetch('/api/integrations/agentic/runs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          thesis: { versionId: latestThesis.id, criteria: latestThesis.criteriaJson },
-          securities: [...securityMap.values()],
-          portfolios: portfolioBody.portfolios.map((portfolio) => ({
-            id: portfolio.id,
-            name: portfolio.name,
-            baseCurrency: portfolio.baseCurrency,
-            investmentObjective: portfolio.investmentObjective ?? '',
-          })),
-        }),
+        body: '{}',
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: unknown };
@@ -92,18 +65,31 @@ export default function AgenticSystemPage() {
     }
   }
 
+  async function retryRun(externalRunId: string) {
+    setError(null);
+    const response = await fetch(`/api/integrations/agentic/runs?externalRunId=${encodeURIComponent(externalRunId)}`, {
+      method: 'PATCH',
+    });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      setError(body.error ?? `Retry failed (${response.status})`);
+      return;
+    }
+    await loadRuns();
+  }
+
   return (
     <main>
       <h1>Agentic System Integration</h1>
       <p className="sub">
-        The dashboard consumes validated manifests from the separately owned Agentic System.
-        It persists results, exposes analysis history and keeps human decisions authoritative.
+        One integrated system: the dashboard supplies confirmed evidence, the private agentic worker interprets it,
+        and validated results return here for human review.
       </p>
 
       <div className="grid">
         <section className="card">
           <h2>System boundary</h2>
-          <p>External agents extract, analyze and synthesize. Dashboard code validates, stores and renders.</p>
+          <p>The private worker extracts, analyzes and synthesizes. Dashboard code validates, stores and renders.</p>
           <p className="note">The dashboard does not execute model prompts or calculate figures from AI prose.</p>
         </section>
 
@@ -148,13 +134,14 @@ export default function AgenticSystemPage() {
                   <th>Completed</th>
                   <th>Imported</th>
                   <th>Report</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {runs.map((run) => (
                   <tr key={run.externalRunId}>
                     <td><code>{run.externalRunId}</code></td>
-                    <td>
+                    <td title={run.errorMessage ?? undefined}>
                       <span className={`badge ${run.status === 'failed' ? 'breach' : run.status === 'imported' ? 'ok' : 'watch'}`}>
                         {run.status}
                       </span>
@@ -164,6 +151,13 @@ export default function AgenticSystemPage() {
                     <td>{run.completedAt ? new Date(run.completedAt).toLocaleString() : '—'}</td>
                     <td>{run.importedAt ? new Date(run.importedAt).toLocaleString() : '—'}</td>
                     <td>{run.reportUrl ? <a className="text-link" href={run.reportUrl} target="_blank" rel="noreferrer">Open PDF</a> : '—'}</td>
+                    {run.status === 'failed' ? (
+                      <td>
+                        <button type="button" className="action-button" onClick={() => void retryRun(run.externalRunId)}>
+                          Retry
+                        </button>
+                      </td>
+                    ) : <td>—</td>}
                   </tr>
                 ))}
               </tbody>
