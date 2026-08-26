@@ -1,4 +1,3 @@
-/* Minimal baseline. v0 will replace this — see V0-DASHBOARD-BRIEF.md. */
 :root {
   --bg: #0b0d10;
   --panel: #14181d;
@@ -15,22 +14,37 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-  /* Tabular figures so numeric columns align — see the v0 brief. */
   font-variant-numeric: tabular-nums;
 }
+a { color: inherit; text-decoration: none; }
+.app-shell { min-height: 100vh; display: grid; grid-template-columns: 230px 1fr; }
+.sidebar { border-right: 1px solid var(--border); padding: 1.25rem 0.75rem; background: #0e1115; }
+.brand { padding: 0.5rem 0.75rem 1.25rem; border-bottom: 1px solid var(--border); margin-bottom: 0.75rem; }
+.brand strong { display: block; font-size: 0.95rem; }
+.brand span { display: block; color: var(--muted); font-size: 0.7rem; line-height: 1.4; margin-top: 0.3rem; }
+.sidebar nav { display: grid; gap: 0.2rem; }
+.nav-link { padding: 0.65rem 0.75rem; border-radius: 6px; color: var(--muted); font-size: 0.82rem; }
+.nav-link:hover { color: var(--text); background: var(--panel); }
+.content { min-width: 0; }
 main { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
 h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 0.25rem; }
+h2 { margin-top: 0; }
 .sub { color: var(--muted); font-size: 0.875rem; margin: 0 0 2rem; }
 .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
-.card h2 { font-size: 0.8125rem; font-weight: 500; color: var(--muted);
-  text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.75rem; }
+.card h2 { font-size: 0.8125rem; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.75rem; }
 .big { font-size: 1.75rem; font-weight: 600; }
 .cur { font-size: 0.875rem; color: var(--muted); margin-left: 0.35rem; }
 .note { font-size: 0.75rem; color: var(--muted); margin-top: 0.5rem; line-height: 1.5; }
 .caveat { font-size: 0.75rem; color: var(--warn); margin-top: 0.5rem; line-height: 1.5; }
 table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-th { text-align: left; color: var(--muted); font-weight: 500; padding: 0.5rem;
-  border-bottom: 1px solid var(--border); }
+th { text-align: left; color: var(--muted); font-weight: 500; padding: 0.5rem; border-bottom: 1px solid var(--border); }
 td { padding: 0.5rem; border-bottom: 1px solid var(--border); }
 td.num, th.num { text-align: right; }
+.badge { display: inline-block; padding: 0.15rem 0.45rem; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 0.7rem; }
+@media (max-width: 800px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar { position: static; border-right: 0; border-bottom: 1px solid var(--border); }
+  .sidebar nav { display: flex; overflow-x: auto; }
+  .nav-link { white-space: nowrap; }
+}
