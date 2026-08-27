@@ -1,88 +1,170 @@
-import { desc, eq, asc } from 'drizzle-orm';
-import { db } from '@/lib/db';
-import { agentRuns, agentSteps } from '@/lib/db/agentic-schema';
-import { securities } from '@/lib/db/schema';
+'use client';
 
-export const dynamic = 'force-dynamic';
+import { useCallback, useEffect, useState } from 'react';
 
-export default async function AgenticSystemPage() {
-  const runs = await db.select({
-    id: agentRuns.id,
-    status: agentRuns.status,
-    ticker: securities.ticker,
-    companyName: securities.companyName,
-    startedAt: agentRuns.startedAt,
-    completedAt: agentRuns.completedAt,
-    orchestratorVersion: agentRuns.orchestratorVersion,
-    errorMessage: agentRuns.errorMessage,
-  }).from(agentRuns)
-    .innerJoin(securities, eq(agentRuns.securityId, securities.id))
-    .orderBy(desc(agentRuns.startedAt)).limit(20);
+interface ExternalRun {
+  externalRunId: string;
+  status: string;
+  thesisVersion: string | null;
+  requestedAt: string;
+  completedAt: string | null;
+  importedAt: string | null;
+  reportUrl: string | null;
+  errorMessage: string | null;
+}
 
-  const latest = runs[0];
-  const steps = latest
-    ? await db.select().from(agentSteps).where(eq(agentSteps.runId, latest.id)).orderBy(asc(agentSteps.sequence))
-    : [];
+export default function AgenticSystemPage() {
+  const [runs, setRuns] = useState<ExternalRun[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+
+  const loadRuns = useCallback(async (signal?: AbortSignal) => {
+    const response = await fetch('/api/integrations/agentic/runs', { signal });
+    if (!response.ok) throw new Error(`Runs API returned ${response.status}`);
+    const data = (await response.json()) as { runs: ExternalRun[] };
+    if (!signal?.aborted) setRuns(data.runs);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadRuns(controller.signal)
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError((cause as Error).message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    const interval = window.setInterval(() => {
+      void loadRuns(controller.signal).catch(() => undefined);
+    }, 5_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [loadRuns]);
+
+  async function startRun() {
+    setStarting(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/integrations/agentic/runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: unknown };
+        throw new Error(typeof body.error === 'string' ? body.error : `Start request failed (${response.status})`);
+      }
+      await loadRuns();
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  async function retryRun(externalRunId: string) {
+    setError(null);
+    const response = await fetch(`/api/integrations/agentic/runs?externalRunId=${encodeURIComponent(externalRunId)}`, {
+      method: 'PATCH',
+    });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      setError(body.error ?? `Retry failed (${response.status})`);
+      return;
+    }
+    await loadRuns();
+  }
 
   return (
     <main>
-      <h1>Agentic Investment System</h1>
+      <h1>Agentic System Integration</h1>
       <p className="sub">
-        Orchestrated specialist agents interpret thesis, evidence, fundamentals and deterministic risk metrics before a critic challenges the case and an investment-committee agent synthesizes the final analysis.
+        One integrated system: the dashboard supplies confirmed evidence, the private agentic worker interprets it,
+        and validated results return here for human review.
       </p>
 
-      <div className="card">
-        <h2>Operating boundary</h2>
-        <p>Agents reason and explain. The quant engine calculates. The database records. You decide.</p>
-        <p className="note">No agent can execute trades or become the numerical source of truth.</p>
+      <div className="grid">
+        <section className="card">
+          <h2>System boundary</h2>
+          <p>The private worker extracts, analyzes and synthesizes. Dashboard code validates, stores and renders.</p>
+          <p className="note">The dashboard does not execute model prompts or calculate figures from AI prose.</p>
+        </section>
+
+        <section className="card">
+          <h2>Handoff contract</h2>
+          <p className="note">
+            externalRunId → manifest.json → per-security analyses → portfolio synthesis → optional PDF report
+          </p>
+          <p className="note">Duplicate run IDs are idempotent; changed payloads under the same ID are rejected.</p>
+        </section>
+
+        <section className="card">
+          <h2>Decision authority</h2>
+          <p>Imported analysis informs candidate review and security detail. It cannot modify holdings or execute trades.</p>
+          <p className="note">Accept, reject and watchlist decisions remain explicit human mutations.</p>
+          <button type="button" className="action-button" onClick={startRun} disabled={starting}>
+            {starting ? 'Starting analysis…' : 'Analyze current portfolios'}
+          </button>
+        </section>
       </div>
 
-      <div className="card" style={{ marginTop: '1rem' }}>
-        <h2>Agent graph</h2>
-        <p className="note">Thesis Interpreter → Research Evidence → Fundamental Analyst → Risk Interpreter → Portfolio Fit → Critic → Investment Committee</p>
-      </div>
-
-      {latest && (
-        <div className="card" style={{ marginTop: '1rem' }}>
-          <h2>Latest run · {latest.companyName} · {latest.ticker}</h2>
-          <p><span className="badge">{latest.status}</span> <span className="note">{latest.orchestratorVersion}</span></p>
-          {latest.errorMessage && <p className="caveat">{latest.errorMessage}</p>}
-          {steps.length === 0 ? <p className="note">No completed agent steps persisted yet.</p> : (
+      <section className="card">
+        <h2>External analysis runs</h2>
+        {loading ? (
+          <p className="note">Fetching...</p>
+        ) : error ? (
+          <p className="caveat">Unable to load external runs: {error}</p>
+        ) : runs.length === 0 ? (
+          <p className="note">
+            No external manifests imported yet. Completed runs appear here after the Agentic System posts to
+            /api/integrations/agentic/import.
+          </p>
+        ) : (
+          <div className="table-scroll">
             <table>
-              <thead><tr><th>#</th><th>Agent</th><th>Status</th><th>Recorded</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>External run</th>
+                  <th>Status</th>
+                  <th>Thesis</th>
+                  <th>Requested</th>
+                  <th>Completed</th>
+                  <th>Imported</th>
+                  <th>Report</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
               <tbody>
-                {steps.map((s) => (
-                  <tr key={s.id}>
-                    <td>{s.sequence}</td>
-                    <td>{s.agentName}</td>
-                    <td>{s.status}</td>
-                    <td>{s.createdAt.toISOString()}</td>
+                {runs.map((run) => (
+                  <tr key={run.externalRunId}>
+                    <td><code>{run.externalRunId}</code></td>
+                    <td title={run.errorMessage ?? undefined}>
+                      <span className={`badge ${run.status === 'failed' ? 'breach' : run.status === 'imported' ? 'ok' : 'watch'}`}>
+                        {run.status}
+                      </span>
+                    </td>
+                    <td>{run.thesisVersion ? `v${run.thesisVersion}` : '—'}</td>
+                    <td>{new Date(run.requestedAt).toLocaleString()}</td>
+                    <td>{run.completedAt ? new Date(run.completedAt).toLocaleString() : '—'}</td>
+                    <td>{run.importedAt ? new Date(run.importedAt).toLocaleString() : '—'}</td>
+                    <td>{run.reportUrl ? <a className="text-link" href={run.reportUrl} target="_blank" rel="noreferrer">Open PDF</a> : '—'}</td>
+                    {run.status === 'failed' ? (
+                      <td>
+                        <button type="button" className="action-button" onClick={() => void retryRun(run.externalRunId)}>
+                          Retry
+                        </button>
+                      </td>
+                    ) : <td>—</td>}
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
-      )}
-
-      <div className="card" style={{ marginTop: '1rem' }}>
-        <h2>Recent runs</h2>
-        {runs.length === 0 ? <p className="note">No agentic analyses have run yet. Queue a security analysis to create the first trace.</p> : (
-          <table>
-            <thead><tr><th>Security</th><th>Status</th><th>Started</th><th>Completed</th></tr></thead>
-            <tbody>
-              {runs.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.companyName} · {r.ticker}</td>
-                  <td>{r.status}</td>
-                  <td>{r.startedAt.toISOString()}</td>
-                  <td>{r.completedAt?.toISOString() ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          </div>
         )}
-      </div>
+      </section>
     </main>
   );
 }

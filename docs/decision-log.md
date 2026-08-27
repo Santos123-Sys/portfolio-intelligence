@@ -88,7 +88,7 @@ Update this file as decisions get made or revisited. Don't delete superseded ent
 
 ## ADR-006: Agent orchestration — hand-rolled pipeline vs. framework
 
-**Decision:** Recommend hand-rolled (plain functions calling the Anthropic API with structured tool-use output at each stage) over a framework like LangGraph/CrewAI/AutoGen, given Agenteki's workflow is a fixed DAG, not a dynamically branching multi-agent system.
+**Decision:** Use hand-rolled orchestration (plain functions calling one OpenAI Responses API model with structured output at each stage) over LangGraph/CrewAI/AutoGen, because Agenteki is a fixed DAG rather than a dynamically branching multi-agent system.
 
 **Reason:** Less infrastructure code, easier to debug, no framework lock-in, for a workflow that (per your own diagram) is linear.
 
@@ -190,5 +190,17 @@ The rewrite cost was real but far smaller than "rebuild the calculation layer." 
 **Reason:** Three converging arguments. (1) The explainability requirement needs every metric to carry methodology, confidence level, horizon, lookback, and annualization factor — libraries return floats, so wrapping was unavoidable either way. (2) The formulas are genuinely simple and now have 32 tests against hand-checkable values. (3) It eliminates the `cvxpy` build risk entirely.
 
 **Trade-off:** Portfolio optimization (Black-Litterman, risk parity, the 26 convex risk measures in Riskfolio-Lib) is not available. That was Phase 4 work and is not needed to run the system.
+
+**Status:** Accepted.
+
+---
+
+## ADR-012: Reconcile the dashboard to the Master Build Specification's seven-page IA, keep the earlier IA reachable
+
+**Decision:** When the project's Master Build Specification arrived as a build target in its own right, rebuild the primary navigation and the frontend page set to match its Section 5.3 exactly — `/`, `/allocation`, `/positions`, `/security/[ticker]`, `/intelligence`, `/risk`, `/decisions` — as client-only pages (`fetch()` in `useEffect`, no Server Components) per its Section 5.2. Do not delete the pages built under the earlier, close-but-not-identical IA (`/portfolio`, `/risk-kpis`, `/ai-insights`, `/securities`, `/investment-thesis`, `/ai-stock-discovery`, `/agentic-system`, `/candidates`); keep them reachable from the Header's "More" menu.
+
+**Reason:** Section 10's success criteria checks for the seven named pages, so matching them exactly is not optional polish. But the earlier pages aren't redundant with the new ones — thesis upload, human-in-the-loop candidate decisions, and provenance browsing have no equivalent in the seven-page spec, and deleting working, tested functionality to satisfy a naming convention would be a worse outcome than carrying two navigation tiers for a while.
+
+**Trade-off:** Two frontend architectures now coexist: the new pages are client-only per Section 5.2, the earlier ones are Server Components querying the database directly. That inconsistency is deliberate and temporary, not an oversight — it's tracked in `docs/MASTER-SPEC-IMPLEMENTATION.md`'s known gaps rather than hidden. `/api/positions`, `/api/analysis` and `/api/decision-log` gained fields and joins to support the new pages (day change, ticker joins, search) without changing any existing response field's meaning.
 
 **Status:** Accepted.

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { riskMetrics } from '@/lib/db/schema';
 import { eq, desc } from 'drizzle-orm';
+import { authenticateRequest, portfolioIsOwned } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -10,6 +11,8 @@ export const runtime = 'nodejs';
  * The UI renders `value`; the drill-down renders everything else.
  */
 export async function GET(req: Request) {
+  const session = await authenticateRequest(req);
+  if (!session.ok) return session.response;
   const url = new URL(req.url);
   const portfolioId = url.searchParams.get('portfolioId');
   if (!portfolioId) {
@@ -17,6 +20,9 @@ export async function GET(req: Request) {
       { error: 'portfolioId is required. Risk metrics are always portfolio-scoped (ADR-002).' },
       { status: 400 }
     );
+  }
+  if (!(await portfolioIsOwned(session.auth.userId, portfolioId))) {
+    return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 });
   }
 
   const rows = await db

@@ -1,5 +1,5 @@
-import { pgTable, uuid, text, timestamp, numeric, jsonb, index } from 'drizzle-orm/pg-core';
-import { aiAnalyses, analysisJobs, securities, thesisVersions } from './schema';
+import { pgTable, uuid, text, timestamp, numeric, jsonb, index, uniqueIndex, integer } from 'drizzle-orm/pg-core';
+import { aiAnalyses, portfolios, securities, thesisVersions, users } from './schema';
 
 /**
  * Atomic external-data evidence. This table is deliberately metric-oriented so
@@ -37,6 +37,7 @@ export const candidateDecisions = pgTable(
   'candidate_decisions',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
     analysisId: uuid('analysis_id').references(() => aiAnalyses.id, { onDelete: 'cascade' }).notNull(),
     decision: text('decision').notNull(), // accepted | rejected | watchlist | reanalysis_requested
     rationale: text('rationale'),
@@ -52,6 +53,7 @@ export const thesisMutationAudit = pgTable(
   'thesis_mutation_audit',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
     thesisVersionId: uuid('thesis_version_id').references(() => thesisVersions.id, { onDelete: 'cascade' }).notNull(),
     action: text('action').notNull(),
     actor: text('actor').notNull(),
@@ -61,14 +63,84 @@ export const thesisMutationAudit = pgTable(
   (t) => ({ thesisAuditIdx: index('thesis_mutation_audit_thesis_idx').on(t.thesisVersionId, t.createdAt) })
 );
 
-/** Optional queue linkage when a candidate decision requests another analysis. */
-export const candidateReanalysisRequests = pgTable(
-  'candidate_reanalysis_requests',
+/** Pending model extraction. It becomes canonical only after explicit human confirmation. */
+export const externalThesisExtractions = pgTable(
+  'external_thesis_extractions',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    decisionId: uuid('decision_id').references(() => candidateDecisions.id, { onDelete: 'cascade' }).notNull(),
-    analysisJobId: uuid('analysis_job_id').references(() => analysisJobs.id, { onDelete: 'cascade' }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    externalExtractionId: text('external_extraction_id').notNull().unique(),
+    status: text('status').notNull().default('queued'),
+    requestedVersion: integer('requested_version').notNull(),
+    sourceFileName: text('source_file_name').notNull(),
+    sourceMimeType: text('source_mime_type').notNull(),
+    resultJson: jsonb('result_json'),
+    errorMessage: text('error_message'),
+    requestedAt: timestamp('requested_at', { withTimezone: true }).defaultNow().notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    confirmedThesisVersionId: uuid('confirmed_thesis_version_id')
+      .references(() => thesisVersions.id, { onDelete: 'set null' }),
   },
-  (t) => ({ decisionIdx: index('candidate_reanalysis_decision_idx').on(t.decisionId) })
+  (t) => ({
+    ownerStatusIdx: index('external_thesis_extractions_owner_status_idx').on(t.ownerId, t.status, t.requestedAt),
+  })
+);
+
+/** Dashboard record of a run owned by the external agentic system. */
+export const externalAgenticRuns = pgTable(
+  'external_agentic_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    externalRunId: text('external_run_id').notNull().unique(),
+    status: text('status').notNull().default('queued'),
+    thesisVersion: text('thesis_version'),
+    manifestSchemaVersion: text('manifest_schema_version'),
+    manifestHash: text('manifest_hash'),
+    requestJson: jsonb('request_json'),
+    manifestJson: jsonb('manifest_json'),
+    reportPdfUrl: text('report_pdf_url'),
+    requestedAt: timestamp('requested_at').defaultNow().notNull(),
+    completedAt: timestamp('completed_at'),
+    importedAt: timestamp('imported_at'),
+    errorMessage: text('error_message'),
+  },
+  (t) => ({
+    statusIdx: index('external_agentic_runs_status_idx').on(t.status, t.requestedAt),
+    hashIdx: index('external_agentic_runs_manifest_hash_idx').on(t.manifestHash),
+  })
+);
+
+/** Portfolio-level synthesis imported from the external manifest. */
+export const portfolioAnalysisSyntheses = pgTable(
+  'portfolio_analysis_syntheses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id').references(() => externalAgenticRuns.id, { onDelete: 'cascade' }).notNull(),
+    portfolioId: uuid('portfolio_id').references(() => portfolios.id, { onDelete: 'cascade' }).notNull(),
+    thesisVersion: text('thesis_version').notNull(),
+    synthesisJson: jsonb('synthesis_json').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    runPortfolioIdx: uniqueIndex('portfolio_synthesis_run_portfolio_idx').on(t.runId, t.portfolioId),
+  })
+);
+
+/** Complete external output retained for audit and fields not projected into ai_analyses. */
+export const externalAgenticAnalyses = pgTable(
+  'external_agentic_analyses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id').references(() => externalAgenticRuns.id, { onDelete: 'cascade' }).notNull(),
+    portfolioId: uuid('portfolio_id').references(() => portfolios.id, { onDelete: 'cascade' }).notNull(),
+    securityId: uuid('security_id').references(() => securities.id, { onDelete: 'cascade' }).notNull(),
+    analysisId: uuid('analysis_id').references(() => aiAnalyses.id, { onDelete: 'cascade' }).notNull(),
+    outputJson: jsonb('output_json').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    runSecurityIdx: uniqueIndex('external_analysis_run_portfolio_security_idx').on(t.runId, t.portfolioId, t.securityId),
+  })
 );

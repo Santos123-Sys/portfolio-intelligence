@@ -1,5 +1,10 @@
 # Implementation Tranche 2 — Provider, Workflow, Quant & Auth
 
+> Historical implementation record. Its shared-key authorization, internal
+> reanalysis queue and `db:push` deployment instructions are superseded by the
+> session/ownership model, external-agentic handoff and Railway migration
+> runbook in `AGENTIC-SYSTEM-HANDOFF.md` and `RAILWAY-DEPLOYMENT.md`.
+
 This tranche implements the next operational layer on top of the master investment-management specification.
 
 ## 1. Yahoo Finance / Provider Integration

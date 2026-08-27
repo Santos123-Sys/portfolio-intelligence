@@ -7,16 +7,15 @@ import { db } from '@/lib/db';
 import { securities, priceHistory, fxRates } from '@/lib/db/schema';
 import { fetchEcbRates } from '@/lib/fx';
 import { recordFundamentalObservations, recordPriceObservation, recordUnavailableObservation } from '@/lib/services/provenance';
+import { pruneAuthenticationSecurityData } from '@/lib/auth-security';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
 
 /**
  * Daily refresh: prices -> fundamentals/provenance -> FX -> recompute.
  *
- * Runs under a lock because Vercel Cron is at-least-once with no concurrency
- * guarantee. Two overlapping runs writing FX rates is exactly the silent
- * corruption this guards against.
+ * Runs under a lock because scheduled jobs can overlap or be retried. Two
+ * refreshes writing the same observations concurrently would corrupt lineage.
  */
 export async function GET(req: Request) {
   try {
@@ -27,6 +26,7 @@ export async function GET(req: Request) {
 
   const outcome = await withLock('daily_refresh', async () => {
     const provider = getPriceProvider();
+    const authenticationDataPruned = await pruneAuthenticationSecurityData();
     const allSecurities = await db.select().from(securities);
 
     let pricesWritten = 0;
@@ -86,7 +86,16 @@ export async function GET(req: Request) {
     }
 
     const recomputed = await recomputeAll();
-    return { pricesWritten, fundamentalsWritten, priceErrors, fundamentalErrors, fxWritten, fxError, recomputed };
+    return {
+      pricesWritten,
+      fundamentalsWritten,
+      priceErrors,
+      fundamentalErrors,
+      fxWritten,
+      fxError,
+      authenticationDataPruned,
+      recomputed,
+    };
   });
 
   if (!outcome.ran) {

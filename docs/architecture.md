@@ -1,6 +1,11 @@
 # AI Investment Management & Portfolio Intelligence System
 ## System Architecture — v0.1 (Draft, awaiting validation)
 
+> Historical architecture record. The live deployment and system boundary are
+> now defined by `RAILWAY-DEPLOYMENT.md` and `AGENTIC-SYSTEM-HANDOFF.md`.
+> In particular, the agentic runtime is a separate Railway service and is not
+> implemented inside the Next.js dashboard.
+
 **Status:** v0.2 — build-vs-buy, currency-reporting, and phasing questions resolved (see Section 10). Not yet implemented.
 **Scope:** Personal-use system, single investor, two portfolios (CH equity / BR equity / fixed income & liquidity), built fully custom, reported in native currency per portfolio.
 
@@ -242,7 +247,7 @@ Same debugging guarantee as a separate Phase 0 (you know the numbers are right b
 |---|---|
 | FastAPI | Thin, typed, well-documented; no reason to reach for more at single-user scale |
 | QuantStats + Riskfolio-Lib | See Section 5 |
-| Hand-rolled orchestration for Agenteki over a heavy agent framework | Your own diagram (Section 4 of your prompt) describes a fixed pipeline — screen → analyze → align → score — not a system that needs dynamic branching or multi-agent negotiation. LangGraph, CrewAI, AutoGen etc. earn their overhead when the workflow is genuinely non-linear; a fixed DAG is more debuggable as plain functions calling the Anthropic API with structured tool-use output at each stage. Reconsider this if Agenteki's behavior grows real branching logic later. |
+| Hand-rolled orchestration for Agenteki over a heavy agent framework | The pipeline is fixed — extract → analyze → synthesize — and does not need dynamic branching or multi-agent negotiation. LangGraph, CrewAI and AutoGen earn their overhead when a workflow is genuinely non-linear; this DAG is more debuggable as plain functions calling one OpenAI Responses API model with strict structured output at each stage. Reconsider only if the workflow develops real branching logic later. |
 | Self-hosting over cloud SaaS | This is personal financial data; Ghostfolio's own self-hosting guidance is worth taking seriously here — a small VPS (their own documentation cites roughly $5/month) handles a personal-scale system comfortably |
 
 **Optional / later**

@@ -1,11 +1,17 @@
-import { asc } from 'drizzle-orm';
+import { asc, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { securities } from '@/lib/db/schema';
+import { ownedSecurityIds } from '@/lib/api-auth';
+import { requirePageSession } from '@/lib/page-auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SecuritiesPage() {
-  const rows = await db.select().from(securities).orderBy(asc(securities.companyName));
+  const session = await requirePageSession();
+  const securityIds = await ownedSecurityIds(session.userId);
+  const rows = securityIds.length
+    ? await db.select().from(securities).where(inArray(securities.id, securityIds)).orderBy(asc(securities.companyName))
+    : [];
 
   return (
     <main>

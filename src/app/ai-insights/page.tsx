@@ -1,10 +1,12 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { aiAnalyses, securities, thesisVersions } from '@/lib/db/schema';
+import { requirePageSession } from '@/lib/page-auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AIInsightsPage() {
+  const session = await requirePageSession();
   const rows = await db
     .select({
       id: aiAnalyses.id,
@@ -25,6 +27,7 @@ export default async function AIInsightsPage() {
     .from(aiAnalyses)
     .innerJoin(securities, eq(aiAnalyses.securityId, securities.id))
     .innerJoin(thesisVersions, eq(aiAnalyses.thesisVersionId, thesisVersions.id))
+    .where(eq(aiAnalyses.ownerId, session.userId))
     .orderBy(desc(aiAnalyses.analysisTimestamp));
 
   return (

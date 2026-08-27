@@ -1,10 +1,12 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { portfolios, positions, securities } from '@/lib/db/schema';
+import { requirePageSession } from '@/lib/page-auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PortfolioPage() {
+  const session = await requirePageSession();
   const rows = await db
     .select({
       id: positions.id,
@@ -24,6 +26,7 @@ export default async function PortfolioPage() {
     .from(positions)
     .innerJoin(portfolios, eq(positions.portfolioId, portfolios.id))
     .innerJoin(securities, eq(positions.securityId, securities.id))
+    .where(eq(portfolios.ownerId, session.userId))
     .orderBy(desc(positions.weight));
 
   return (

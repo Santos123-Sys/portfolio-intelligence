@@ -27,16 +27,99 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
-export const portfolios = pgTable('portfolios', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
-  /** 'swiss_quality' | 'brazilian_growth' | 'fixed_income' */
-  portfolioType: text('portfolio_type').notNull(),
-  /** The native currency. All metrics for this portfolio are reported in it. */
-  baseCurrency: text('base_currency').notNull(),
-  investmentObjective: text('investment_objective'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-});
+export const users = pgTable(
+  'users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: text('email').notNull(),
+    displayName: text('display_name').notNull(),
+    passwordHash: text('password_hash').notNull(),
+    passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }).defaultNow().notNull(),
+    role: text('role').notNull().default('owner'),
+    /** AES-256-GCM ciphertext. The encryption key remains in Railway secrets. */
+    mfaSecretEncrypted: text('mfa_secret_encrypted'),
+    /** Setup secrets do not become login factors until a valid TOTP confirms them. */
+    mfaPendingSecretEncrypted: text('mfa_pending_secret_encrypted'),
+    mfaEnabledAt: timestamp('mfa_enabled_at', { withTimezone: true }),
+    /** Recovery codes are HMAC digests and are disclosed only once at enrollment. */
+    mfaRecoveryCodeHashes: jsonb('mfa_recovery_code_hashes').$type<string[]>(),
+    /** Prevents accepting the same time-step code twice. */
+    mfaLastUsedStep: integer('mfa_last_used_step'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    disabledAt: timestamp('disabled_at', { withTimezone: true }),
+  },
+  (t) => ({ emailIdx: uniqueIndex('users_email_idx').on(t.email) })
+);
+
+/** Revocable, server-side sessions. Only a SHA-256 token digest is persisted. */
+export const userSessions = pgTable(
+  'user_sessions',
+  {
+    id: uuid('id').primaryKey(),
+    userId: uuid('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    tokenHash: text('token_hash').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => ({
+    tokenIdx: uniqueIndex('user_sessions_token_hash_idx').on(t.tokenHash),
+    userExpiryIdx: index('user_sessions_user_expiry_idx').on(t.userId, t.expiresAt),
+  })
+);
+
+/**
+ * Durable login throttling shared by every Railway dashboard replica. Keys are
+ * HMAC digests of an account identifier or network address, never raw PII.
+ */
+export const authenticationRateLimits = pgTable(
+  'authentication_rate_limits',
+  {
+    keyHash: text('key_hash').primaryKey(),
+    kind: text('kind').notNull(),
+    failureCount: integer('failure_count').notNull().default(0),
+    windowStartedAt: timestamp('window_started_at', { withTimezone: true }).defaultNow().notNull(),
+    blockedUntil: timestamp('blocked_until', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ expiryIdx: index('authentication_rate_limits_expiry_idx').on(t.blockedUntil) })
+);
+
+/** Append-only, privacy-preserving authentication security events. */
+export const authenticationEvents = pgTable(
+  'authentication_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    eventType: text('event_type').notNull(),
+    outcome: text('outcome').notNull(),
+    identityHash: text('identity_hash'),
+    ipHash: text('ip_hash'),
+    userAgentHash: text('user_agent_hash'),
+    metadata: jsonb('metadata').$type<Record<string, string | number | boolean | null>>(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ userTimeIdx: index('authentication_events_user_time_idx').on(t.userId, t.occurredAt) })
+);
+
+export const portfolios = pgTable(
+  'portfolios',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    /** 'swiss_quality' | 'brazilian_growth' | 'fixed_income' */
+    portfolioType: text('portfolio_type').notNull(),
+    /** The native currency. All metrics for this portfolio are reported in it. */
+    baseCurrency: text('base_currency').notNull(),
+    investmentObjective: text('investment_objective'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ ownerIdx: index('portfolios_owner_idx').on(t.ownerId) })
+);
 
 export const securities = pgTable(
   'securities',
@@ -164,29 +247,32 @@ export const fxRates = pgTable(
  * scored against, so a changed recommendation can be attributed to a changed
  * thesis rather than to model drift.
  */
-export const thesisVersions = pgTable('thesis_versions', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  versionNumber: integer('version_number').notNull(),
-  criteriaJson: jsonb('criteria_json').notNull(),
-  rawDocument: text('raw_document'),
-  effectiveDate: timestamp('effective_date', { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  supersededAt: timestamp('superseded_at', { withTimezone: true }),
-});
+export const thesisVersions = pgTable(
+  'thesis_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    versionNumber: integer('version_number').notNull(),
+    criteriaJson: jsonb('criteria_json').notNull(),
+    rawDocument: text('raw_document'),
+    effectiveDate: timestamp('effective_date', { withTimezone: true }).defaultNow().notNull(),
+    supersededAt: timestamp('superseded_at', { withTimezone: true }),
+  },
+  (t) => ({ ownerVersionIdx: uniqueIndex('thesis_versions_owner_version_idx').on(t.ownerId, t.versionNumber) })
+);
 
 export const aiAnalyses = pgTable(
   'ai_analyses',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    portfolioId: uuid('portfolio_id').references(() => portfolios.id, { onDelete: 'cascade' }).notNull(),
     securityId: uuid('security_id')
       .references(() => securities.id, { onDelete: 'cascade' })
       .notNull(),
     thesisVersionId: uuid('thesis_version_id')
       .references(() => thesisVersions.id)
       .notNull(),
-    /** Links back to the job that produced it; null for manually-seeded rows. */
-    jobId: uuid('job_id'),
     portfolioCandidate: boolean('portfolio_candidate').notNull().default(false),
     portfolioRole: text('portfolio_role').notNull(),
     investmentScore: integer('investment_score').notNull(),
@@ -207,6 +293,10 @@ export const aiAnalyses = pgTable(
      * conclusion drawn from no data and should be treated as such.
      */
     groundedIn: jsonb('grounded_in').$type<string[]>(),
+    /** Full data-completeness disclosure from the external agentic contract. */
+    informationGaps: jsonb('information_gaps').$type<string[]>(),
+    /** External run that produced this imported analysis, when applicable. */
+    externalRunId: uuid('external_run_id'),
     /** Points at the analysis this one replaced, so changes render as a diff. */
     supersedesId: uuid('supersedes_id'),
     analysisTimestamp: timestamp('analysis_timestamp', { withTimezone: true })
@@ -218,38 +308,6 @@ export const aiAnalyses = pgTable(
   (t) => ({
     securityIdx: index('ai_analyses_security_idx').on(t.securityId),
     timestampIdx: index('ai_analyses_timestamp_idx').on(t.analysisTimestamp),
-  })
-);
-
-/**
- * ADDITION (refines ADR-009). The architecture said to add a `status` column to
- * AI_ANALYSIS. A separate table is better: a job can fail, be retried, or be
- * cancelled without ever producing an analysis, and overloading the results
- * table with queue state conflates "what the AI concluded" with "whether the
- * AI ran". Keeping them apart means a failed run leaves a diagnosable record
- * rather than a half-populated analysis row.
- */
-export const analysisJobs = pgTable(
-  'analysis_jobs',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    /** 'pending' | 'running' | 'complete' | 'failed' */
-    status: text('status').notNull().default('pending'),
-    /** 'single_security' | 'portfolio_sweep' | 'thesis_recheck' */
-    jobType: text('job_type').notNull(),
-    securityId: uuid('security_id').references(() => securities.id),
-    portfolioId: uuid('portfolio_id').references(() => portfolios.id),
-    thesisVersionId: uuid('thesis_version_id').references(() => thesisVersions.id),
-    requestedAt: timestamp('requested_at', { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    startedAt: timestamp('started_at', { withTimezone: true }),
-    completedAt: timestamp('completed_at', { withTimezone: true }),
-    errorMessage: text('error_message'),
-    attempts: integer('attempts').notNull().default(0),
-  },
-  (t) => ({
-    statusIdx: index('analysis_jobs_status_idx').on(t.status, t.requestedAt),
   })
 );
 
@@ -290,6 +348,7 @@ export const alerts = pgTable(
   'alerts',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
     /** 'portfolio' | 'market' | 'thesis' */
     alertType: text('alert_type').notNull(),
     /** 'info' | 'watch' | 'breach' */
@@ -307,6 +366,7 @@ export const alerts = pgTable(
 /** Append-only. Nothing in the application issues UPDATE or DELETE here. */
 export const decisionLog = pgTable('decision_log', {
   id: uuid('id').primaryKey().defaultRandom(),
+  ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   decisionDate: timestamp('decision_date', { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -321,7 +381,7 @@ export const decisionLog = pgTable('decision_log', {
 
 /**
  * ADDITION. Distributed lock, replacing the Postgres advisory lock the Replit
- * design used. Vercel Cron has at-least-once delivery and no concurrency
+ * design used. Scheduled jobs can have at-least-once delivery and no concurrency
  * guarantee, so two overlapping refresh runs writing FX rates is a live risk.
  * A table-based lease survives across serverless invocations, which a session-
  * scoped `pg_advisory_lock` would not — advisory locks release when the

@@ -1,0 +1,38 @@
+name: Security verification
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  application-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://security:security@127.0.0.1:5432/security
+      SESSION_SECRET: ci-only-session-secret-with-at-least-32-characters
+      MFA_ENCRYPTION_KEY: ci-only-mfa-secret-with-at-least-32-characters
+      MARKET_DATA_PROVIDER: stub
+      WEB_SEARCH_PROVIDER: none
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Reject production advisories and severe toolchain advisories
+        run: |
+          npm audit --omit=dev --audit-level=moderate
+          npm audit --audit-level=high
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

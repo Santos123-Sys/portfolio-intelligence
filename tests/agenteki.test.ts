@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { AnalysisOutput } from '../src/lib/agenteki/schemas';
-import { validateGrounding, diffAnalyses } from '../src/lib/agenteki/pipeline';
-import type { GroundingBundle } from '../src/lib/agenteki/schemas';
+import { AnalysisOutput, type GroundingBundle } from '../src/lib/integrations/analysis-contract';
+import { validateGrounding, diffAnalyses } from '../src/lib/integrations/analysis-validation';
 
 const bundle: GroundingBundle = {
   ticker: 'NESN', companyName: 'Nestle', exchange: 'XSWX', currency: 'CHF',
@@ -17,7 +16,7 @@ const valid: AnalysisOutput = {
   investmentScore: 78, thesisAlignmentScore: 84, qualityScore: 88,
   growthScore: 55, riskScore: 30, dividendScore: 72,
   fundamentalSummary: 'Stable staples franchise.',
-  investmentThesis: 'Defensive compounding with reliable distribution.',
+  investmentThesis: 'Affirmative case: Defensive compounding. Strongest counter-case: Distribution resilience could weaken.',
   keyCatalysts: ['Pricing power'], keyRisks: ['FX translation'],
   thesisBreakers: ['Sustained margin compression below 15%'],
   confidenceScore: 0.72,
@@ -56,17 +55,17 @@ describe('grounding validation — the anti-hallucination guard', () => {
 
   it('CATCHES a cited metric that was never computed', () => {
     const fabricated = { ...valid, groundedIn: ['Sharpe', 'SortinoRatio'] };
-    expect(() => validateGrounding(fabricated, bundle)).toThrow(/cites data it was not given/);
+    expect(() => validateGrounding(fabricated, bundle)).toThrow(/Grounding validation failed/);
   });
 
-  it('tolerates formatting differences in metric names', () => {
+  it('requires exact provenance keys rather than fuzzy aliases', () => {
     const restyled = { ...valid, groundedIn: ['max drawdown', 'P/E ratio'] };
-    expect(() => validateGrounding(restyled, bundle)).not.toThrow();
+    expect(() => validateGrounding(restyled, bundle)).toThrow(/Grounding validation failed/);
   });
 
-  it('skips validation when nothing was supplied to contradict', () => {
+  it('rejects an analysis when no grounding was supplied', () => {
     const empty = { ...bundle, computedMetrics: {}, fundamentals: {} };
-    expect(() => validateGrounding(valid, empty)).not.toThrow();
+    expect(() => validateGrounding(valid, empty)).toThrow(/No grounding was supplied/);
   });
 });
 
