@@ -6,8 +6,10 @@
  */
 import { z } from 'zod';
 
+const databaseUrlSchema = z.string().url('DATABASE_URL must be a valid Postgres connection string');
+
 const schema = z.object({
-  DATABASE_URL: z.string().url('DATABASE_URL must be a valid Postgres connection string'),
+  DATABASE_URL: databaseUrlSchema,
   MARKET_DATA_API_KEY: z.string().min(1).optional(),
   MARKET_DATA_PROVIDER: z.enum(['stub', 'twelvedata', 'eodhd', 'yahoo-search']).default('stub'),
   WEB_SEARCH_PROVIDER: z.enum(['none', 'brave']).default('none'),
@@ -43,6 +45,32 @@ export type Env = z.infer<typeof schema>;
 
 let cached: Env | null = null;
 
+function validationFailure(issues: z.ZodIssue[]): Error {
+  const missing = issues
+    .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
+    .join('\n');
+  return new Error(
+    `Environment validation failed:\n${missing}\n\n` +
+    `Set the missing values on the Railway dashboard service and redeploy.`
+  );
+}
+
+/**
+ * Database modules use this narrower validator so importing a route during a
+ * framework build does not read unrelated runtime secrets. The value is still
+ * required before the first query is created.
+ */
+export function getDatabaseUrl(): string {
+  const parsed = databaseUrlSchema.safeParse(process.env.DATABASE_URL?.trim());
+  if (!parsed.success) {
+    throw validationFailure(parsed.error.issues.map((issue) => ({
+      ...issue,
+      path: ['DATABASE_URL', ...issue.path],
+    })));
+  }
+  return parsed.data;
+}
+
 export function getEnv(): Env {
   if (cached) return cached;
   const optional = (value: string | undefined) => value?.trim() || undefined;
@@ -57,13 +85,7 @@ export function getEnv(): Env {
     PUBLIC_APP_URL: optional(process.env.PUBLIC_APP_URL),
   });
   if (!parsed.success) {
-    const missing = parsed.error.issues
-      .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
-      .join('\n');
-    throw new Error(
-      `Environment validation failed:\n${missing}\n\n` +
-      `Set the missing values on the Railway dashboard service and redeploy.`
-    );
+    throw validationFailure(parsed.error.issues);
   }
   cached = parsed.data;
   return cached;
