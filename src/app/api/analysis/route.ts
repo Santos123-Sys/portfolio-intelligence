@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { aiAnalyses, securities } from '@/lib/db/schema';
 import { and, eq, desc } from 'drizzle-orm';
 import { authenticateRequest } from '@/lib/api-auth';
+import { assertSameOrigin } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -59,6 +60,11 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await authenticateRequest(req);
   if (!session.ok) return session.response;
+  try {
+    assertSameOrigin(req);
+  } catch {
+    return NextResponse.json({ error: 'Cross-origin mutation rejected' }, { status: 403 });
+  }
   return NextResponse.json(
     { error: 'Internal analysis jobs are retired. Start an external run through /api/integrations/agentic/runs.' },
     { status: 410 }

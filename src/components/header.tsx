@@ -8,7 +8,7 @@
  * upload, candidate review, provenance) the new pages don't replace.
  */
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { usePortfolioBreadcrumb } from '@/lib/portfolio-context';
 
@@ -27,6 +27,7 @@ const EXTENDED_NAV = [
   ['/agentic-system', 'Agentic System'],
   ['/candidates', 'Candidates'],
   ['/securities', 'Securities'],
+  ['/account/security', 'Account Security'],
 ] as const;
 
 function ThemeToggle() {
@@ -64,14 +65,23 @@ function ThemeToggle() {
 
 function LogoutButton() {
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const router = useRouter();
   async function logout() {
     setBusy(true);
-    await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => undefined);
-    window.location.assign('/login');
+    setFailed(false);
+    const response = await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => null);
+    if (!response?.ok) {
+      setFailed(true);
+      setBusy(false);
+      return;
+    }
+    router.replace('/login');
+    router.refresh();
   }
   return (
     <button type="button" className="theme-toggle" onClick={logout} disabled={busy}>
-      {busy ? 'Signing out…' : 'Sign out'}
+      {busy ? 'Signing out…' : failed ? 'Retry sign out' : 'Sign out'}
     </button>
   );
 }

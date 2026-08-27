@@ -30,7 +30,8 @@ async function fileToBase64(file: File): Promise<string> {
     reader.onload = () => {
       const value = String(reader.result);
       const comma = value.indexOf(',');
-      comma === -1 ? reject(new Error('Unable to encode the selected document')) : resolve(value.slice(comma + 1));
+      if (comma === -1) reject(new Error('Unable to encode the selected document'));
+      else resolve(value.slice(comma + 1));
     };
     reader.readAsDataURL(file);
   });
@@ -101,9 +102,15 @@ export default function InvestmentThesisPage() {
     setBusy(true);
     setError(null);
     try {
-      const mimeType = file.type === 'application/pdf'
+      const mimeType = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
         ? 'application/pdf'
         : file.name.toLowerCase().endsWith('.md') ? 'text/markdown' : 'text/plain';
+      const maxBytes = mimeType === 'application/pdf' ? 10 * 1024 * 1024 : 2 * 1024 * 1024;
+      if (file.size < 1 || file.size > maxBytes) {
+        throw new Error(mimeType === 'application/pdf'
+          ? 'PDF documents must contain data and be no larger than 10 MB'
+          : 'Text documents must contain data and be no larger than 2 MB');
+      }
       const response = await fetch('/api/integrations/agentic/thesis-extractions', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -178,12 +185,12 @@ export default function InvestmentThesisPage() {
 
       <section className="card">
         <h2>1. Submit source document</h2>
-        <p className="note">PDF, plain text or Markdown, up to 50 MB. Extraction never becomes canonical automatically.</p>
+        <p className="note">PDF up to 10 MB, or UTF-8 plain text/Markdown up to 2 MB. Active PDF content is rejected. Extraction never becomes canonical automatically.</p>
         <label className="action-button" style={{ display: 'inline-block', cursor: busy ? 'wait' : 'pointer' }}>
           {busy ? 'Working…' : 'Choose thesis document'}
           <input
             type="file"
-            accept="application/pdf,text/plain,text/markdown,.md,.txt"
+            accept="application/pdf,text/plain,text/markdown,.pdf,.md,.txt"
             hidden
             disabled={busy}
             onChange={(event) => void upload(event.target.files?.[0] ?? null)}

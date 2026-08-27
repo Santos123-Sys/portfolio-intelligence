@@ -18,12 +18,12 @@
     "postbuild": "node scripts/prepare-standalone.mjs",
     "start": "next start",
     "start:standalone": "HOSTNAME=0.0.0.0 node .next/standalone/server.js",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "npm run build:contract && vitest run && npm run test --workspace @portfolio-intelligence/agentic-service",
     "test:dashboard": "npm run build:contract && vitest run",
     "test:agentic": "npm run build:contract && npm run test --workspace @portfolio-intelligence/agentic-service",
     "test:watch": "vitest",
-    "typecheck": "npm run build:contract && tsc --noEmit && npm run typecheck --workspace @portfolio-intelligence/agentic-service",
+    "typecheck": "npm run build:contract && next typegen && tsc --noEmit && npm run typecheck --workspace @portfolio-intelligence/agentic-service",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
@@ -37,21 +37,24 @@
   },
   "dependencies": {
     "@portfolio-intelligence/agentic-contract": "0.1.0",
-    "drizzle-orm": "^0.38.3",
-    "next": "^15.1.6",
+    "drizzle-orm": "^0.45.2",
+    "next": "^16.3.3",
     "postgres": "^3.4.9",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "recharts": "^2.15.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "recharts": "^3.10.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
-    "@types/react": "^19.0.7",
-    "@types/react-dom": "^19.0.3",
-    "drizzle-kit": "^0.30.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "drizzle-kit": "^0.31.10",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.11"
   }
 }

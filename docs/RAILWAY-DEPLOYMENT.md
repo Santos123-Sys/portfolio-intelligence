@@ -42,6 +42,8 @@ PostgreSQL advisory lock.
 ```text
 DATABASE_URL=${{dashboard-postgres.DATABASE_URL}}
 SESSION_SECRET=<32+ random bytes>
+MFA_ENCRYPTION_KEY=<different 32+ random bytes>
+PUBLIC_APP_URL=https://<your-dashboard-domain>
 AGENTIC_SYSTEM_API_KEY=<same 32+ random bytes on all three app services>
 AGENTIC_SYSTEM_BASE_URL=http://${{agentic-api.RAILWAY_PRIVATE_DOMAIN}}:${{agentic-api.PORT}}
 CRON_SECRET=<32+ random bytes if refresh-cron is enabled>
@@ -104,7 +106,20 @@ npm run admin:create
 ```
 
 Remove `INITIAL_ADMIN_PASSWORD` immediately afterward. The command is
-idempotent and does not overwrite an existing password.
+idempotent and does not overwrite an existing password. The initial password
+must be a unique passphrase between 15 and 128 characters. Sign in and enroll
+an authenticator under **More → Account Security** before loading portfolio data.
+
+## Public edge protection
+
+Put the production custom domain behind Cloudflare, enable TLS 1.3, use Full
+(strict) certificate validation, turn on the Cloudflare and OWASP managed WAF
+rulesets, and add an edge rate-limit/challenge rule for `/api/auth/session`.
+Application-level throttling still applies if the edge is bypassed. Do not
+expose either agentic service publicly.
+
+See `docs/CYBERSECURITY.md` for the complete control map, verification commands,
+logging rules and response checklist.
 
 ## Optional refresh cron
 
@@ -123,12 +138,16 @@ CRON_SECRET=<same dashboard cron secret>
 2. Dashboard `/api/health` and agentic API `/health` return HTTP 200.
 3. An unauthenticated dashboard request redirects to `/login`; an
    unauthenticated agentic `/v1/**` call returns HTTP 401.
-4. Upload a thesis PDF, wait for extraction, review ambiguities and confirm it.
-5. Start “Analyze current portfolios”; observe queued -> running -> imported.
-6. Verify every requested holding has one analysis and every portfolio has one
+4. The login response contains CSP, HSTS, `nosniff`, `DENY` framing and
+   `Cache-Control: no-store`; six failed account attempts produce HTTP 429.
+5. Enroll MFA, sign out, and confirm that password-only login receives an MFA
+   challenge and a used TOTP cannot be replayed.
+6. Upload a thesis PDF, wait for extraction, review ambiguities and confirm it.
+7. Start “Analyze current portfolios”; observe queued -> running -> imported.
+8. Verify every requested holding has one analysis and every portfolio has one
    synthesis.
-7. Open the proxied PDF while authenticated.
-8. Replay the same callback and verify idempotency; alter the manifest and
+9. Open the proxied PDF while authenticated.
+10. Replay the same callback and verify idempotency; alter the manifest and
    verify HTTP 409.
-9. Confirm neither service log contains a bearer key, raw thesis document or
+11. Confirm neither service log contains a bearer key, raw thesis document or
    raw provider payload.

@@ -13,6 +13,10 @@ const schema = z.object({
   WEB_SEARCH_PROVIDER: z.enum(['none', 'brave']).default('none'),
   WEB_SEARCH_API_KEY: z.string().min(1).optional(),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must contain at least 32 characters'),
+  /** Separate key used only to encrypt TOTP seeds and hash recovery codes. */
+  MFA_ENCRYPTION_KEY: z.string().min(32, 'MFA_ENCRYPTION_KEY must contain at least 32 characters').optional(),
+  /** Pins CSRF origin validation to the public dashboard origin when configured. */
+  PUBLIC_APP_URL: z.string().url('PUBLIC_APP_URL must be a valid absolute URL').optional(),
   CRON_SECRET: z.string().min(16, 'CRON_SECRET must be at least 16 chars').optional(),
   /** External Agentic System integration; the dashboard never owns its prompts. */
   AGENTIC_SYSTEM_BASE_URL: z.string().url().optional(),
@@ -24,6 +28,13 @@ const schema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['AGENTIC_SYSTEM_BASE_URL'],
       message: 'AGENTIC_SYSTEM_BASE_URL and AGENTIC_SYSTEM_API_KEY must be configured together',
+    });
+  }
+  if (env.NODE_ENV === 'production' && !env.PUBLIC_APP_URL?.startsWith('https://')) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['PUBLIC_APP_URL'],
+      message: 'PUBLIC_APP_URL must be configured with an https:// origin in production',
     });
   }
 });
@@ -42,6 +53,8 @@ export function getEnv(): Env {
     CRON_SECRET: optional(process.env.CRON_SECRET),
     AGENTIC_SYSTEM_BASE_URL: optional(process.env.AGENTIC_SYSTEM_BASE_URL),
     AGENTIC_SYSTEM_API_KEY: optional(process.env.AGENTIC_SYSTEM_API_KEY),
+    MFA_ENCRYPTION_KEY: optional(process.env.MFA_ENCRYPTION_KEY),
+    PUBLIC_APP_URL: optional(process.env.PUBLIC_APP_URL),
   });
   if (!parsed.success) {
     const missing = parsed.error.issues

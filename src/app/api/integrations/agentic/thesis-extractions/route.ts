@@ -11,13 +11,19 @@ import {
   retryExternalAgenticJob,
   startExternalThesisExtraction,
 } from '@/lib/integrations/agentic-client';
+import {
+  DocumentValidationError,
+  MAX_ENCODED_DOCUMENT_CHARACTERS,
+  validateThesisDocument,
+} from '@/lib/document-security';
+import { readBoundedJson } from '@/lib/request-body';
 
 export const runtime = 'nodejs';
 
 const uploadSchema = z.object({
   fileName: z.string().min(1).max(255),
   mimeType: z.enum(['application/pdf', 'text/plain', 'text/markdown']),
-  contentBase64: z.string().min(1),
+  contentBase64: z.string().min(1).max(MAX_ENCODED_DOCUMENT_CHARACTERS),
 }).strict();
 
 export async function GET(req: Request) {
@@ -60,11 +66,18 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: 'Cross-origin mutation rejected' }, { status: 403 });
   }
-  const parsed = uploadSchema.safeParse(await req.json().catch(() => ({})));
+  const body = await readBoundedJson(req, MAX_ENCODED_DOCUMENT_CHARACTERS + 4 * 1024);
+  if (!body.ok) return NextResponse.json({ error: body.error }, { status: body.status });
+  const parsed = uploadSchema.safeParse(body.value);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  const bytes = Buffer.from(parsed.data.contentBase64, 'base64');
-  if (!bytes.length || bytes.length > 50 * 1024 * 1024) {
-    return NextResponse.json({ error: 'Thesis document must contain 1 byte to 50 MB' }, { status: 413 });
+  let document: ReturnType<typeof validateThesisDocument>;
+  try {
+    document = validateThesisDocument(parsed.data);
+  } catch (error) {
+    if (error instanceof DocumentValidationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    return NextResponse.json({ error: 'Document validation failed' }, { status: 400 });
   }
 
   const [latest] = await db.select({ versionNumber: thesisVersions.versionNumber })
@@ -75,15 +88,20 @@ export async function POST(req: Request) {
   const requestedVersion = (latest?.versionNumber ?? 0) + 1;
   try {
     const remote = await startExternalThesisExtraction({
-      document: { ...parsed.data, version: requestedVersion },
+      document: {
+        fileName: document.fileName,
+        mimeType: document.mimeType,
+        contentBase64: document.contentBase64,
+        version: requestedVersion,
+      },
     });
     const [extraction] = await db.insert(externalThesisExtractions).values({
       ownerId: session.auth.userId,
       externalExtractionId: remote.externalExtractionId,
       status: remote.status,
       requestedVersion,
-      sourceFileName: parsed.data.fileName,
-      sourceMimeType: parsed.data.mimeType,
+      sourceFileName: document.fileName,
+      sourceMimeType: document.mimeType,
       resultJson: remote.result,
       errorMessage: remote.errorMessage,
     }).returning();

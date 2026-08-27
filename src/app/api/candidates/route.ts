@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Cross-origin mutation rejected' }, { status: 403 });
   }
 
-  const parsed = decisionSchema.safeParse(await req.json());
+  const parsed = decisionSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
   const [analysis] = await db.select().from(aiAnalyses)

@@ -33,9 +33,16 @@ export async function verifySessionToken(
   token: string,
   secret: string
 ): Promise<{ sessionId: string; expiresAt: Date; payload: string } | null> {
+  if (token.length > 512) return null;
   const parts = token.split('.');
   if (parts.length !== 4) return null;
   const [sessionId, expiryValue, nonce, signature] = parts;
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(sessionId) ||
+    !/^\d{13}$/.test(expiryValue) ||
+    !/^[A-Za-z0-9_-]{43}$/.test(nonce) ||
+    !/^[A-Za-z0-9_-]{43}$/.test(signature)
+  ) return null;
   const payload = `${sessionId}.${expiryValue}.${nonce}`;
   const expected = await hmac(payload, secret);
   if (!constantTimeEqual(signature, expected)) return null;

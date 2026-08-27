@@ -13,6 +13,7 @@ import {
   AgenticRunRequest,
   validateManifestAgainstRequest,
 } from '@/lib/integrations/agentic-contract';
+import { readBoundedJson } from '@/lib/request-body';
 
 export const runtime = 'nodejs';
 
@@ -25,7 +26,9 @@ export async function POST(req: Request) {
 
   let parsed;
   try {
-    parsed = validateManifest(await req.json().catch(() => ({})));
+    const body = await readBoundedJson(req, 10 * 1024 * 1024);
+    if (!body.ok) return NextResponse.json({ error: body.error }, { status: body.status });
+    parsed = validateManifest(body.value);
   } catch (e) {
     return NextResponse.json(
       { error: 'Invalid Agentic System handoff', detail: (e as Error).message },

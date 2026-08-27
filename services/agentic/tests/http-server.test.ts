@@ -54,6 +54,30 @@ describe('agentic HTTP API', () => {
     expect(repository.jobs.size).toBe(0);
   });
 
+  it('requires JSON and rejects active PDF content before persistence', async () => {
+    const wrongType = await fetch(`${baseUrl}/v1/analysis-runs`, authenticated({
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: JSON.stringify(runRequest),
+    }));
+    expect(wrongType.status).toBe(415);
+
+    const activePdf = Buffer.from('%PDF-1.4\n/OpenAction 1 0 R\n%%EOF').toString('base64');
+    const response = await fetch(`${baseUrl}/v1/thesis-extractions`, authenticated({
+      method: 'POST',
+      body: JSON.stringify({
+        document: {
+          version: 1,
+          fileName: 'active.pdf',
+          mimeType: 'application/pdf',
+          contentBase64: activePdf,
+        },
+      }),
+    }));
+    expect(response.status).toBe(400);
+    expect(repository.jobs.size).toBe(0);
+  });
+
   it('returns failed state and requeues the same logical run for retry', async () => {
     const created = await repository.create('analysis_run', 'agent-run-fixed', runRequest, 4);
     await repository.fail(created.id, 'analysis', 'Security analysis failed safely');

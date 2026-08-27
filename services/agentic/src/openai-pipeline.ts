@@ -3,6 +3,8 @@ import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 import {
   AnalysisOutput,
+  MAX_THESIS_PDF_BYTES,
+  MAX_THESIS_TEXT_BYTES,
   ReportSynthesisOutput,
   ThesisExtractionResult,
   validateAnalysisSemantics,
@@ -144,8 +146,11 @@ export class OpenAIAgenticPipeline {
     contentBase64: string;
   }): Promise<z.infer<typeof ThesisExtractionResult>> {
     const bytes = Buffer.from(document.contentBase64, 'base64');
-    if (bytes.length === 0 || bytes.length > 50 * 1024 * 1024) {
-      throw new AgenticPipelineError('extraction', 'Thesis document must contain 1 byte to 50 MB');
+    const maximumBytes = document.mimeType === 'application/pdf'
+      ? MAX_THESIS_PDF_BYTES
+      : MAX_THESIS_TEXT_BYTES;
+    if (bytes.length === 0 || bytes.length > maximumBytes) {
+      throw new AgenticPipelineError('extraction', 'Thesis document exceeds the validated upload limit');
     }
 
     const content = document.mimeType === 'application/pdf'

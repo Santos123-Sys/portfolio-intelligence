@@ -2,7 +2,7 @@
 
 AI-assisted investment management for two equity portfolios and a fixed-income sleeve, built on a deterministic quantitative engine.
 
-**Stack:** Next.js 15 · TypeScript · Drizzle ORM · PostgreSQL · Railway
+**Stack:** Next.js 16 · TypeScript · Drizzle ORM · PostgreSQL · Railway
 
 The repository is now one npm-workspace system. The Next.js service owns the
 dashboard, deterministic portfolio calculations, authentication and persistence;
@@ -87,6 +87,24 @@ market refresh, create a Railway Cron service from this repository with command
 `npm run cron:refresh` and a weekday schedule such as `0 21 * * 1-5` UTC.
 
 See `docs/RAILWAY-DEPLOYMENT.md` for the exact variable and service checklist.
+
+### Authentication and cybersecurity
+
+The dashboard uses email/password authentication with salted, memory-hard
+scrypt hashes, revocable `HttpOnly` sessions, an eight-hour idle timeout,
+database-backed login throttling and optional authenticator-app MFA. New
+passwords are 15–128 characters; recovery codes are stored only as one-way
+digests. Account owners can change their password or enroll MFA at
+`/account/security`.
+
+Browser responses include CSP, HSTS in production, anti-framing, MIME-sniffing,
+referrer and permissions headers. Cross-origin mutations are rejected and all
+queries use Drizzle's parameterized query builder. Dependency advisories, tests,
+type checks and the production build run in `.github/workflows/security.yml`.
+
+Application code cannot supply an edge WAF or volumetric DDoS absorption. The
+required Cloudflare/Railway controls and incident checklist are documented in
+`docs/CYBERSECURITY.md`.
 
 ---
 

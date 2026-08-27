@@ -1,12 +1,14 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, ne } from 'drizzle-orm';
 import { db } from './db';
 import { users, userSessions } from './db/schema';
 import { getEnv } from './env';
 import { digestSessionPayload, SESSION_COOKIE, signSessionPayload, verifySessionToken } from './session-token';
+import { validateMutationOrigin } from './request-security';
 
 export { SESSION_COOKIE };
 export const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 7;
+export const SESSION_IDLE_SECONDS = 60 * 60 * 8;
 
 export interface AuthContext {
   userId: string;
@@ -21,7 +23,13 @@ function requestCookie(req: Request, name: string): string | null {
   if (!header) return null;
   for (const part of header.split(';')) {
     const [key, ...value] = part.trim().split('=');
-    if (key === name) return decodeURIComponent(value.join('='));
+    if (key === name) {
+      try {
+        return decodeURIComponent(value.join('='));
+      } catch {
+        return null;
+      }
+    }
   }
   return null;
 }
@@ -48,6 +56,7 @@ export function sessionCookieOptions(expiresAt: Date) {
     sameSite: 'lax' as const,
     path: '/',
     expires: expiresAt,
+    priority: 'high' as const,
   };
 }
 
@@ -72,6 +81,7 @@ export async function getOptionalSession(req: Request): Promise<AuthContext | nu
       and(
         eq(userSessions.id, verified.sessionId),
         gt(userSessions.expiresAt, new Date()),
+        gt(userSessions.lastSeenAt, new Date(Date.now() - SESSION_IDLE_SECONDS * 1000)),
         isNull(userSessions.revokedAt),
         isNull(users.disabledAt)
       )
@@ -97,11 +107,18 @@ export async function revokeSession(req: Request): Promise<void> {
   await db.update(userSessions).set({ revokedAt: new Date() }).where(eq(userSessions.id, verified.sessionId));
 }
 
+export async function revokeOtherUserSessions(userId: string, currentSessionId: string): Promise<void> {
+  await db.update(userSessions).set({ revokedAt: new Date() }).where(
+    and(eq(userSessions.userId, userId), ne(userSessions.id, currentSessionId), isNull(userSessions.revokedAt))
+  );
+}
+
 export function assertSameOrigin(req: Request): void {
-  const origin = req.headers.get('origin');
-  if (!origin) return;
-  const expectedHost = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
-  if (!expectedHost || new URL(origin).host !== expectedHost) throw new Error('Cross-origin mutation rejected');
+  const env = getEnv();
+  validateMutationOrigin(req, {
+    production: env.NODE_ENV === 'production',
+    publicAppUrl: env.PUBLIC_APP_URL,
+  });
 }
 
 export function assertAgenticServiceAuthorized(req: Request): void {

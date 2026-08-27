@@ -175,11 +175,18 @@ export const AgenticImportRequest = z.discriminatedUnion('status', [
 ]);
 export type AgenticImportRequest = z.infer<typeof AgenticImportRequest>;
 
+export const MAX_THESIS_PDF_BYTES = 10 * 1024 * 1024;
+export const MAX_THESIS_TEXT_BYTES = 2 * 1024 * 1024;
+export const MAX_THESIS_BASE64_CHARACTERS = Math.ceil(MAX_THESIS_PDF_BYTES / 3) * 4 + 4;
+
 export const ThesisDocument = z.object({
   version: z.number().int().positive(),
-  fileName: z.string().min(1).max(255),
+  fileName: z.string().trim().min(1).max(255).refine(
+    (value) => !/[\u0000-\u001f\u007f/\\]/.test(value),
+    'Document filename contains forbidden characters'
+  ),
   mimeType: z.enum(['application/pdf', 'text/plain', 'text/markdown']),
-  contentBase64: z.string().min(1),
+  contentBase64: z.string().min(1).max(MAX_THESIS_BASE64_CHARACTERS),
 }).strict();
 export type ThesisDocument = z.infer<typeof ThesisDocument>;
 

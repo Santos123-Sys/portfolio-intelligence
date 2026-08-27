@@ -62,7 +62,10 @@ function DonutSection({ title, groups }: { title: string; groups: GroupRow[] }) 
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(value: number, name: string) => [value.toLocaleString(undefined, { maximumFractionDigits: 0 }), name]}
+                  formatter={(value, name) => [
+                    Number(value ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 }),
+                    String(name ?? ''),
+                  ]}
                   contentStyle={{ background: 'var(--panel)', border: '1px solid var(--border)', fontSize: '0.8rem' }}
                 />
               </PieChart>

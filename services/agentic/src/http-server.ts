@@ -2,9 +2,13 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import {
   AgenticRunRequest,
+  MAX_THESIS_BASE64_CHARACTERS,
+  MAX_THESIS_PDF_BYTES,
+  MAX_THESIS_TEXT_BYTES,
   ThesisExtractionRequest,
   validateRunRequestCoherence,
   type ExternalRunStatus,
+  type ThesisDocument,
   type ThesisExtractionStatus,
 } from '@portfolio-intelligence/agentic-contract';
 import { createExternalId } from './manifest.js';
@@ -39,7 +43,15 @@ function authorized(request: IncomingMessage, expectedKey: string): boolean {
   return timingSafeEqual(digest(header.slice(7)), digest(expectedKey));
 }
 
-async function readJson(request: IncomingMessage, limit = 70 * 1024 * 1024): Promise<unknown> {
+async function readJson(request: IncomingMessage, limit = 16 * 1024 * 1024): Promise<unknown> {
+  const contentType = request.headers['content-type'];
+  if (typeof contentType !== 'string' || contentType.split(';')[0].trim().toLowerCase() !== 'application/json') {
+    throw new HttpError(415, 'Content-Type must be application/json');
+  }
+  const declaredLength = Number(request.headers['content-length']);
+  if (Number.isFinite(declaredLength) && declaredLength > limit) {
+    throw new HttpError(413, 'Request body is too large');
+  }
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
@@ -49,9 +61,40 @@ async function readJson(request: IncomingMessage, limit = 70 * 1024 * 1024): Pro
     chunks.push(buffer);
   }
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const source = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
+    return JSON.parse(source);
   } catch {
     throw new HttpError(400, 'Request body must be valid JSON');
+  }
+}
+
+function validateThesisDocumentContent(document: ThesisDocument): void {
+  if (
+    document.contentBase64.length > MAX_THESIS_BASE64_CHARACTERS ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(document.contentBase64)
+  ) {
+    throw new HttpError(400, 'Thesis document encoding is invalid');
+  }
+  const content = Buffer.from(document.contentBase64, 'base64');
+  if (!content.length || content.toString('base64') !== document.contentBase64) {
+    throw new HttpError(400, 'Thesis document encoding is invalid');
+  }
+  if (document.mimeType === 'application/pdf') {
+    if (content.length > MAX_THESIS_PDF_BYTES) throw new HttpError(413, 'PDF documents must not exceed 10 MB');
+    if (content.subarray(0, 5).toString('ascii') !== '%PDF-') throw new HttpError(400, 'PDF signature is invalid');
+    const trailer = content.subarray(Math.max(0, content.length - 4096)).toString('latin1');
+    if (!trailer.includes('%%EOF')) throw new HttpError(400, 'PDF document is incomplete');
+    if (/\/(?:JavaScript|JS|Launch|EmbeddedFile|OpenAction|AA|Encrypt)\b/i.test(content.toString('latin1'))) {
+      throw new HttpError(400, 'Encrypted PDFs and PDFs containing active or embedded content are not accepted');
+    }
+    return;
+  }
+  if (content.length > MAX_THESIS_TEXT_BYTES) throw new HttpError(413, 'Text documents must not exceed 2 MB');
+  try {
+    const source = new TextDecoder('utf-8', { fatal: true }).decode(content);
+    if (!source.trim() || source.includes('\u0000')) throw new Error('invalid text');
+  } catch {
+    throw new HttpError(400, 'Text documents must contain non-empty valid UTF-8');
   }
 }
 
@@ -137,12 +180,11 @@ export function createAgenticHttpServer(deps: HttpServerDependencies) {
       }
 
       if (url.pathname === '/v1/thesis-extractions' && request.method === 'POST') {
-        const parsed = ThesisExtractionRequest.safeParse(await readJson(request));
+        const parsed = ThesisExtractionRequest.safeParse(
+          await readJson(request, MAX_THESIS_BASE64_CHARACTERS + 16 * 1024)
+        );
         if (!parsed.success) throw new HttpError(400, 'Thesis extraction request failed contract validation');
-        const content = Buffer.from(parsed.data.document.contentBase64, 'base64');
-        if (!content.length || content.length > 50 * 1024 * 1024) {
-          throw new HttpError(413, 'Thesis document must contain 1 byte to 50 MB');
-        }
+        validateThesisDocumentContent(parsed.data.document);
         const externalId = createExternalId('extraction');
         const job = await deps.repository.create('thesis_extraction', externalId, parsed.data, 1);
         return sendJson(response, 202, extractionStatus(job));
