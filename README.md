@@ -76,15 +76,24 @@ dashboard (public Next.js) ──private HTTP──> agentic-api (private)
                                         agentic-artifacts bucket
 ```
 
-Use `railway.dashboard.json`, `railway.agentic-api.json` and
-`railway.agentic-worker.json` as the services' config paths. They select
-Railpack, committed migrations, start commands, health checks and restart
-policies. Do not expose either agentic service to the browser.
+The project-level deployment definition lives in `.railway/railway.ts`. It
+declares the three application services, both isolated PostgreSQL resources,
+the private report bucket, Railpack builds, committed migrations, health checks,
+restart policies and cross-service variables. Do not expose either agentic
+service to the browser.
 
-After the first deployment, run `npm run admin:create` once as a Railway command,
-then remove `INITIAL_ADMIN_PASSWORD` from the service variables. For the optional
-market refresh, create a Railway Cron service from this repository with command
-`npm run cron:refresh` and a weekday schedule such as `0 21 * * 1-5` UTC.
+The root `railway.*.json` files are retained only while the already-running
+dashboard is migrated away from Railway's deprecated per-service Config as Code.
+Do not attach them to new services. Review a Railway IaC plan before applying;
+an unexpected delete or database replacement is a stop condition.
+
+For the first deployment, temporarily configure `INITIAL_ADMIN_EMAIL`,
+`INITIAL_ADMIN_PASSWORD` and optionally `INITIAL_ADMIN_NAME`. The dashboard
+pre-deploy step creates the first owner after migrations without Railway CLI or
+SSH. Remove all `INITIAL_ADMIN_*` variables immediately after the successful
+deployment. For the optional market refresh, create a Railway Cron service from
+this repository with command `npm run cron:refresh` and a weekday schedule such
+as `0 21 * * 1-5` UTC.
 
 See `docs/RAILWAY-DEPLOYMENT.md` for the exact variable and service checklist.
 
@@ -175,7 +184,7 @@ Stated plainly, because a spec that overstates completeness is worse than no spe
 - **No real market data.** `StubProvider` generates a reproducible pseudo-random walk seeded from the ticker. Every row is tagged `source: 'stub'`. ADR-005 is open — Twelve Data and EODHD both list XSWX and BVMF, but fundamentals depth for those two exchanges specifically is unverified.
 - **Risk-free rates are hardcoded** in `recompute.ts`. Sharpe is directionally useful and not yet trustworthy in absolute terms.
 - **TWR ignores cash flows.** The function supports them; the recompute service doesn't yet pass transactions in. Until it does, TWR equals cumulative return. The metric carries a caveat saying so.
-- **Railway resources are not provisioned by source code.** The integrated API and worker are implemented, but live analysis still requires the Railway services, two databases, bucket, shared secret and `OPENAI_API_KEY` described in the runbook.
+- **Railway resources are declared but not yet applied to the live project.** `.railway/railway.ts` defines the integrated API, worker, two databases, private bucket and service wiring. A live Railway plan must be reconciled with the existing dashboard before it is applied, and the shared `OPENAI_API_KEY` must be supplied outside Git.
 - **Railway production credentials are not in Git.** PostgreSQL, session, service and cron secrets must be configured in Railway before deployment.
 
 ---

@@ -62,8 +62,8 @@ Cloudflare TLS 1.3 documentation: <https://developers.cloudflare.com/ssl/edge-ce
 
 ## Password and account operations
 
-- Provision the first owner with `npm run admin:create`, then immediately remove
-  `INITIAL_ADMIN_PASSWORD` from Railway variables.
+- Provision the first owner through the conditional dashboard pre-deploy
+  bootstrap, then immediately remove all `INITIAL_ADMIN_*` Railway variables.
 - Use a password manager-generated passphrase that is unique to this service.
 - Enroll MFA at **More → Account Security** and store recovery codes offline.
 - Changing the password or MFA state revokes every other active session.
