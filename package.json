@@ -30,6 +30,7 @@
     "db:studio": "drizzle-kit studio",
     "seed": "tsx scripts/seed.ts",
     "admin:create": "tsx scripts/create-admin.ts",
+    "admin:create:if-configured": "node --import tsx scripts/create-admin.ts --if-configured",
     "cron:refresh": "node scripts/railway-refresh.mjs",
     "agentic:migrate": "npm run db:migrate --workspace @portfolio-intelligence/agentic-service",
     "agentic:api": "npm run start:api --workspace @portfolio-intelligence/agentic-service",
@@ -53,6 +54,7 @@
     "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.3",
+    "railway": "^3.11.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^4.1.11"
