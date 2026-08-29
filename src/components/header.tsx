@@ -22,6 +22,7 @@ const PRIMARY_NAV = [
 ] as const;
 
 const EXTENDED_NAV = [
+  ['/portfolio-setup', 'Portfolio Setup'],
   ['/investment-thesis', 'Investment Thesis'],
   ['/ai-stock-discovery', 'AI Stock Discovery'],
   ['/agentic-system', 'Agentic System'],

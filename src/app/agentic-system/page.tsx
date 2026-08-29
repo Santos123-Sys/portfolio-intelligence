@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
 interface ExternalRun {
@@ -13,24 +14,38 @@ interface ExternalRun {
   errorMessage: string | null;
 }
 
+interface AgenticReadiness {
+  ready: boolean;
+  thesisVersion: number | null;
+  portfolioCount: number;
+  positionCount: number;
+  issues: string[];
+}
+
 export default function AgenticSystemPage() {
   const [runs, setRuns] = useState<ExternalRun[]>([]);
+  const [readiness, setReadiness] = useState<AgenticReadiness | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
   const loadRuns = useCallback(async (signal?: AbortSignal) => {
     const response = await fetch('/api/integrations/agentic/runs', { signal });
     if (!response.ok) throw new Error(`Runs API returned ${response.status}`);
-    const data = (await response.json()) as { runs: ExternalRun[] };
-    if (!signal?.aborted) setRuns(data.runs);
+    const data = (await response.json()) as { runs: ExternalRun[]; readiness: AgenticReadiness };
+    if (!signal?.aborted) {
+      setRuns(data.runs);
+      setReadiness(data.readiness);
+      setLoadError(null);
+    }
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
     loadRuns(controller.signal)
       .catch((cause) => {
-        if (!controller.signal.aborted) setError((cause as Error).message);
+        if (!controller.signal.aborted) setLoadError((cause as Error).message);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -46,7 +61,7 @@ export default function AgenticSystemPage() {
 
   async function startRun() {
     setStarting(true);
-    setError(null);
+    setActionError(null);
     try {
       const response = await fetch('/api/integrations/agentic/runs', {
         method: 'POST',
@@ -59,20 +74,20 @@ export default function AgenticSystemPage() {
       }
       await loadRuns();
     } catch (cause) {
-      setError((cause as Error).message);
+      setActionError((cause as Error).message);
     } finally {
       setStarting(false);
     }
   }
 
   async function retryRun(externalRunId: string) {
-    setError(null);
+    setActionError(null);
     const response = await fetch(`/api/integrations/agentic/runs?externalRunId=${encodeURIComponent(externalRunId)}`, {
       method: 'PATCH',
     });
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: string };
-      setError(body.error ?? `Retry failed (${response.status})`);
+      setActionError(body.error ?? `Retry failed (${response.status})`);
       return;
     }
     await loadRuns();
@@ -105,7 +120,23 @@ export default function AgenticSystemPage() {
           <h2>Decision authority</h2>
           <p>Imported analysis informs candidate review and security detail. It cannot modify holdings or execute trades.</p>
           <p className="note">Accept, reject and watchlist decisions remain explicit human mutations.</p>
-          <button type="button" className="action-button" onClick={startRun} disabled={starting}>
+          {readiness?.ready ? (
+            <p className="security-state">Ready: thesis v{readiness.thesisVersion}, {readiness.portfolioCount} portfolio(s), {readiness.positionCount} position(s).</p>
+          ) : readiness ? (
+            <>
+              <p className="caveat">Analysis prerequisites are incomplete.</p>
+              <ul className="note">{readiness.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
+              <Link className="text-link" href="/portfolio-setup">Complete portfolio setup</Link>
+            </>
+          ) : <p className="note">Checking analysis readiness…</p>}
+          {actionError && <p className="login-error" role="alert">{actionError}</p>}
+          <button
+            type="button"
+            className="action-button"
+            onClick={startRun}
+            disabled={starting || !readiness?.ready}
+            data-busy={starting ? 'true' : 'false'}
+          >
             {starting ? 'Starting analysis…' : 'Analyze current portfolios'}
           </button>
         </section>
@@ -115,8 +146,8 @@ export default function AgenticSystemPage() {
         <h2>External analysis runs</h2>
         {loading ? (
           <p className="note">Fetching...</p>
-        ) : error ? (
-          <p className="caveat">Unable to load external runs: {error}</p>
+        ) : loadError ? (
+          <p className="caveat">Unable to load external runs: {loadError}</p>
         ) : runs.length === 0 ? (
           <p className="note">
             No external manifests imported yet. Completed runs appear here after the Agentic System posts to

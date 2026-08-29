@@ -39,6 +39,14 @@ async function main() {
     }).returning();
   }
 
+  const [existingPortfolio, existingThesis] = await Promise.all([
+    db.select({ id: portfolios.id }).from(portfolios).where(eq(portfolios.ownerId, owner.id)).limit(1),
+    db.select({ id: thesisVersions.id }).from(thesisVersions).where(eq(thesisVersions.ownerId, owner.id)).limit(1),
+  ]);
+  if (existingPortfolio.length || existingThesis.length) {
+    throw new Error('Refusing to seed a non-empty account. Use Portfolio Setup in the dashboard instead.');
+  }
+
   const [swiss] = await db.insert(portfolios).values({
     ownerId: owner.id,
     name: 'Swiss Quality & Stability', portfolioType: 'swiss_quality', baseCurrency: 'CHF',

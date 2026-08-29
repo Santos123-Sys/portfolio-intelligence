@@ -43,7 +43,7 @@ npm install
 cp .env.example .env.local
 npm run db:migrate
 npm run admin:create              # requires INITIAL_ADMIN_EMAIL/PASSWORD
-npm run seed                      # optional demo portfolios and prices
+npm run seed                      # optional, fresh empty demo account only
 npm run dev
 ```
 
@@ -148,12 +148,13 @@ Components; every query is bound to the current session:
 | `/` | Overview — native-currency totals, headline risk metrics per portfolio |
 | `/allocation` | Sector / country / asset-class weight breakdown, one portfolio at a time |
 | `/positions` | Sortable, filterable position table across portfolios |
+| `/portfolio-setup` | Authenticated portfolio and holding creation; analysis-readiness status |
 | `/security/[ticker]` | Market & fundamentals, position, AI analysis, grounding audit trail |
 | `/intelligence` | AI analysis feed — new candidates, changed recommendations, thesis violations |
 | `/risk` | Every risk metric, drillable into full methodology, plus the VaR/normality caveat |
 | `/decisions` | Append-only, searchable decision log |
 
-Supporting pages — `/portfolio`, `/risk-kpis`, `/ai-insights`,
+Supporting pages — `/portfolio-setup`, `/portfolio`, `/risk-kpis`, `/ai-insights`,
 `/securities`, `/investment-thesis`, `/ai-stock-discovery`, `/agentic-system`,
 `/candidates` — cover ground the spec's seven pages don't (thesis upload,
 human-in-the-loop candidate review, provenance browsing) and remain reachable

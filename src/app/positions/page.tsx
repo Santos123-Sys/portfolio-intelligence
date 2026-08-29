@@ -7,6 +7,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 interface PositionRow {
   id: string;
@@ -171,6 +172,7 @@ export default function PositionsPage() {
       ) : sorted.length === 0 ? (
         <div className="card">
           <p className="note">No positions match these filters.</p>
+          {rows.length === 0 && <Link className="action-button inline-action" href="/portfolio-setup">Add a position</Link>}
         </div>
       ) : (
         <div className="table-scroll">

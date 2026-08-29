@@ -9,6 +9,7 @@ import {
 import { db } from '@/lib/db';
 import { portfolios, positions, riskMetrics, securities, thesisVersions } from '@/lib/db/schema';
 import { marketDataObservations } from '@/lib/db/workflow-schema';
+import { assessAgenticReadiness, type AgenticReadiness } from '@/lib/portfolio-setup';
 
 interface HoldingEvidence {
   positionId: string;
@@ -100,6 +101,29 @@ export function assembleGroundingBundle(
     ]),
     fundamentals: fundamentalValues,
   };
+}
+
+export async function getAgenticReadiness(ownerId: string): Promise<AgenticReadiness> {
+  const [latestThesis, ownerPortfolios, ownerPositions] = await Promise.all([
+    db.select({ versionNumber: thesisVersions.versionNumber })
+      .from(thesisVersions)
+      .where(eq(thesisVersions.ownerId, ownerId))
+      .orderBy(desc(thesisVersions.versionNumber))
+      .limit(1),
+    db.select({ id: portfolios.id, name: portfolios.name })
+      .from(portfolios)
+      .where(eq(portfolios.ownerId, ownerId)),
+    db.select({ portfolioId: positions.portfolioId })
+      .from(positions)
+      .innerJoin(portfolios, eq(positions.portfolioId, portfolios.id))
+      .where(eq(portfolios.ownerId, ownerId)),
+  ]);
+
+  return assessAgenticReadiness({
+    thesisVersion: latestThesis[0]?.versionNumber ?? null,
+    portfolios: ownerPortfolios,
+    positionPortfolioIds: ownerPositions.map((position) => position.portfolioId),
+  });
 }
 
 export async function buildAgenticRunRequest(
