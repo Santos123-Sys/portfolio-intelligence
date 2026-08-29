@@ -1,3 +1,9 @@
+> **SUPERSEDED by ADR-013.** The platform is Railway, which this comparison
+> does not evaluate. Retained for the evaluation criteria — security posture,
+> free-tier limits, hosting model, multi-agent support — which is the part
+> worth re-reading before any future platform change. Not live guidance, and
+> none of the platforms compared here is the one in use.
+
 # Platform comparison — base44 / Replit / Vercel / Manus / Kimi
 
 **Researched:** August 2026. This space moves fast; re-verify pricing and limits before committing spend.

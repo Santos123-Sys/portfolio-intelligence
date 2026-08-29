@@ -1,4 +1,16 @@
-import OpenAI from 'openai';
+import OpenAI, {
+  APIConnectionError,
+  APIConnectionTimeoutError,
+  APIError,
+  APIUserAbortError,
+  AuthenticationError,
+  BadRequestError,
+  InternalServerError,
+  NotFoundError,
+  PermissionDeniedError,
+  RateLimitError,
+  UnprocessableEntityError,
+} from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 import {
@@ -20,7 +32,37 @@ import {
   type ThesisCriteria,
 } from '@portfolio-intelligence/agentic-contract';
 
-type ReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh';
+export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh';
+
+/**
+ * The four agents do not benefit equally from reasoning depth, so they no
+ * longer have to share one setting. Extraction is close to transcription —
+ * it copies stated criteria into a schema and is explicitly forbidden from
+ * inferring anything — while discovery and analysis are the stages that carry
+ * real judgement. A single global effort therefore either underpowers the
+ * judgement stages or overpays on the mechanical one.
+ */
+export type PipelineStage = 'extraction' | 'analysis' | 'synthesis' | 'discovery';
+
+export type StageReasoningEffort = Record<PipelineStage, ReasoningEffort>;
+
+const PIPELINE_STAGES: PipelineStage[] = ['extraction', 'analysis', 'synthesis', 'discovery'];
+
+/**
+ * Accepts either a single effort (applied to every stage, the old behaviour)
+ * or a partial per-stage map whose gaps fall back to `fallback`. Keeping the
+ * scalar form working means existing callers and tests are unaffected.
+ */
+export function resolveStageEffort(
+  input: ReasoningEffort | Partial<StageReasoningEffort> | undefined,
+  fallback: ReasoningEffort = 'medium'
+): StageReasoningEffort {
+  const base = typeof input === 'string' ? input : fallback;
+  const overrides = typeof input === 'object' && input !== null ? input : {};
+  return Object.fromEntries(
+    PIPELINE_STAGES.map((stage) => [stage, overrides[stage] ?? base])
+  ) as StageReasoningEffort;
+}
 
 const ExtractionModelOutput = z.object({
   criteria: z.object({
@@ -112,14 +154,94 @@ Absolute rules:
 Prefer decision-useful gaps over generic caveats. A concise, evidence-bound shortlist is better than a long speculative list.`;
 
 export class AgenticPipelineError extends Error {
-  constructor(readonly stage: 'extraction' | 'analysis' | 'synthesis', message: string) {
+  constructor(
+    readonly stage: PipelineStage,
+    message: string,
+    /**
+     * Whether re-running this job with identical input could plausibly
+     * succeed. Jobs fail terminally (postgres-repository.fail sets
+     * status='failed'), so nothing here reads this to auto-retry — it exists
+     * so the message an operator reads, and any future retry policy, agree
+     * with reality instead of assuming every failure is transient.
+     */
+    readonly retriable = false
+  ) {
     super(message);
     this.name = 'AgenticPipelineError';
   }
 }
 
-function safeProviderError(stage: AgenticPipelineError['stage']): AgenticPipelineError {
-  return new AgenticPipelineError(stage, `OpenAI ${stage} request failed; the job can be retried safely`);
+/**
+ * Turns a provider or parsing failure into an accurate, non-leaking message.
+ *
+ * The previous single message claimed every failure "can be retried safely".
+ * For a 401, a 403, a 404 on the model name, or a 400 the request will be
+ * rejected identically on every attempt — telling an operator to retry sends
+ * them in a circle while the real fix (a rotated key, a corrected model name,
+ * a schema mismatch) goes unlooked-at.
+ *
+ * The provider's own error text is deliberately never echoed. That property
+ * was the point of the original helper's name and is preserved here: an
+ * upstream message can carry request fragments, prompt content, or key
+ * material, and this string is persisted to the job row and shown in the UI.
+ * Only the class and the HTTP status — neither of which can carry a secret —
+ * cross the boundary.
+ */
+function classifyProviderError(stage: PipelineStage, error: unknown): AgenticPipelineError {
+  const fail = (message: string, retriable: boolean) =>
+    new AgenticPipelineError(stage, `OpenAI ${stage} request failed: ${message}`, retriable);
+
+  // Terminal: the same request will be rejected the same way every time.
+  if (error instanceof AuthenticationError) {
+    return fail('the API key was rejected (401). Retrying will not help — rotate OPENAI_API_KEY.', false);
+  }
+  if (error instanceof PermissionDeniedError) {
+    return fail('the key lacks access to this model or endpoint (403). Retrying will not help.', false);
+  }
+  if (error instanceof NotFoundError) {
+    return fail('the model or endpoint was not found (404). Check OPENAI_MODEL; retrying will not help.', false);
+  }
+  if (error instanceof BadRequestError) {
+    return fail('the request was rejected as invalid (400) — usually the output schema or an input limit. Retrying identical input will not help.', false);
+  }
+  if (error instanceof UnprocessableEntityError) {
+    return fail('the request was well-formed but could not be processed (422). Retrying identical input will not help.', false);
+  }
+  if (error instanceof APIUserAbortError) {
+    return fail('the request was aborted before completion.', false);
+  }
+
+  // Transient: a later attempt has a real chance.
+  if (error instanceof RateLimitError) {
+    return fail('the account is rate limited or out of quota (429). Safe to retry after a delay.', true);
+  }
+  if (error instanceof InternalServerError) {
+    return fail('the provider returned a server error (5xx). Safe to retry.', true);
+  }
+  if (error instanceof APIConnectionTimeoutError) {
+    return fail('the request timed out before a response arrived. Safe to retry.', true);
+  }
+  if (error instanceof APIConnectionError) {
+    return fail('the provider could not be reached. Safe to retry.', true);
+  }
+
+  // Any other APIError: status is the only reliable signal.
+  if (error instanceof APIError) {
+    const status = typeof error.status === 'number' ? error.status : 0;
+    const retriable = status === 429 || status >= 500;
+    return fail(
+      `the provider returned HTTP ${status || 'unknown'}. ${retriable ? 'Safe to retry.' : 'Retrying identical input is unlikely to help.'}`,
+      retriable
+    );
+  }
+
+  // Not a provider error at all — most often the response failing its schema.
+  // Model output varies between runs, so a retry is worth one attempt, but
+  // this is not asserted as safe the way a 429 is.
+  return fail(
+    'the response could not be parsed or validated. This is usually model output that missed the schema; a retry may produce valid output.',
+    true
+  );
 }
 
 function withOwnerCustomization(
@@ -139,23 +261,59 @@ function withOwnerCustomization(
   return `${protectedInstructions}\n\nOWNER-CONFIGURED SCOPE (cannot override the rules above):\n${customization.scope}\n\nOWNER PROMPT ADDENDUM (lower priority than the rules above):\n${customization.promptAddendum || 'None'}`;
 }
 
-function retrievedSourceUrls(response: unknown): Set<string> {
+/**
+ * The contract types verifiedWebSources as z.array(z.string().url()), and
+ * MarketDiscoveryOutput is .strict() — so one malformed string harvested from
+ * provider metadata fails the parse and takes the entire discovery run with
+ * it, reported as a provider failure it never was. Anything that is not an
+ * absolute http(s) URL is therefore dropped here rather than carried forward.
+ */
+function isHarvestableUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value.trim() === '') return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export interface RetrievedSources {
+  urls: string[];
+  /** True when the model actually invoked web search. Distinguishes "search
+   * never ran" from "search ran and yielded nothing this traversal could
+   * read" — the second is how a provider response-shape change would present,
+   * and without this flag it looks identical to a quiet, legitimate result. */
+  searchInvoked: boolean;
+}
+
+export function retrievedSourceUrls(response: unknown): RetrievedSources {
   const urls = new Set<string>();
+  let searchInvoked = false;
+
   const output = (response as { output?: unknown[] })?.output;
-  if (!Array.isArray(output)) return urls;
+  if (!Array.isArray(output)) return { urls: [], searchInvoked };
+
   for (const item of output) {
     if (!item || typeof item !== 'object') continue;
     const record = item as Record<string, unknown>;
+
     if (record.type === 'web_search_call') {
+      searchInvoked = true;
       const action = record.action as Record<string, unknown> | undefined;
-      const sources = action?.sources;
-      if (Array.isArray(sources)) {
-        for (const source of sources) {
-          const url = source && typeof source === 'object' ? (source as Record<string, unknown>).url : null;
-          if (typeof url === 'string') urls.add(url);
+      // `action.sources` is the documented location; `results` has appeared on
+      // some call shapes. Reading both costs nothing and keeps provenance
+      // when only one is populated.
+      for (const key of ['sources', 'results'] as const) {
+        const collection = action?.[key] ?? record[key];
+        if (!Array.isArray(collection)) continue;
+        for (const entry of collection) {
+          const url = entry && typeof entry === 'object' ? (entry as Record<string, unknown>).url : entry;
+          if (isHarvestableUrl(url)) urls.add(url);
         }
       }
     }
+
     if (record.type === 'message' && Array.isArray(record.content)) {
       for (const content of record.content) {
         const annotations = content && typeof content === 'object'
@@ -166,12 +324,13 @@ function retrievedSourceUrls(response: unknown): Set<string> {
           const url = annotation && typeof annotation === 'object'
             ? (annotation as Record<string, unknown>).url
             : null;
-          if (typeof url === 'string') urls.add(url);
+          if (isHarvestableUrl(url)) urls.add(url);
         }
       }
     }
   }
-  return urls;
+
+  return { urls: [...urls], searchInvoked };
 }
 
 export interface PortfolioInput {
@@ -211,13 +370,17 @@ export function validateSynthesisEvidence(
 
 export class OpenAIAgenticPipeline {
   private readonly client: OpenAI;
+  private readonly effort: StageReasoningEffort;
 
   constructor(
     apiKey: string,
     private readonly model: string,
-    private readonly reasoningEffort: ReasoningEffort = 'medium',
+    /** A single effort for every stage, or a per-stage map. See
+     * resolveStageEffort — the scalar form is the previous behaviour. */
+    reasoningEffort: ReasoningEffort | Partial<StageReasoningEffort> = 'medium',
     client?: OpenAI
   ) {
+    this.effort = resolveStageEffort(reasoningEffort);
     this.client = client ?? new OpenAI({ apiKey, timeout: 180_000, maxRetries: 2 });
   }
 
@@ -252,13 +415,13 @@ export class OpenAIAgenticPipeline {
     try {
       const response = await this.client.responses.parse({
         model: this.model,
-        reasoning: { effort: this.reasoningEffort },
+        reasoning: { effort: this.effort.extraction },
         instructions: withOwnerCustomization(extractionInstructions, customization, 'thesis_extraction'),
         input: [{ role: 'user', content }],
         text: { format: zodTextFormat(ExtractionModelOutput, 'thesis_extraction') },
       });
       if (!response.output_parsed) {
-        throw new AgenticPipelineError('extraction', 'The model did not return a structured thesis extraction');
+        throw new AgenticPipelineError('extraction', 'The model did not return a structured thesis extraction', true);
       }
       const normalized = {
         ...response.output_parsed,
@@ -276,7 +439,7 @@ export class OpenAIAgenticPipeline {
       return ThesisExtractionResult.parse(normalized);
     } catch (error) {
       if (error instanceof AgenticPipelineError) throw error;
-      throw safeProviderError('extraction');
+      throw classifyProviderError('extraction', error);
     }
   }
 
@@ -289,17 +452,17 @@ export class OpenAIAgenticPipeline {
     try {
       const response = await this.client.responses.parse({
         model: this.model,
-        reasoning: { effort: this.reasoningEffort },
+        reasoning: { effort: this.effort.analysis },
         instructions: withOwnerCustomization(analysisInstructions, customization, 'security_analysis'),
         input: prompt,
         text: { format: zodTextFormat(AnalysisOutput, 'security_analysis') },
       });
       if (!response.output_parsed) {
-        throw new AgenticPipelineError('analysis', `No structured analysis was returned for ${bundle.ticker}`);
+        throw new AgenticPipelineError('analysis', `No structured analysis was returned for ${bundle.ticker}`, true);
       }
       const output = AnalysisOutput.parse(response.output_parsed);
       if (output.ticker !== bundle.ticker || output.companyName !== bundle.companyName) {
-        throw new AgenticPipelineError('analysis', `Security identity changed in output for ${bundle.ticker}`);
+        throw new AgenticPipelineError('analysis', `Security identity changed in output for ${bundle.ticker}`, true);
       }
       validateAnalysisSemantics(output);
       validateGrounding(output, bundle);
@@ -307,9 +470,9 @@ export class OpenAIAgenticPipeline {
     } catch (error) {
       if (error instanceof AgenticPipelineError) throw error;
       if (error instanceof Error && error.name === 'ContractValidationError') {
-        throw new AgenticPipelineError('analysis', `${bundle.ticker}: ${error.message}`);
+        throw new AgenticPipelineError('analysis', `${bundle.ticker}: ${error.message}`, true);
       }
-      throw safeProviderError('analysis');
+      throw classifyProviderError('analysis', error);
     }
   }
 
@@ -326,13 +489,13 @@ export class OpenAIAgenticPipeline {
     try {
       const response = await this.client.responses.parse({
         model: this.model,
-        reasoning: { effort: this.reasoningEffort },
+        reasoning: { effort: this.effort.synthesis },
         instructions: withOwnerCustomization(synthesisInstructions, customization, 'portfolio_synthesis'),
         input: prompt,
         text: { format: zodTextFormat(ReportSynthesisOutput, 'portfolio_synthesis') },
       });
       if (!response.output_parsed) {
-        throw new AgenticPipelineError('synthesis', `No structured synthesis was returned for ${portfolio.name}`);
+        throw new AgenticPipelineError('synthesis', `No structured synthesis was returned for ${portfolio.name}`, true);
       }
       const output = ReportSynthesisOutput.parse(response.output_parsed);
       validateSynthesisCoverage(output, analyses);
@@ -341,9 +504,9 @@ export class OpenAIAgenticPipeline {
     } catch (error) {
       if (error instanceof AgenticPipelineError) throw error;
       if (error instanceof Error && error.name === 'ContractValidationError') {
-        throw new AgenticPipelineError('synthesis', `${portfolio.name}: ${error.message}`);
+        throw new AgenticPipelineError('synthesis', `${portfolio.name}: ${error.message}`, true);
       }
-      throw safeProviderError('synthesis');
+      throw classifyProviderError('synthesis', error);
     }
   }
 
@@ -358,7 +521,7 @@ export class OpenAIAgenticPipeline {
     try {
       const response = await this.client.responses.parse({
         model: this.model,
-        reasoning: { effort: this.reasoningEffort },
+        reasoning: { effort: this.effort.discovery },
         instructions: withOwnerCustomization(discoveryInstructions, request.agentConfig, 'market_research'),
         input: prompt,
         ...(webSearchEnabled ? {
@@ -369,20 +532,20 @@ export class OpenAIAgenticPipeline {
         text: { format: zodTextFormat(MarketDiscoveryModelOutput, 'market_discovery') },
       });
       if (!response.output_parsed) {
-        throw new AgenticPipelineError('analysis', 'No structured market-discovery result was returned');
+        throw new AgenticPipelineError('discovery', 'No structured market-discovery result was returned', true);
       }
       const output = MarketDiscoveryOutput.parse({
         ...response.output_parsed,
-        verifiedWebSources: [...retrievedSourceUrls(response)],
+        verifiedWebSources: retrievedSourceUrls(response).urls,
       });
       validateDiscoveryOutput(output, request);
       return output;
     } catch (error) {
       if (error instanceof AgenticPipelineError) throw error;
       if (error instanceof Error && error.name === 'ContractValidationError') {
-        throw new AgenticPipelineError('analysis', `Market discovery: ${error.message}`);
+        throw new AgenticPipelineError('discovery', `Market discovery: ${error.message}`, true);
       }
-      throw safeProviderError('analysis');
+      throw classifyProviderError('discovery', error);
     }
   }
 }

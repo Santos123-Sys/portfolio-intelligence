@@ -1,4 +1,4 @@
-import type { AgenticImportRequest } from '@portfolio-intelligence/agentic-contract';
+import { FailedStage, type AgenticImportRequest } from '@portfolio-intelligence/agentic-contract';
 import type { AgenticJob } from './types.js';
 
 export function callbackPayload(job: AgenticJob, reportBaseUrl?: string): AgenticImportRequest {
@@ -13,13 +13,17 @@ export function callbackPayload(job: AgenticJob, reportBaseUrl?: string): Agenti
         : {}),
     };
   }
+  const stage = FailedStage.safeParse(job.failedStage);
   return {
     externalRunId: job.externalId,
     status: 'failed',
     errorMessage: job.errorMessage ?? 'Agentic analysis failed',
-    ...(['extraction', 'analysis', 'synthesis', 'render', 'upload', 'callback'].includes(job.failedStage ?? '')
-      ? { failedStage: job.failedStage as 'extraction' | 'analysis' | 'synthesis' | 'render' | 'upload' | 'callback' }
-      : {}),
+    // Validated against the shared contract enum rather than a copy of it.
+    // The service has internal stages the dashboard does not know about
+    // ('discovery'), and AgenticImportRequest is .strict() — an unknown stage
+    // must be omitted, not sent. A hardcoded list here would silently stop
+    // matching the day the contract gains a stage.
+    ...(stage.success ? { failedStage: stage.data } : {}),
   };
 }
 

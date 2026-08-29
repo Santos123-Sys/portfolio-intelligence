@@ -2,6 +2,7 @@ import { getEnv } from '../env';
 import { PriceProvider } from './base';
 import { StubProvider } from './stub';
 import { YahooSearchProvider } from './yahoo-search';
+import { StooqProvider } from './stooq';
 import { EodhdProvider } from './eodhd';
 
 /**
@@ -15,6 +16,8 @@ export function getPriceProvider(): PriceProvider {
       return new StubProvider();
     case 'yahoo-search':
       return new YahooSearchProvider();
+    case 'stooq':
+      return new StooqProvider();
     case 'eodhd':
       if (!env.MARKET_DATA_API_KEY) throw new Error('MARKET_DATA_API_KEY is required for EODHD');
       return new EodhdProvider(env.MARKET_DATA_API_KEY);
@@ -30,4 +33,5 @@ export function getPriceProvider(): PriceProvider {
 export * from './base';
 export { StubProvider } from './stub';
 export { YahooSearchProvider } from './yahoo-search';
+export { StooqProvider } from './stooq';
 export { EodhdProvider } from './eodhd';

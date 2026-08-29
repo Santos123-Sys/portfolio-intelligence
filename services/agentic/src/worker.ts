@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { callbackPayload, deliverCallback, nextCallbackTime } from './callback.js';
-import { getWorkerConfig } from './config.js';
+import { getWorkerConfig, stageReasoningEffort } from './config.js';
 import { OpenAIAgenticPipeline } from './openai-pipeline.js';
 import { PostgresJobRepository } from './postgres-repository.js';
 import { processJob } from './process-job.js';
@@ -11,7 +11,7 @@ const repository = new PostgresJobRepository(config.AGENTIC_DATABASE_URL);
 const pipeline = new OpenAIAgenticPipeline(
   config.OPENAI_API_KEY,
   config.OPENAI_MODEL,
-  config.OPENAI_REASONING_EFFORT
+  stageReasoningEffort(config)
 );
 const storage = new ReportStorage(config);
 const workerId = `worker-${randomUUID()}`;

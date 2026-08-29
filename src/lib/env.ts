@@ -11,7 +11,7 @@ const databaseUrlSchema = z.string().url('DATABASE_URL must be a valid Postgres 
 const schema = z.object({
   DATABASE_URL: databaseUrlSchema,
   MARKET_DATA_API_KEY: z.string().min(1).optional(),
-  MARKET_DATA_PROVIDER: z.enum(['stub', 'twelvedata', 'eodhd', 'yahoo-search']).default('stub'),
+  MARKET_DATA_PROVIDER: z.enum(['stub', 'stooq', 'twelvedata', 'eodhd', 'yahoo-search']).default('stub'),
   WEB_SEARCH_PROVIDER: z.enum(['none', 'brave']).default('none'),
   WEB_SEARCH_API_KEY: z.string().min(1).optional(),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must contain at least 32 characters'),
