@@ -189,6 +189,8 @@ export const externalThesisExtractions = pgTable(
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     confirmedThesisVersionId: uuid('confirmed_thesis_version_id')
       .references(() => thesisVersions.id, { onDelete: 'set null' }),
+    dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+    dismissedBy: text('dismissed_by'),
   },
   (t) => ({
     ownerStatusIdx: index('external_thesis_extractions_owner_status_idx').on(t.ownerId, t.status, t.requestedAt),

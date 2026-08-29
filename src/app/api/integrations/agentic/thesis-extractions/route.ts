@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { thesisVersions } from '@/lib/db/schema';
@@ -18,6 +18,7 @@ import {
 } from '@/lib/document-security';
 import { readBoundedJson } from '@/lib/request-body';
 import { getActiveAgentCustomization } from '@/lib/agent-config';
+import { canDismissThesisExtraction } from '@/lib/thesis-extraction-lifecycle';
 
 export const runtime = 'nodejs';
 
@@ -33,7 +34,10 @@ export async function GET(req: Request) {
   const externalExtractionId = new URL(req.url).searchParams.get('externalExtractionId');
   if (!externalExtractionId) {
     const extractions = await db.select().from(externalThesisExtractions)
-      .where(eq(externalThesisExtractions.ownerId, session.auth.userId))
+      .where(and(
+        eq(externalThesisExtractions.ownerId, session.auth.userId),
+        isNull(externalThesisExtractions.dismissedAt)
+      ))
       .orderBy(desc(externalThesisExtractions.requestedAt))
       .limit(20);
     return NextResponse.json({ extractions });
@@ -41,7 +45,8 @@ export async function GET(req: Request) {
 
   const [local] = await db.select().from(externalThesisExtractions).where(and(
     eq(externalThesisExtractions.externalExtractionId, externalExtractionId),
-    eq(externalThesisExtractions.ownerId, session.auth.userId)
+    eq(externalThesisExtractions.ownerId, session.auth.userId),
+    isNull(externalThesisExtractions.dismissedAt)
   )).limit(1);
   if (!local) return NextResponse.json({ error: 'Thesis extraction not found' }, { status: 404 });
 
@@ -128,7 +133,8 @@ export async function PATCH(req: Request) {
   }
   const [local] = await db.select().from(externalThesisExtractions).where(and(
     eq(externalThesisExtractions.externalExtractionId, externalExtractionId),
-    eq(externalThesisExtractions.ownerId, session.auth.userId)
+    eq(externalThesisExtractions.ownerId, session.auth.userId),
+    isNull(externalThesisExtractions.dismissedAt)
   )).limit(1);
   if (!local) return NextResponse.json({ error: 'Thesis extraction not found' }, { status: 404 });
   if (local.status !== 'failed') {
@@ -145,4 +151,45 @@ export async function PATCH(req: Request) {
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 502 });
   }
+}
+
+export async function DELETE(req: Request) {
+  const session = await authenticateRequest(req);
+  if (!session.ok) return session.response;
+  try {
+    assertSameOrigin(req);
+  } catch {
+    return NextResponse.json({ error: 'Cross-origin mutation rejected' }, { status: 403 });
+  }
+
+  const extractionId = new URL(req.url).searchParams.get('id');
+  const parsedId = z.string().uuid().safeParse(extractionId);
+  if (!parsedId.success) {
+    return NextResponse.json({ error: 'A valid extraction id is required' }, { status: 400 });
+  }
+
+  const [local] = await db.select().from(externalThesisExtractions).where(and(
+    eq(externalThesisExtractions.id, parsedId.data),
+    eq(externalThesisExtractions.ownerId, session.auth.userId)
+  )).limit(1);
+  if (!local) return NextResponse.json({ error: 'Thesis extraction not found' }, { status: 404 });
+  if (local.dismissedAt) return NextResponse.json({ dismissed: true, extraction: local });
+  if (!canDismissThesisExtraction(local.status)) {
+    return NextResponse.json({ error: 'Extraction has an unsupported status and cannot be dismissed' }, { status: 409 });
+  }
+
+  const [extraction] = await db.update(externalThesisExtractions).set({
+    dismissedAt: new Date(),
+    dismissedBy: session.auth.email,
+  }).where(and(
+    eq(externalThesisExtractions.id, local.id),
+    eq(externalThesisExtractions.ownerId, session.auth.userId),
+    isNull(externalThesisExtractions.dismissedAt),
+    eq(externalThesisExtractions.status, local.status)
+  )).returning();
+
+  if (!extraction) {
+    return NextResponse.json({ error: 'Extraction status changed; refresh and try again' }, { status: 409 });
+  }
+  return NextResponse.json({ dismissed: true, extraction });
 }
