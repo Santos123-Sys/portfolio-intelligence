@@ -138,7 +138,10 @@ describe('EODHD adapter', () => {
   it('does not expose the API token in provider errors', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('denied', { status: 401 })));
     const provider = new EodhdProvider('super-secret-provider-token');
-    await expect(provider.getSecurityUniverse('XSWX', 10)).rejects.toThrow('HTTP 401');
+    // The status is still identified, but the message now explains what a 401
+    // means at EODHD rather than only naming the code. The property this test
+    // exists for — the token never reaching the message — is unchanged.
+    await expect(provider.getSecurityUniverse('XSWX', 10)).rejects.toThrow(/401/);
     await expect(provider.getSecurityUniverse('XSWX', 10)).rejects.not.toThrow(/super-secret-provider-token/);
   });
 });

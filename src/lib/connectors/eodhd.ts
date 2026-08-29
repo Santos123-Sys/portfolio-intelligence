@@ -45,6 +45,52 @@ function latestStatement(section: unknown): JsonRecord {
   return rows.sort((a, b) => String(first(b, 'date', 'filing_date')).localeCompare(String(first(a, 'date', 'filing_date'))))[0] ?? {};
 }
 
+/**
+ * EODHD gates endpoints separately, so the same working token can succeed on
+ * one path and 403 on another. A bare "request failed with HTTP 403" sends
+ * whoever reads it hunting for a broken key, when the usual cause is that the
+ * plan does not include that endpoint — a subscription question no code
+ * change can answer.
+ *
+ * This was learned the slow way: EOD prices for SIX and B3 returned real
+ * closes on a key whose /api/screener call 403'd in the same minute. The
+ * message now carries that distinction so the next reader starts in the right
+ * place. The token is never echoed — it travels in the query string and this
+ * text reaches the browser.
+ */
+function describeEodhdFailure(path: string, status: number): string {
+  const endpoint = path.startsWith('/api/screener')
+    ? 'the Screener API (/api/screener), which stock discovery needs'
+    : path.startsWith('/api/eod')
+      ? 'end-of-day prices (/api/eod)'
+      : path.startsWith('/api/fundamentals')
+        ? 'fundamentals (/api/fundamentals)'
+        : `${path}`;
+
+  if (status === 403) {
+    return (
+      `EODHD returned 403 for ${endpoint}. A 403 means the token was accepted but ` +
+      `your plan does not include this endpoint or exchange — it is not a broken key. ` +
+      `Confirm what the key can reach with: npm run verify:provider eodhd. If that ` +
+      `passes, the key is fine and this endpoint needs adding to your EODHD subscription.`
+    );
+  }
+  if (status === 401) {
+    return (
+      `EODHD rejected the token (401) for ${endpoint}. Check MARKET_DATA_API_KEY on the ` +
+      `dashboard service, including for stray surrounding quotes — Railway stores values ` +
+      `verbatim, and a quoted key passes validation but is sent to EODHD with the quotes.`
+    );
+  }
+  if (status === 429) {
+    return `EODHD rate limit reached (429) for ${endpoint}. Safe to retry after a delay.`;
+  }
+  if (status >= 500) {
+    return `EODHD returned a server error (${status}) for ${endpoint}. Safe to retry.`;
+  }
+  return `EODHD request for ${endpoint} failed with HTTP ${status}.`;
+}
+
 export class EodhdProvider implements PriceProvider {
   readonly name = 'eodhd';
   readonly supportedExchanges = Object.keys(EXCHANGE_CODES);
@@ -63,7 +109,7 @@ export class EodhdProvider implements PriceProvider {
       signal: AbortSignal.timeout(30_000),
       headers: { accept: 'application/json' },
     });
-    if (!response.ok) throw new Error(`EODHD request failed with HTTP ${response.status}`);
+    if (!response.ok) throw new Error(describeEodhdFailure(path, response.status));
     return response.json();
   }
 

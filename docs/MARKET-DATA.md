@@ -7,9 +7,14 @@ ADR-005 ("market data vendor selection") is still open, for one reason:
 constraint — a provider missing either exchange is unusable here regardless of
 how good it is elsewhere.
 
-`EodhdProvider` is wired in and is the intended production provider. Its
-coverage on a real key has still never been checked. This document records the
-options and, more usefully, how to settle the question with evidence.
+**Resolved 2026-08-29: EODHD, on evidence.** `npm run verify:provider eodhd`,
+run in the production container against the live key, returned real closes
+dated 2026-08-28 for Nestle (78.62 CHF, SIX) and for WEG and Petrobras (49.98
+and 43.55 BRL, B3), with the US control passing. ADR-005 is closed.
+
+One thing that result did **not** grant: `/api/screener`. EODHD entitles
+endpoints separately, and the same key 403s there — which is what stock
+discovery needs. See "Endpoints are entitled separately" below.
 
 ## Providers in the repo
 
@@ -17,7 +22,7 @@ options and, more usefully, how to settle the question with evidence.
 |---|---|---|---|---|
 | `stub` | no | synthetic | synthetic | Reproducible pseudo-random walk. Every row tagged `source: 'stub'`. |
 | `stooq` | **no** | daily OHLCV | **none** | Free, no signup, no quota. Prices only. |
-| `eodhd` | yes | yes | yes | The intended production provider. Coverage unverified. |
+| `eodhd` | yes | **verified** | yes | **In use.** `/api/eod` confirmed on SIX and B3 2026-08-29; `/api/screener` is a separate entitlement and is not on the plan. |
 | `yahoo-search` | search key | best-effort | best-effort | Goes through a web-search provider deliberately — see below. |
 | `twelvedata` | yes | yes | yes | Not implemented. 800 calls/day free; documents both exchanges. |
 
@@ -88,3 +93,38 @@ The fallback is **Twelve Data's free tier**: 800 calls/day is ample for a daily
 refresh of a 10–30 position portfolio, it publishes fundamentals, and it
 documents both exchanges. It is one new file next to `eodhd.ts` plus one case
 in `getPriceProvider` — the `PriceProvider` interface exists for exactly this.
+
+## Endpoints are entitled separately
+
+The most useful thing learned from closing ADR-005: **a working EODHD key does
+not imply access to every EODHD endpoint.** The same token that returned SIX
+and B3 closes 403s on `/api/screener`.
+
+| Feature | Endpoint | Status on the current key |
+|---|---|---|
+| Daily refresh, prices | `/api/eod` | Working |
+| Fundamentals | `/api/fundamentals` | Untested — probe before relying on it |
+| **Stock discovery** | `/api/screener` | **403 — not on the plan** |
+
+Discovery stays blocked until Screener is added to the EODHD subscription. No
+code change reaches this: `getSecurityUniverse` has no other source, and the
+guard in `discovery-workflow.ts` refuses to substitute stub data on purpose.
+
+`describeEodhdFailure` in `eodhd.ts` now distinguishes these at the point of
+failure — a 403 says the token was accepted and the plan is the limit, a 401
+says the token itself was rejected. The previous message was a bare status
+code, which sent a reader hunting for a broken key that was working fine.
+
+## The quoting trap
+
+Railway stores variable values **verbatim** — no shell or dotenv parser strips
+quotes. `.env.example` writes values quoted, which is right for a dotenv file
+and wrong when pasted into Railway's UI.
+
+`MARKET_DATA_PROVIDER='eodhd'` with literal quotes fails validation loudly and
+takes the whole dashboard down: `/api/health` returns 503 and the healthcheck
+never passes. `MARKET_DATA_API_KEY='...'` is worse — it **passes**
+`z.string().min(1)`, then goes into the query string percent-encoded, and every
+request fails as though the key were wrong.
+
+Set both without quotes.

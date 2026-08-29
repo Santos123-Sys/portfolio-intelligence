@@ -76,22 +76,39 @@ Update this file as decisions get made or revisited. Don't delete superseded ent
 
 ## ADR-005: Market data vendor selection
 
-**Decision:** Not yet made.
+**Decision:** EODHD, confirmed by measurement rather than by vendor claim — see the resolution below.
 
-**Reason this is open:** Needs SIX Swiss Exchange + B3 Brazil coverage, confirmed for both price and fundamentals, at a cost proportionate to personal use.
+**Why this stayed open so long:** it needed SIX Swiss + B3 coverage *confirmed*, not advertised, and nobody had run the check. Two vendors listing an exchange on a pricing page is not the same as a key returning a price for it.
 
 **Findings so far:** Twelve Data and EOD Historical Data both explicitly list SIX Swiss Exchange (XSWX) and B3/Bovespa (BVMF) as covered exchanges. IEX Cloud is not an option — shut down August 31, 2024. Fiscal.ai (already connected in your tools) has strong global fundamentals but unconfirmed SIX/B3 depth specifically.
 
-**Status:** Open — blocking for Phase 2 (market data), not blocking for Phase 0/1.
+**RESOLVED 2026-08-29 — EODHD, confirmed empirically.** `npm run verify:provider eodhd`, run in the production dashboard container against the live key, returned real closes dated 2026-08-28 on both required exchanges:
 
-**Addendum — a keyless provider, and a way to close this ADR.** `EodhdProvider` is now wired in, but its coverage on a real key has still never been checked, so the question this ADR exists to answer remains open. Two things address that:
+| Probe | Result |
+|---|---|
+| NESN (XSWX, Nestlé) | 78.62 CHF |
+| WEGE3 (BVMF, WEG) | 49.98 BRL |
+| PETR4 (BVMF, Petrobras) | 43.55 BRL |
+| AAPL (XNAS, control) | 319.70 USD |
+| ROG (XSWX, Roche) | no bar returned — see below |
+
+This is the evidence the ADR was waiting for. Coverage of SIX Swiss and B3 was the open question, and it is answered: **EOD prices for both exchanges are available on the configured key.** The control probe passing is what makes the result trustworthy — it rules out a network or credential fault presenting as missing coverage.
+
+**Two findings that came with it, neither reopening the vendor choice:**
+
+- **Endpoints are entitled separately.** The same key that returned the prices above 403s on `/api/screener`, which `getSecurityUniverse` needs for stock discovery. That is a subscription question, not a code or vendor problem — EOD access does not imply Screener access. `describeEodhdFailure` in `eodhd.ts` now says so at the point of failure, because a bare "HTTP 403" cost a full debugging round-trip pointing at a key that was never broken.
+- **ROG returned no bar** while NESN did, on the same exchange and the same request shape. Not a coverage failure — one working SIX probe settles the exchange — but an unexplained per-symbol gap worth understanding before the daily refresh depends on it. Most likely a ticker-mapping question (Roche's SIX listing) rather than absent data.
+
+**Status:** Closed. EODHD is the market-data vendor. Screener entitlement is an open subscription item tracked separately, not a vendor decision.
+
+**Addendum — how it got closed.** Two things made the question answerable:
 
 - `StooqProvider` — free, no key, no signup, prices only. It is what works while a key is being arranged, and a second opinion when an EODHD result looks wrong. It cannot feed the DCF engine, which needs fundamentals.
 - `npm run verify:provider [stooq|eodhd]` — fetches real SIX and B3 listings plus a US control and reports what came back. The EODHD path drives the real provider, so a pass confirms the provider as configured rather than the vendor's marketing claims. Its control probe is load-bearing: when the control also fails, the run reports INCONCLUSIVE rather than "not covered", because a bad key or a blocked network would otherwise read as a missing exchange and discard a working vendor on false evidence.
 
-Stooq's own SIX/B3 coverage is unconfirmed — the environment its connector was written in blocked `stooq.com` outright, and `STOOQ_SUFFIX` holds guesses rather than verified suffixes. Shipping a second unverified guess is what kept this ADR open the first time; the script exists so the next answer is evidence. See `docs/MARKET-DATA.md`.
+Stooq's own SIX/B3 coverage remains unconfirmed — the environment its connector was written in blocked `stooq.com` outright, and `STOOQ_SUFFIX` holds guesses rather than verified suffixes. That does not affect this decision: EODHD is the vendor, and Stooq stays a keyless second opinion whose suffixes should be verified the same way before anyone relies on it. See `docs/MARKET-DATA.md`.
 
-**This ADR is now decidable by running one command.**
+The script was written so the next answer would be evidence instead of a third guess. It was run on 2026-08-29 and it was.
 
 ---
 
