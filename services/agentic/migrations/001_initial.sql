@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS agentic_jobs (
   id uuid PRIMARY KEY,
   external_id text NOT NULL UNIQUE,
-  kind text NOT NULL CHECK (kind IN ('analysis_run', 'thesis_extraction')),
+  kind text NOT NULL CHECK (kind IN ('analysis_run', 'thesis_extraction', 'market_discovery')),
   status text NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed')),
   payload_json jsonb NOT NULL,
   result_json jsonb,

@@ -56,26 +56,30 @@ Never apply this file to an existing project without reconciling a plan first.
 1. In the Railway web dashboard, add a project/environment shared variable named
    `OPENAI_API_KEY`. Enter the real OpenAI API key there; never put it in Git or
    this document.
-2. Confirm the existing public service is named `portfolio-intelligence`. If it
+2. Add a second shared secret named `MARKET_DATA_API_KEY` containing an EODHD
+   token whose plan includes the global Screener, End-of-Day history and
+   Fundamentals APIs. Discovery is intentionally disabled when only stub data
+   is configured.
+3. Confirm the existing public service is named `portfolio-intelligence`. If it
    has a different name, update `.railway/railway.ts` before planning.
-3. Confirm its generated public URL is
+4. Confirm its generated public URL is
    `https://portfolio-intelligence-production-d042.up.railway.app`, or update
    `PUBLIC_APP_URL` in `.railway/railway.ts` to the active HTTPS origin.
-4. Preserve the existing dashboard `SESSION_SECRET` and
+5. Preserve the existing dashboard `SESSION_SECRET` and
    `MFA_ENCRYPTION_KEY`. The IaC definition deliberately uses `preserve()` for
    these values so applying infrastructure cannot invalidate sessions or stored
    MFA seeds.
-5. Clear the dashboard service's deprecated Config File Path in **Settings**.
+6. Clear the dashboard service's deprecated Config File Path in **Settings**.
    Do not trigger a deployment between clearing it and completing the IaC plan.
-6. Using Railway CLI 5.42.1 or newer from an authenticated operator session,
+7. Using Railway CLI 5.42.1 or newer from an authenticated operator session,
    link the existing project and run `railway config plan`. Planning is
    read-only. The intended plan may add the two named PostgreSQL resources,
    `agentic-api`, `agentic-worker` and `agentic-artifacts`; it must not delete or
    replace the existing dashboard or any database containing data.
-7. Stop if the plan contains an unexpected destroy, service replacement, domain
+8. Stop if the plan contains an unexpected destroy, service replacement, domain
    removal or database replacement. Re-import/reconcile the live names before
    proceeding.
-8. Apply only the reviewed plan. The person using the web application does not
+9. Apply only the reviewed plan. The person using the web application does not
    need Railway CLI or SSH; CLI access is only an infrastructure-operator step.
 
 The repository can prepare and validate the desired state, but Railway still
@@ -86,6 +90,9 @@ plan or apply can occur.
 
 `.railway/railway.ts` manages `DATABASE_URL`, `PUBLIC_APP_URL`, the private
 agentic URL, the generated shared bearer key, provider modes and `NODE_ENV`.
+It binds the project-level `MARKET_DATA_API_KEY` to the dashboard and selects
+`MARKET_DATA_PROVIDER=eodhd`; the token is never sent to the browser or agentic
+services.
 It preserves the existing `SESSION_SECRET`, `MFA_ENCRYPTION_KEY` and temporary
 `INITIAL_ADMIN_*` values. Before the first IaC apply, verify both preserved
 security keys already contain different random values of at least 32
@@ -176,4 +183,9 @@ CRON_SECRET=<same dashboard cron secret>
 11. Replay the same callback and verify idempotency; alter the manifest and
    verify HTTP 409.
 12. Confirm neither service log contains a bearer key, raw thesis document or
-   raw provider payload.
+    raw provider payload.
+13. Open **More -> AI Stock Discovery**, start a provider-backed discovery run,
+    approve one candidate and verify that only that candidate starts a financial
+    analysis. Confirm that no portfolio position is created.
+14. Review the standalone risk methods, confirm DCF assumptions, and verify the
+    fair-value scenario includes methodology, evidence references and caveats.

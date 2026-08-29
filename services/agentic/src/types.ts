@@ -1,11 +1,13 @@
 import type {
   AgenticRunRequest,
+  DiscoveryRunRequest,
+  MarketDiscoveryOutput,
   PortfolioAnalysisManifest,
   ThesisExtractionRequest,
   ThesisExtractionResult,
 } from '@portfolio-intelligence/agentic-contract';
 
-export type JobKind = 'analysis_run' | 'thesis_extraction';
+export type JobKind = 'analysis_run' | 'thesis_extraction' | 'market_discovery';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed';
 export type CallbackStatus =
   | 'not_required'
@@ -20,8 +22,8 @@ export interface AgenticJob {
   externalId: string;
   kind: JobKind;
   status: JobStatus;
-  payload: AgenticRunRequest | ThesisExtractionRequest;
-  result: PortfolioAnalysisManifest | ThesisExtractionResult | null;
+  payload: AgenticRunRequest | ThesisExtractionRequest | DiscoveryRunRequest;
+  result: PortfolioAnalysisManifest | ThesisExtractionResult | MarketDiscoveryOutput | null;
   errorMessage: string | null;
   failedStage: string | null;
   progressCompleted: number;
@@ -48,6 +50,7 @@ export interface JobRepository {
   claimNext(workerId: string, leaseSeconds: number): Promise<AgenticJob | null>;
   updateProgress(id: string, completed: number, total: number, stage: string): Promise<void>;
   completeExtraction(id: string, result: ThesisExtractionResult): Promise<void>;
+  completeDiscovery(id: string, result: MarketDiscoveryOutput): Promise<void>;
   completeAnalysis(
     id: string,
     manifest: PortfolioAnalysisManifest,

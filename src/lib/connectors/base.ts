@@ -40,6 +40,8 @@ export interface PriceProvider {
   getDailyBars(ticker: string, exchange: string, fromDate: string, toDate: string): Promise<DailyBar[]>;
   getLatestPrice(ticker: string, exchange: string): Promise<DailyBar | null>;
   getFundamentals?(ticker: string, exchange: string): Promise<Fundamentals>;
+  /** Provider-backed security universe used by the discovery agent. */
+  getSecurityUniverse?(exchange: string, limit: number): Promise<import('@portfolio-intelligence/agentic-contract').SecurityUniverseRecord[]>;
 }
 
 export class ProviderError extends Error {

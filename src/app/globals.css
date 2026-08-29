@@ -101,6 +101,52 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
 .setup-form button:disabled { opacity: 0.6; cursor: not-allowed; }
 .setup-form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
 
+/* Thesis-driven discovery, approval, analysis, risk and valuation workflow */
+.workflow-error { margin-bottom: 1rem; }
+.workflow-stage { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 1rem; margin-bottom: 1rem; }
+.workflow-stage .action-button { margin-top: 0; }
+.compact-field { display: grid; gap: 0.35rem; color: var(--muted); font-size: 0.75rem; }
+.compact-field input { width: 110px; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 0.55rem; }
+.section-title { margin: 2rem 0 1rem; font-size: 1rem; }
+.candidate-list, .agent-config-list { display: grid; gap: 1rem; }
+.candidate-card h3 { margin: 0; font-size: 1rem; }
+.candidate-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.candidate-score { display: grid; text-align: center; min-width: 74px; padding: 0.55rem; border: 1px solid var(--accent); border-radius: 7px; }
+.candidate-score strong { font-size: 1.3rem; }
+.candidate-score span { color: var(--muted); font-size: 0.68rem; }
+.candidate-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.candidate-actions button { border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 6px; padding: 0.42rem 0.65rem; cursor: pointer; }
+.candidate-actions button:disabled { opacity: 0.55; cursor: wait; }
+.candidate-actions .danger-outline { border-color: var(--danger); color: var(--danger); }
+.analysis-stage { margin-top: 1rem; padding: 1rem; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+.analysis-stage h3, .valuation-panel h3 { margin: 0 0 0.6rem; font-size: 0.9rem; }
+.risk-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 0.5rem; margin: 0.75rem 0; }
+.risk-strip div { display: grid; gap: 0.15rem; border: 1px solid var(--border); border-radius: 6px; padding: 0.55rem; }
+.risk-strip span { color: var(--muted); font-size: 0.7rem; }
+.risk-strip details { font-size: 0.68rem; color: var(--muted); }
+.risk-strip summary { cursor: pointer; color: var(--accent); }
+.risk-strip details p { overflow-wrap: anywhere; }
+.analysis-evidence { color: var(--muted); font-size: 0.75rem; }
+.analysis-evidence summary { cursor: pointer; color: var(--accent); }
+.analysis-evidence code { overflow-wrap: anywhere; }
+.valuation-panel { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.valuation-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 0.65rem; margin: 0.75rem 0; }
+.valuation-grid label { display: grid; gap: 0.3rem; color: var(--muted); font-size: 0.72rem; }
+.valuation-grid input { width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 0.55rem; }
+.confirmation-row { display: flex; gap: 0.55rem; align-items: flex-start; color: var(--muted); font-size: 0.75rem; }
+.confirmation-row input { margin-top: 0.2rem; }
+.valuation-result { margin-top: 0.8rem; padding: 0.8rem; border: 1px solid var(--accent); border-radius: 7px; }
+.sensitivity-table { margin-top: 1rem; }
+.sensitivity-table h4 { margin: 0 0 0.5rem; font-size: 0.8rem; }
+.sensitivity-table td, .sensitivity-table th { text-align: right; }
+.sensitivity-table th:first-child { text-align: left; }
+.policy-card { margin-bottom: 1rem; border-color: var(--accent); }
+.agent-config-card { min-width: 0; }
+.tool-picker { border: 1px solid var(--border); border-radius: 7px; padding: 0.7rem; }
+.tool-picker legend { color: var(--muted); font-size: 0.75rem; }
+.tool-picker label { display: inline-flex; grid-auto-flow: column; width: auto; margin-right: 1rem; align-items: center; }
+.tool-picker input { width: auto; }
+
 /* PortfolioSelector tabs */
 .portfolio-selector { display: flex; gap: 0.35rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
 .portfolio-tab { padding: 0.5rem 0.9rem; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--muted); font-size: 0.82rem; cursor: pointer; }
@@ -181,4 +227,7 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
   .primary-nav { order: 3; width: 100%; overflow-x: auto; flex-wrap: nowrap; }
   .nav-link { white-space: nowrap; }
   .setup-form-row { grid-template-columns: 1fr; }
+  .workflow-stage { grid-template-columns: 1fr; align-items: stretch; }
+  .compact-field input { width: 100%; }
+  .candidate-heading { align-items: center; }
 }

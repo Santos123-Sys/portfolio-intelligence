@@ -9,9 +9,10 @@ import {
   type ReportSynthesisOutput,
 } from '@portfolio-intelligence/agentic-contract';
 
-export function createExternalId(kind: 'run' | 'extraction', now = new Date()): string {
+export function createExternalId(kind: 'run' | 'extraction' | 'discovery', now = new Date()): string {
   const timestamp = now.toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
-  return `${kind === 'run' ? 'agent-run' : 'thesis-extraction'}-${timestamp}-${randomUUID()}`;
+  const prefix = kind === 'run' ? 'agent-run' : kind === 'extraction' ? 'thesis-extraction' : 'market-discovery';
+  return `${prefix}-${timestamp}-${randomUUID()}`;
 }
 
 export function buildManifest(

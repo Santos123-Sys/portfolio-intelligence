@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import type { PortfolioAnalysisManifest, ThesisExtractionResult } from '@portfolio-intelligence/agentic-contract';
+import type {
+  MarketDiscoveryOutput,
+  PortfolioAnalysisManifest,
+  ThesisExtractionResult,
+} from '@portfolio-intelligence/agentic-contract';
 import type { AgenticJob, JobKind, JobRepository } from '../src/types.js';
 
 export class MemoryRepository implements JobRepository {
@@ -74,6 +78,15 @@ export class MemoryRepository implements JobRepository {
     const job = this.jobs.get(id)!;
     job.status = 'completed';
     job.result = result;
+    job.progressCompleted = job.progressTotal;
+    job.completedAt = job.updatedAt = new Date();
+  }
+
+  async completeDiscovery(id: string, result: MarketDiscoveryOutput) {
+    const job = this.jobs.get(id)!;
+    job.status = 'completed';
+    job.result = result;
+    job.currentStage = 'completed';
     job.progressCompleted = job.progressTotal;
     job.completedAt = job.updatedAt = new Date();
   }

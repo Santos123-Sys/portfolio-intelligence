@@ -53,6 +53,14 @@ describe('Railway infrastructure definition', () => {
       type: 'sharedReference',
       name: 'OPENAI_API_KEY',
     });
+    expect(dashboard?.variables?.MARKET_DATA_PROVIDER).toMatchObject({
+      type: 'literal',
+      value: 'eodhd',
+    });
+    expect(dashboard?.variables?.MARKET_DATA_API_KEY).toMatchObject({
+      type: 'sharedReference',
+      name: 'MARKET_DATA_API_KEY',
+    });
     expect(worker?.variables?.AGENTIC_SYSTEM_API_KEY).toMatchObject({
       type: 'reference',
       resource: 'service.agentic-api',

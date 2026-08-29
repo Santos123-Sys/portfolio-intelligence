@@ -3,6 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { aiAnalyses, portfolios, securities, thesisVersions } from '@/lib/db/schema';
 import {
+  discoveryCandidates,
   externalAgenticAnalyses,
   externalAgenticRuns,
   portfolioAnalysisSyntheses,
@@ -65,6 +66,16 @@ export async function POST(req: Request) {
       })
       .where(eq(externalAgenticRuns.id, existing.id))
       .returning();
+    const failedRequest = AgenticRunRequest.safeParse(existing.requestJson);
+    if (failedRequest.success && failedRequest.data.origin?.kind === 'discovery_candidate') {
+      await db.update(discoveryCandidates).set({
+        workflowStatus: 'analysis_failed',
+        updatedAt: new Date(),
+      }).where(and(
+        eq(discoveryCandidates.id, failedRequest.data.origin.candidateId!),
+        eq(discoveryCandidates.ownerId, existing.ownerId)
+      ));
+    }
     return NextResponse.json({ run: failed, imported: false, idempotent: existing.status === 'failed' });
   }
 
@@ -221,6 +232,16 @@ export async function POST(req: Request) {
             analysisId: analysis.id,
             outputJson: output,
           });
+          if (request.data.origin?.kind === 'discovery_candidate') {
+            await tx.update(discoveryCandidates).set({
+              analysisId: analysis.id,
+              workflowStatus: 'analysis_complete',
+              updatedAt: new Date(),
+            }).where(and(
+              eq(discoveryCandidates.id, request.data.origin.candidateId!),
+              eq(discoveryCandidates.ownerId, existing.ownerId)
+            ));
+          }
           analysisCount += 1;
         }
       }

@@ -26,6 +26,7 @@ const EXTENDED_NAV = [
   ['/investment-thesis', 'Investment Thesis'],
   ['/ai-stock-discovery', 'AI Stock Discovery'],
   ['/agentic-system', 'Agentic System'],
+  ['/agent-settings', 'Agent Settings'],
   ['/candidates', 'Candidates'],
   ['/securities', 'Securities'],
   ['/account/security', 'Account Security'],

@@ -17,6 +17,7 @@ import {
   validateThesisDocument,
 } from '@/lib/document-security';
 import { readBoundedJson } from '@/lib/request-body';
+import { getActiveAgentCustomization } from '@/lib/agent-config';
 
 export const runtime = 'nodejs';
 
@@ -87,6 +88,7 @@ export async function POST(req: Request) {
     .limit(1);
   const requestedVersion = (latest?.versionNumber ?? 0) + 1;
   try {
+    const agentConfig = await getActiveAgentCustomization(session.auth.userId, 'thesis_extraction');
     const remote = await startExternalThesisExtraction({
       document: {
         fileName: document.fileName,
@@ -94,6 +96,7 @@ export async function POST(req: Request) {
         contentBase64: document.contentBase64,
         version: requestedVersion,
       },
+      agentConfig,
     });
     const [extraction] = await db.insert(externalThesisExtractions).values({
       ownerId: session.auth.userId,
