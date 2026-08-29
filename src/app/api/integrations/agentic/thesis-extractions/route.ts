@@ -19,6 +19,7 @@ import {
 import { readBoundedJson } from '@/lib/request-body';
 import { getActiveAgentCustomization } from '@/lib/agent-config';
 import { canDismissThesisExtraction } from '@/lib/thesis-extraction-lifecycle';
+import { excludeThesisVersion } from '@/lib/services/thesis-exclusion';
 
 export const runtime = 'nodejs';
 
@@ -57,7 +58,13 @@ export async function GET(req: Request) {
       resultJson: remote.result,
       errorMessage: remote.errorMessage,
       completedAt: remote.status === 'completed' || remote.status === 'failed' ? new Date() : local.completedAt,
-    }).where(eq(externalThesisExtractions.id, local.id)).returning();
+    }).where(and(
+      eq(externalThesisExtractions.id, local.id),
+      isNull(externalThesisExtractions.dismissedAt)
+    )).returning();
+    if (!updated) {
+      return NextResponse.json({ error: 'Thesis extraction was dismissed' }, { status: 404 });
+    }
     return NextResponse.json({ extraction: updated, remote });
   } catch (error) {
     return NextResponse.json({ extraction: local, remoteError: (error as Error).message });
@@ -173,23 +180,35 @@ export async function DELETE(req: Request) {
     eq(externalThesisExtractions.ownerId, session.auth.userId)
   )).limit(1);
   if (!local) return NextResponse.json({ error: 'Thesis extraction not found' }, { status: 404 });
-  if (local.dismissedAt) return NextResponse.json({ dismissed: true, extraction: local });
   if (!canDismissThesisExtraction(local.status)) {
     return NextResponse.json({ error: 'Extraction has an unsupported status and cannot be dismissed' }, { status: 409 });
+  }
+
+  if (local.confirmedThesisVersionId) {
+    try {
+      const exclusion = await excludeThesisVersion({
+        ownerId: session.auth.userId,
+        thesisVersionId: local.confirmedThesisVersionId,
+        actor: session.auth.email,
+      });
+      return NextResponse.json({ dismissed: true, extractionId: local.id, thesisExclusion: exclusion });
+    } catch {
+      return NextResponse.json({ error: 'Unable to exclude the linked thesis version' }, { status: 500 });
+    }
   }
 
   const [extraction] = await db.update(externalThesisExtractions).set({
     dismissedAt: new Date(),
     dismissedBy: session.auth.email,
+    resultJson: null,
+    errorMessage: null,
   }).where(and(
     eq(externalThesisExtractions.id, local.id),
-    eq(externalThesisExtractions.ownerId, session.auth.userId),
-    isNull(externalThesisExtractions.dismissedAt),
-    eq(externalThesisExtractions.status, local.status)
+    eq(externalThesisExtractions.ownerId, session.auth.userId)
   )).returning();
 
   if (!extraction) {
-    return NextResponse.json({ error: 'Extraction status changed; refresh and try again' }, { status: 409 });
+    return NextResponse.json({ error: 'Thesis extraction not found' }, { status: 404 });
   }
-  return NextResponse.json({ dismissed: true, extraction });
+  return NextResponse.json({ dismissed: true, extractionId: extraction.id });
 }

@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { assertSameOrigin } from '@/lib/auth';
 import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
+import { thesisVersions } from '@/lib/db/schema';
 import { discoveryCandidates, externalDiscoveryRuns } from '@/lib/db/workflow-schema';
 import { buildDiscoveryRunRequest, synchronizeDiscoveryRun } from '@/lib/discovery-workflow';
 import {
@@ -19,10 +20,15 @@ const startSchema = z.object({
 }).strict();
 
 async function list(ownerId: string) {
-  const runs = await db.select().from(externalDiscoveryRuns)
-    .where(eq(externalDiscoveryRuns.ownerId, ownerId))
+  const rows = await db.select({ run: externalDiscoveryRuns }).from(externalDiscoveryRuns)
+    .innerJoin(thesisVersions, eq(externalDiscoveryRuns.thesisVersionId, thesisVersions.id))
+    .where(and(
+      eq(externalDiscoveryRuns.ownerId, ownerId),
+      isNull(thesisVersions.excludedAt)
+    ))
     .orderBy(desc(externalDiscoveryRuns.requestedAt))
     .limit(20);
+  const runs = rows.map(({ run }) => run);
   const ids = runs.map((run) => run.id);
   const candidates = ids.length
     ? await db.select({ runId: discoveryCandidates.runId }).from(discoveryCandidates)
@@ -97,11 +103,15 @@ export async function PATCH(req: Request) {
   }
   const id = new URL(req.url).searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
-  const [run] = await db.select().from(externalDiscoveryRuns).where(and(
-    eq(externalDiscoveryRuns.id, id),
-    eq(externalDiscoveryRuns.ownerId, session.auth.userId)
-  )).limit(1);
-  if (!run) return NextResponse.json({ error: 'Discovery run not found' }, { status: 404 });
+  const [row] = await db.select({ run: externalDiscoveryRuns }).from(externalDiscoveryRuns)
+    .innerJoin(thesisVersions, eq(externalDiscoveryRuns.thesisVersionId, thesisVersions.id))
+    .where(and(
+      eq(externalDiscoveryRuns.id, id),
+      eq(externalDiscoveryRuns.ownerId, session.auth.userId),
+      isNull(thesisVersions.excludedAt)
+    )).limit(1);
+  const run = row?.run;
+  if (!run) return NextResponse.json({ error: 'Discovery run not found or its thesis was excluded' }, { status: 404 });
   if (run.status !== 'failed') return NextResponse.json({ error: 'Only failed discovery runs can be retried' }, { status: 409 });
   try {
     const remote = await retryExternalDiscoveryRun(run.externalDiscoveryId);

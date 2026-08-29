@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { aiAnalyses, securities, thesisVersions } from '@/lib/db/schema';
 import { requirePageSession } from '@/lib/page-auth';
@@ -27,7 +27,10 @@ export default async function AIInsightsPage() {
     .from(aiAnalyses)
     .innerJoin(securities, eq(aiAnalyses.securityId, securities.id))
     .innerJoin(thesisVersions, eq(aiAnalyses.thesisVersionId, thesisVersions.id))
-    .where(eq(aiAnalyses.ownerId, session.userId))
+    .where(and(
+      eq(aiAnalyses.ownerId, session.userId),
+      isNull(thesisVersions.excludedAt)
+    ))
     .orderBy(desc(aiAnalyses.analysisTimestamp));
 
   return (
