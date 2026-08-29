@@ -32,6 +32,7 @@
     "admin:create": "tsx scripts/create-admin.ts",
     "admin:create:if-configured": "node --import tsx scripts/create-admin.ts --if-configured",
     "cron:refresh": "node scripts/railway-refresh.mjs",
+    "verify:provider": "tsx scripts/verify-provider.ts",
     "agentic:migrate": "npm run db:migrate --workspace @portfolio-intelligence/agentic-service",
     "agentic:api": "npm run start:api --workspace @portfolio-intelligence/agentic-service",
     "agentic:worker": "npm run start:worker --workspace @portfolio-intelligence/agentic-service"

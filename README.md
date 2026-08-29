@@ -201,6 +201,7 @@ Stated plainly, because a spec that overstates completeness is worse than no spe
 | `docs/V0-DASHBOARD-BRIEF.md` | **Paste this into v0** — frontend spec only |
 | `docs/AGENTIC-SYSTEM-HANDOFF.md` | Implemented 16-point dashboard/agentic contract reference |
 | `docs/RAILWAY-DEPLOYMENT.md` | Railway services, variables, migration and bootstrap checklist |
+| `docs/MARKET-DATA.md` | Provider options and how to confirm SIX/B3 coverage before trusting one |
 | `docs/platform-comparison.md` | base44 / Replit / Vercel / Manus / Kimi evaluation |
 | `docs/superseded/` | The Python/Replit design, retained for its reasoning. Not live guidance. |
 | `CONTRIBUTING.md` | The architectural invariants that must not be broken |

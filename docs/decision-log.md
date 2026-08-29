@@ -84,6 +84,15 @@ Update this file as decisions get made or revisited. Don't delete superseded ent
 
 **Status:** Open — blocking for Phase 2 (market data), not blocking for Phase 0/1.
 
+**Addendum — a keyless provider, and a way to close this ADR.** `EodhdProvider` is now wired in, but its coverage on a real key has still never been checked, so the question this ADR exists to answer remains open. Two things address that:
+
+- `StooqProvider` — free, no key, no signup, prices only. It is what works while a key is being arranged, and a second opinion when an EODHD result looks wrong. It cannot feed the DCF engine, which needs fundamentals.
+- `npm run verify:provider [stooq|eodhd]` — fetches real SIX and B3 listings plus a US control and reports what came back. The EODHD path drives the real provider, so a pass confirms the provider as configured rather than the vendor's marketing claims. Its control probe is load-bearing: when the control also fails, the run reports INCONCLUSIVE rather than "not covered", because a bad key or a blocked network would otherwise read as a missing exchange and discard a working vendor on false evidence.
+
+Stooq's own SIX/B3 coverage is unconfirmed — the environment its connector was written in blocked `stooq.com` outright, and `STOOQ_SUFFIX` holds guesses rather than verified suffixes. Shipping a second unverified guess is what kept this ADR open the first time; the script exists so the next answer is evidence. See `docs/MARKET-DATA.md`.
+
+**This ADR is now decidable by running one command.**
+
 ---
 
 ## ADR-006: Agent orchestration — hand-rolled pipeline vs. framework
