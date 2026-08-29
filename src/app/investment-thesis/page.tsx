@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ThesisExtractionResult } from '@portfolio-intelligence/agentic-contract';
+import { canDismissThesisExtraction } from '@/lib/thesis-extraction-lifecycle';
 
 interface ThesisVersionRow {
   id: string;
@@ -176,6 +177,36 @@ export default function InvestmentThesisPage() {
     }
   }
 
+  async function dismiss(extraction: ExtractionRow) {
+    const dismissalNotice = extraction.confirmedAt
+      ? 'The confirmed thesis version will remain active.'
+      : extraction.status === 'queued' || extraction.status === 'running'
+        ? 'This does not cancel work already accepted by the agentic service, but its result will remain excluded from this dashboard.'
+        : 'Its extracted criteria will not become canonical.';
+    if (!window.confirm(`Dismiss ${extraction.sourceFileName} from the review queue? ${dismissalNotice}`)) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/integrations/agentic/thesis-extractions?id=${encodeURIComponent(extraction.id)}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `Dismissal failed (${response.status})`);
+      }
+      setExtractions((current) => current.filter((item) => item.id !== extraction.id));
+      if (selectedId === extraction.id) {
+        setSelectedId(null);
+        setCriteriaDraft('');
+      }
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main>
       <h1>Investment Thesis</h1>
@@ -211,13 +242,25 @@ export default function InvestmentThesisPage() {
                   <td><span className={`badge ${extraction.status === 'failed' ? 'breach' : extraction.status === 'completed' ? 'ok' : 'watch'}`}>{extraction.status}</span></td>
                   <td>{new Date(extraction.requestedAt).toLocaleString()}</td>
                   <td>
-                    {extraction.status === 'completed' && !extraction.confirmedAt && (
-                      <button className="action-button" type="button" onClick={() => review(extraction)}>Review</button>
-                    )}
-                    {extraction.status === 'failed' && (
-                      <button className="action-button" type="button" onClick={() => void retry(extraction)} disabled={busy}>Retry</button>
-                    )}
-                    {extraction.confirmedAt && <span className="note">Confirmed</span>}
+                    <div className="thesis-extraction-actions">
+                      {extraction.status === 'completed' && !extraction.confirmedAt && (
+                        <button className="action-button" type="button" onClick={() => review(extraction)}>Review</button>
+                      )}
+                      {extraction.status === 'failed' && (
+                        <button className="action-button" type="button" onClick={() => void retry(extraction)} disabled={busy}>Retry</button>
+                      )}
+                      {extraction.confirmedAt && <span className="note">Confirmed</span>}
+                      <button
+                        className="action-button dismiss-button"
+                        type="button"
+                        onClick={() => void dismiss(extraction)}
+                        disabled={busy || !canDismissThesisExtraction(extraction.status)}
+                        title="Hide this record from the review queue"
+                        aria-label={`Dismiss ${extraction.sourceFileName} from the review queue`}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}</tbody>

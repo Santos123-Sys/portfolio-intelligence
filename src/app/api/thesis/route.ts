@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import {
   ThesisCriteria,
   ThesisExtractionResult,
@@ -55,7 +55,8 @@ export async function POST(req: Request) {
       if (parsed.data.externalExtractionId) {
         const [extraction] = await tx.select().from(externalThesisExtractions).where(and(
           eq(externalThesisExtractions.externalExtractionId, parsed.data.externalExtractionId),
-          eq(externalThesisExtractions.ownerId, session.auth.userId)
+          eq(externalThesisExtractions.ownerId, session.auth.userId),
+          isNull(externalThesisExtractions.dismissedAt)
         )).limit(1);
         if (!extraction || extraction.status !== 'completed' || extraction.confirmedAt) {
           throw new ConfirmationError('Extraction is unavailable, incomplete, or already confirmed');
