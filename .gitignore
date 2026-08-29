@@ -6,7 +6,6 @@ packages/*/dist/
 services/*/dist/
 .env
 .env*.local
-.vercel
 *.tsbuildinfo
 next-env.d.ts
 coverage/

@@ -165,30 +165,28 @@ The forced split turns out to be an improvement: it enforces ADR-001's separatio
 
 ---
 
-## ADR-010: Move to Vercel + Next.js, superseding ADR-008 and ADR-009
+## ADR-010: Move to a single Next.js/TypeScript application, superseding ADR-008 and ADR-009
 
-**Decision:** Build and deploy the entire system as a single Next.js/TypeScript application on Vercel, sourced from a GitHub repository. Postgres via Neon/Vercel Postgres. Scheduled work via Vercel Cron.
+**Decision:** Build the entire system as one Next.js/TypeScript application sourced from a GitHub repository, rather than a Python backend with a separate frontend. Postgres via Neon.
 
-**Reason:** You chose to deploy through v0/Vercel from a GitHub repo. Since v0 generates React/Next.js and Vercel is TypeScript-first, keeping a Python backend would have meant two platforms, two languages, and a CORS boundary — strictly worse than committing to one.
+*Hosting was decided separately and has changed — see ADR-013 for the platform. This ADR is now only about the language and framework.*
 
-**Honest reassessment of the earlier analysis.** ADR-008 chose Replit partly on my own conclusion that Vercel would force rebuilding the calculation layer. That conclusion was too strong, and two decisions already in this log are why:
+**Reason:** The frontend was going to be generated as React/Next.js, so keeping a Python backend would have meant two platforms, two languages, and a CORS boundary — strictly worse than committing to one.
+
+**Honest reassessment of the earlier analysis.** ADR-008 chose Replit partly on the conclusion that moving off it would force rebuilding the calculation layer. That conclusion was too strong, and two decisions already in this log are why:
 
 - **ADR-006 already rejected CrewAI** in favour of hand-rolled orchestration. Agenteki was therefore never more than sequential LLM calls with structured output, which ports to TypeScript directly.
-- **QuantStats and Riskfolio-Lib were a weaker dependency than they appeared.** Both return bare floats, while the explainability requirement demands methodology metadata on every metric — so each call was going to be wrapped regardless. Sharpe, volatility, drawdown, VaR, TWR and XIRR are roughly 150 lines of arithmetic, now implemented and covered by 32 tests.
+- **QuantStats and Riskfolio-Lib were a weaker dependency than they appeared.** Both return bare floats, while the explainability requirement demands methodology metadata on every metric — so each call was going to be wrapped regardless. Sharpe, volatility, drawdown, VaR, TWR and XIRR are roughly 150 lines of arithmetic, now implemented and covered by tests.
 
 The rewrite cost was real but far smaller than "rebuild the calculation layer." And no Python was ever written — only specifications — so the reversal cost nothing but the decision itself.
 
 **Unexpected benefit:** the `cvxpy` compilation risk flagged as a go/no-go for the entire risk engine is now moot. The quant engine has zero runtime dependencies.
 
-**Trade-offs accepted:**
-- Serverless function time limits are a harder ceiling than Replit's 11-hour Scheduled Deployments. Mitigated by bounding the Agenteki worker to 3 jobs per invocation.
-- Vercel Hobby is restricted to personal, non-commercial use by ToS. This project qualifies; that stops being true if it ever advises anyone else — which is the same boundary flagged for Phase 4 under the Investment Advisers Act.
-- Postgres advisory locks are unusable under serverless connection churn; replaced with a TTL-based `job_locks` table.
-- Cron frequency is limited on Hobby. Verify the current allowance.
+**One trade-off outlived its original cause.** `job_locks` exists because Postgres advisory locks are session-scoped and were unusable under the connection churn of the original host. The TTL-based table is kept on Railway: at-least-once scheduling still has no concurrency guarantee, and two overlapping refresh runs writing FX rates is the same silent corruption it always was.
 
-**Superseded:** ADR-008 (Replit hosting) and ADR-009 (three Replit deployments). `docs/replit-deployment-architecture-SUPERSEDED.md` is retained for the reasoning, not as live guidance.
+**Superseded:** ADR-008 (Replit hosting) and ADR-009 (three Replit deployments). `docs/superseded/replit-deployment-architecture.md` retains their reasoning. The original text of this ADR, written when the project deployed to a serverless host, is in `docs/superseded/original-hosting-adr-010.md`.
 
-**Status:** Accepted, implemented.
+**Status:** Accepted and implemented as to language and framework. Hosting superseded by ADR-013.
 
 ---
 
@@ -213,3 +211,27 @@ The rewrite cost was real but far smaller than "rebuild the calculation layer." 
 **Trade-off:** Two frontend architectures now coexist: the new pages are client-only per Section 5.2, the earlier ones are Server Components querying the database directly. That inconsistency is deliberate and temporary, not an oversight — it's tracked in `docs/MASTER-SPEC-IMPLEMENTATION.md`'s known gaps rather than hidden. `/api/positions`, `/api/analysis` and `/api/decision-log` gained fields and joins to support the new pages (day change, ticker joins, search) without changing any existing response field's meaning.
 
 **Status:** Accepted.
+
+---
+
+## ADR-013: Railway is the hosting platform, superseding the hosting half of ADR-010
+
+**Decision:** Host every service on Railway: the Next.js dashboard, the agentic API, and the agentic worker, each as its own Railway service, defined as config-as-code (`railway.dashboard.json`, `railway.agentic-api.json`, `railway.agentic-worker.json`) with `.railway/railway.ts` as the infrastructure definition. Postgres is a Railway service for the agentic database; the dashboard keeps its existing Neon connection. Scheduled work runs through `npm run cron:refresh`, not a platform cron product.
+
+**Reason this ADR exists at all:** the platform changed and the log never recorded it. ADR-010 remained the standing hosting decision while the repository grew Railway configs, a Railway IaC definition, `docs/RAILWAY-DEPLOYMENT.md`, and a Railway-shaped cron entry point. A decision log that disagrees with the repository is worse than no log, because it is read as current.
+
+**What Railway gives this system that the previous platform did not:**
+- **No serverless execution ceiling.** The agentic worker runs as a long-lived process, so a run is bounded by cost and blast radius rather than by a function timeout. This is why the analysis worker's job bound is a deliberate choice now instead of a workaround.
+- **A separate worker service.** The API and the worker scale and fail independently; a stuck job cannot take the dashboard down with it.
+- **Migrations as a deploy step.** `preDeployCommand` runs `db:migrate` before a new version takes traffic, so schema and code ship together instead of needing a manual step.
+
+**Trade-offs accepted:**
+- Services are always-on rather than scale-to-zero, so idle cost is non-zero where a serverless platform's was not.
+- Variables are scoped per service. The dashboard having a key says nothing about the worker having it, which is a real and repeated source of misconfiguration — `docs/RAILWAY-DEPLOYMENT.md` carries the per-service matrix for that reason.
+- Preview environments are not automatic the way a Git-integrated serverless platform's are.
+
+**Consequence for the docs:** the previous platform is removed from all live guidance and configuration. `docs/superseded/` retains the historical evaluations, including `platform-comparison.md`, because deleting the reasoning behind a superseded decision is how a project relitigates it a year later.
+
+**Status:** Accepted, implemented.
+
+---

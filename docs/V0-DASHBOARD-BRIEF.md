@@ -17,7 +17,7 @@ app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
 | Option | Result |
 |---|---|
 | **A. Ask v0 for a static-exportable app** — client components only, `output: 'export'` | Single origin, no CORS, matches ADR-009. **Recommended.** |
-| **B. Host frontend on Vercel, backend on Replit** | Two platforms, CORS config required, reintroduces the split ADR-009 removed |
+| **B. Host the frontend separately from the API** | Two deployments, CORS config required, reintroduces the split ADR-009 removed |
 | **C. Ask v0 for plain Vite + React** | Matches the original stack exactly; v0 is less optimized for it |
 
 If you take option A, the instruction to v0 is: *"Client components only. No server actions, no server-side data fetching. All data arrives via fetch() from a REST API at runtime."*
