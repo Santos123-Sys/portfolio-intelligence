@@ -10,11 +10,27 @@ interface AgentConfig {
   promptAddendum: string;
   enabledTools: string[];
   allowedTools: string[];
+  reasoningPromptVersion: number;
+  reasoningPrompt: {
+    sourceFile: string | null;
+    adaptationNote: string;
+    systemPrompt: string;
+  };
+}
+
+interface EnginePolicy {
+  engineKind: string;
+  name: string;
+  sourceFile: string;
+  implementationNote: string;
+  scope: string;
+  policy: string;
 }
 
 export default function AgentSettingsPage() {
   const [configs, setConfigs] = useState<AgentConfig[]>([]);
   const [policy, setPolicy] = useState('');
+  const [enginePolicies, setEnginePolicies] = useState<EnginePolicy[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -23,11 +39,13 @@ export default function AgentSettingsPage() {
     const body = await response.json().catch(() => ({})) as {
       configurations?: AgentConfig[];
       immutablePolicy?: string;
+      deterministicEnginePolicies?: EnginePolicy[];
       error?: string;
     };
     if (!response.ok) throw new Error(body.error ?? `Agent settings failed (${response.status})`);
     setConfigs(body.configurations ?? []);
     setPolicy(body.immutablePolicy ?? '');
+    setEnginePolicies(body.deterministicEnginePolicies ?? []);
   }, []);
 
   useEffect(() => {
@@ -67,7 +85,7 @@ export default function AgentSettingsPage() {
   return (
     <main>
       <h1>Agent Settings</h1>
-      <p className="sub">Personalize each agent’s role, scope, prompt addendum and approved tools. Every save creates a new version.</p>
+      <p className="sub">Review each protected reasoning prompt, then personalize the lower-priority role, scope, addendum and approved tools. Every save creates a new owner-configuration version.</p>
       <section className="card policy-card">
         <h2>Protected system policy</h2>
         <p>{policy || 'Loading protected policy…'}</p>
@@ -79,6 +97,19 @@ export default function AgentSettingsPage() {
           <div className="candidate-heading">
             <div><h2>{config.name}</h2><p className="note">{config.agentKind} · active version {config.configVersion}</p></div>
           </div>
+          <details className="reasoning-policy">
+            <summary>Protected system reasoning prompt · version {config.reasoningPromptVersion}</summary>
+            <p className="note">
+              {config.reasoningPrompt.sourceFile ? `Adapted from ${config.reasoningPrompt.sourceFile}. ` : ''}
+              {config.reasoningPrompt.adaptationNote}
+            </p>
+            <textarea
+              aria-label={`${config.name} protected system reasoning prompt`}
+              value={config.reasoningPrompt.systemPrompt}
+              readOnly
+              rows={14}
+            />
+          </details>
           <div className="setup-form">
             <label>Display name
               <input value={config.name} maxLength={120} onChange={(event) => update(config.agentKind, { name: event.target.value })} />
@@ -110,6 +141,18 @@ export default function AgentSettingsPage() {
           </div>
         </section>
       ))}</div>
+      <section className="card engine-policy-section">
+        <h2>Deterministic engine policies</h2>
+        <p className="note">The attached DCF and risk instructions govern code-backed engines. They are visible here for auditability but are never sent to an LLM or editable as agent prompts.</p>
+        <div className="agent-config-list">{enginePolicies.map((engine) => (
+          <details className="reasoning-policy" key={engine.engineKind}>
+            <summary>{engine.name}</summary>
+            <p>{engine.scope}</p>
+            <p className="note">Adapted from {engine.sourceFile}. {engine.implementationNote}</p>
+            <textarea aria-label={`${engine.name} protected policy`} value={engine.policy} readOnly rows={8} />
+          </details>
+        ))}</div>
+      </section>
     </main>
   );
 }

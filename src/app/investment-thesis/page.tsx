@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { ThesisExtractionResult } from '@portfolio-intelligence/agentic-contract';
 import { canDismissThesisExtraction } from '@/lib/thesis-extraction-lifecycle';
 
@@ -39,12 +40,14 @@ async function fileToBase64(file: File): Promise<string> {
 }
 
 export default function InvestmentThesisPage() {
+  const router = useRouter();
   const [versions, setVersions] = useState<ThesisVersionRow[]>([]);
   const [extractions, setExtractions] = useState<ExtractionRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [criteriaDraft, setCriteriaDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [transitionNotice, setTransitionNotice] = useState<string | null>(null);
   const pendingExtractionIds = extractions
     .filter((item) => item.status === 'queued' || item.status === 'running')
     .map((item) => item.externalExtractionId)
@@ -139,6 +142,7 @@ export default function InvestmentThesisPage() {
     if (!selected) return;
     setBusy(true);
     setError(null);
+    setTransitionNotice(null);
     try {
       const criteriaJson = JSON.parse(criteriaDraft) as unknown;
       const response = await fetch('/api/thesis', {
@@ -146,11 +150,27 @@ export default function InvestmentThesisPage() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ externalExtractionId: selected.externalExtractionId, criteriaJson }),
       });
-      const body = await response.json().catch(() => ({})) as { error?: string };
+      const body = await response.json().catch(() => ({})) as {
+        error?: string;
+        discoveryTransition?: {
+          status: 'started' | 'existing' | 'blocked';
+          runId?: string;
+          runStatus?: string;
+          errorMessage?: string;
+        };
+      };
       if (!response.ok) throw new Error(body.error ?? `Confirmation failed (${response.status})`);
       setSelectedId(null);
       setCriteriaDraft('');
-      await load();
+      if (body.discoveryTransition?.status === 'started' || body.discoveryTransition?.status === 'existing') {
+        router.push('/ai-stock-discovery');
+      } else {
+        setTransitionNotice(
+          `The thesis was confirmed, but market research did not start: ${body.discoveryTransition?.errorMessage ?? 'the transition was not accepted'}. ` +
+          'Correct the stated prerequisite, then use “Find thesis-matched stocks” on the discovery page.'
+        );
+        await load();
+      }
     } catch (cause) {
       setError(cause instanceof SyntaxError ? 'Criteria must be valid JSON' : (cause as Error).message);
     } finally {
@@ -238,6 +258,7 @@ export default function InvestmentThesisPage() {
       <p className="sub">Extract a document, review every ambiguity, then explicitly confirm the canonical criteria.</p>
 
       {error && <p className="caveat" role="alert">{error}</p>}
+      {transitionNotice && <p className="caveat" role="status">{transitionNotice}</p>}
 
       <section className="card">
         <h2>1. Submit source document</h2>
@@ -297,7 +318,7 @@ export default function InvestmentThesisPage() {
       {selected?.resultJson && (
         <section className="card">
           <h2>3. Human confirmation</h2>
-          <p className="note">Extraction confidence: {(selected.resultJson.extractionConfidence * 100).toFixed(0)}%. Edit the criteria if needed, then confirm.</p>
+          <p className="note">Extraction confidence: {(selected.resultJson.extractionConfidence * 100).toFixed(0)}%. Edit the criteria if needed, then confirm. Market research starts only after this human gate.</p>
           {selected.resultJson.ambiguousPoints.length > 0 && (
             <div className="caveat">
               <strong>Ambiguities requiring judgment</strong>
@@ -318,7 +339,7 @@ export default function InvestmentThesisPage() {
             style={{ width: '100%', marginTop: '0.75rem', fontFamily: 'monospace' }}
           />
           <button className="action-button" type="button" onClick={() => void confirm()} disabled={busy || !criteriaDraft}>
-            Confirm thesis version {selected.requestedVersion}
+            Confirm thesis version {selected.requestedVersion} &amp; start market research
           </button>
         </section>
       )}

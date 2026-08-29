@@ -48,9 +48,17 @@ name, scope and prompt addendum. Tool access is a whitelist: document,
 structured universe and grounding tools are mandatory for their stages; hosted
 web search is enabled by default and can be disabled only for market research.
 
-Customization is appended below immutable system policy. It cannot disable
-grounding validation, enable LLM arithmetic, grant database access, add trade
-execution or bypass human approval.
+The protected reasoning layer adapts the platform-configuration sections of the
+provided thesis-extraction, market-discovery and financial-analysis prompt
+documents to the current validated output schemas. Prompt order is immutable
+service policy, then protected source-derived reasoning, then owner scope and
+owner addendum. Customization cannot disable grounding validation, enable LLM
+arithmetic, grant database access, add trade execution or bypass human
+approval.
+
+The supplied DCF and risk prompts are displayed separately as deterministic
+engine policies. They are not LLM agents: TypeScript performs their arithmetic,
+and human-confirmed inputs plus code invariants remain authoritative.
 
 The market researcher can use the OpenAI Responses API hosted `web_search` tool
 when enabled. Candidate identities still must exist in the EODHD structured
@@ -82,10 +90,15 @@ values use the listing currency, and missing fields can exclude securities:
 
 ## Expected UI sequence
 
-1. Upload and confirm the thesis under **Investment Thesis**.
-2. Create Swiss Quality and/or Brazilian Growth portfolios.
-3. Configure agent preferences under **Agent Settings**.
-4. Open **AI Stock Discovery** and start market research.
+1. Create Swiss Quality and/or Brazilian Growth portfolios.
+2. Configure agent preferences under **Agent Settings**.
+3. Upload the thesis under **Investment Thesis**, review the extraction and
+   explicitly confirm it.
+4. Confirmation automatically starts market research for that exact thesis
+   version and opens **AI Stock Discovery**. If EODHD, a matching portfolio, or
+   the private agentic service is unavailable, the confirmed thesis is kept and
+   the page displays the precise blocked prerequisite; the manual discovery
+   button remains the retry path.
 5. Review sources, gaps and thesis fit for every shortlisted security.
 6. Approve, watchlist or reject each security.
 7. Wait for an approved candidate's independent financial analysis.

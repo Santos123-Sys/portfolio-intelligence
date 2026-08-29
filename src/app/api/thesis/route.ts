@@ -11,6 +11,7 @@ import { externalThesisExtractions, thesisMutationAudit } from '@/lib/db/workflo
 import { assertSameOrigin } from '@/lib/auth';
 import { authenticateRequest } from '@/lib/api-auth';
 import { excludeThesisVersion, ThesisVersionNotFoundError } from '@/lib/services/thesis-exclusion';
+import { startDiscoveryAfterThesisConfirmation } from '@/lib/thesis-discovery-transition';
 
 export const runtime = 'nodejs';
 
@@ -105,7 +106,11 @@ export async function POST(req: Request) {
       }
       return created;
     });
-    return NextResponse.json({ version }, { status: 201 });
+    const discoveryTransition = await startDiscoveryAfterThesisConfirmation({
+      ownerId: session.auth.userId,
+      thesisVersionId: version.id,
+    });
+    return NextResponse.json({ version, discoveryTransition }, { status: 201 });
   } catch (error) {
     if (error instanceof ConfirmationError) {
       return NextResponse.json({ error: error.message }, { status: 409 });

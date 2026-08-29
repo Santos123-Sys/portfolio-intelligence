@@ -173,6 +173,10 @@ CRON_SECRET=<same dashboard cron secret>
 5. Enroll MFA, sign out, and confirm that password-only login receives an MFA
    challenge and a used TOTP cannot be replayed.
 6. Upload a thesis PDF, wait for extraction, review ambiguities and confirm it.
+   Confirmation must create a market-research run automatically and redirect to
+   **AI Stock Discovery**. A blocked transition must name the missing provider,
+   portfolio or agentic-service prerequisite without undoing the confirmed
+   thesis.
 7. Open **More -> Portfolio Setup**, create each portfolio, and add at least one
    holding to every portfolio. The Agentic System button remains disabled until
    the readiness panel reports no missing prerequisites.
@@ -184,8 +188,9 @@ CRON_SECRET=<same dashboard cron secret>
    verify HTTP 409.
 12. Confirm neither service log contains a bearer key, raw thesis document or
     raw provider payload.
-13. Open **More -> AI Stock Discovery**, start a provider-backed discovery run,
-    approve one candidate and verify that only that candidate starts a financial
-    analysis. Confirm that no portfolio position is created.
+13. On **AI Stock Discovery**, observe the provider-backed run started by thesis
+    confirmation. Approve one candidate and verify that only that candidate
+    starts a financial analysis. Confirm that the manual start control remains
+    a recovery path and that no portfolio position is created.
 14. Review the standalone risk methods, confirm DCF assumptions, and verify the
     fair-value scenario includes methodology, evidence references and caveats.

@@ -146,6 +146,10 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
 .sensitivity-table th:first-child { text-align: left; }
 .policy-card { margin-bottom: 1rem; border-color: var(--accent); }
 .agent-config-card { min-width: 0; }
+.reasoning-policy { margin: 0.9rem 0; padding: 0.8rem; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
+.reasoning-policy summary { color: var(--accent); cursor: pointer; font-size: 0.82rem; font-weight: 600; }
+.reasoning-policy textarea { width: 100%; margin-top: 0.75rem; resize: vertical; background: var(--panel); border: 1px solid var(--border); border-radius: 7px; color: var(--muted); padding: 0.75rem; font: 0.72rem/1.55 monospace; }
+.engine-policy-section { margin-top: 1rem; }
 .tool-picker { border: 1px solid var(--border); border-radius: 7px; padding: 0.7rem; }
 .tool-picker legend { color: var(--muted); font-size: 0.75rem; }
 .tool-picker label { display: inline-flex; grid-auto-flow: column; width: auto; margin-right: 1rem; align-items: center; }

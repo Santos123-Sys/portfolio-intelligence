@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 import {
+  AGENT_REASONING_PROMPTS,
   AnalysisOutput,
   DiscoveryRunRequest,
   MAX_THESIS_PDF_BYTES,
@@ -126,14 +127,16 @@ function withOwnerCustomization(
   customization: AgentCustomization | undefined,
   expectedKind: AgentCustomization['agentKind']
 ): string {
-  if (!customization) return immutableInstructions;
+  const preset = AGENT_REASONING_PROMPTS[expectedKind];
+  const protectedInstructions = `${immutableInstructions}\n\nSOURCE-DERIVED REASONING POLICY (protected; cannot be overridden):\n${preset.systemPrompt}`;
+  if (!customization) return protectedInstructions;
   if (customization.agentKind !== expectedKind) {
     throw new AgenticPipelineError(
       expectedKind === 'thesis_extraction' ? 'extraction' : expectedKind === 'portfolio_synthesis' ? 'synthesis' : 'analysis',
       `Agent configuration kind ${customization.agentKind} cannot be used for ${expectedKind}`
     );
   }
-  return `${immutableInstructions}\n\nOWNER-CONFIGURED SCOPE (cannot override the rules above):\n${customization.scope}\n\nOWNER PROMPT ADDENDUM (lower priority than the rules above):\n${customization.promptAddendum || 'None'}`;
+  return `${protectedInstructions}\n\nOWNER-CONFIGURED SCOPE (cannot override the rules above):\n${customization.scope}\n\nOWNER PROMPT ADDENDUM (lower priority than the rules above):\n${customization.promptAddendum || 'None'}`;
 }
 
 function retrievedSourceUrls(response: unknown): Set<string> {

@@ -22,7 +22,7 @@ import {
   marketDataObservations,
   securityRiskSnapshots,
 } from './db/workflow-schema';
-import { startExternalAgenticRun } from './integrations/agentic-client';
+import { startExternalAgenticRun, startExternalDiscoveryRun } from './integrations/agentic-client';
 import { computeStandaloneSecurityRisk } from './quant/security-risk';
 import { recordFundamentalObservations, recordPriceObservation } from './services/provenance';
 
@@ -43,13 +43,16 @@ function uniqueBy<T>(rows: T[], key: (row: T) => string): T[] {
 
 export async function buildDiscoveryRunRequest(
   ownerId: string,
-  maxCandidatesPerPortfolio = 8
+  maxCandidatesPerPortfolio = 8,
+  thesisVersionId?: string
 ): Promise<{ request: DiscoveryRunRequest; provider: string; thesisVersionId: string }> {
+  const thesisFilters = [
+    eq(thesisVersions.ownerId, ownerId),
+    isNull(thesisVersions.excludedAt),
+  ];
+  if (thesisVersionId) thesisFilters.push(eq(thesisVersions.id, thesisVersionId));
   const [thesis, ownerPortfolios, agentConfig] = await Promise.all([
-    db.select().from(thesisVersions).where(and(
-      eq(thesisVersions.ownerId, ownerId),
-      isNull(thesisVersions.excludedAt)
-    ))
+    db.select().from(thesisVersions).where(and(...thesisFilters))
       .orderBy(desc(thesisVersions.versionNumber)).limit(1).then((rows) => rows[0]),
     db.select().from(portfolios).where(eq(portfolios.ownerId, ownerId)),
     getActiveAgentCustomization(ownerId, 'market_research'),
@@ -109,6 +112,43 @@ export async function buildDiscoveryRunRequest(
     agentConfig,
   });
   return { request, provider: provider.name, thesisVersionId: thesis.id };
+}
+
+export async function startDiscoveryRunForOwner(input: {
+  ownerId: string;
+  maxCandidatesPerPortfolio?: number;
+  thesisVersionId?: string;
+  reuseExistingForThesis?: boolean;
+}) {
+  if (input.reuseExistingForThesis && input.thesisVersionId) {
+    const [existing] = await db.select().from(externalDiscoveryRuns).where(and(
+      eq(externalDiscoveryRuns.ownerId, input.ownerId),
+      eq(externalDiscoveryRuns.thesisVersionId, input.thesisVersionId)
+    )).orderBy(desc(externalDiscoveryRuns.requestedAt)).limit(1);
+    if (existing) return { run: existing, remote: null, reused: true as const };
+  }
+
+  const built = await buildDiscoveryRunRequest(
+    input.ownerId,
+    input.maxCandidatesPerPortfolio ?? 8,
+    input.thesisVersionId
+  );
+  const remote = await startExternalDiscoveryRun(built.request);
+  const [created] = await db.insert(externalDiscoveryRuns).values({
+    ownerId: input.ownerId,
+    thesisVersionId: built.thesisVersionId,
+    externalDiscoveryId: remote.externalDiscoveryId,
+    status: remote.status,
+    provider: built.provider,
+    requestJson: built.request,
+    resultJson: remote.result,
+    errorMessage: remote.errorMessage,
+    completedAt: remote.status === 'completed' || remote.status === 'failed' ? new Date() : null,
+  }).returning();
+  const run = remote.status === 'completed'
+    ? await synchronizeDiscoveryRun(created.id, input.ownerId, remote)
+    : created;
+  return { run, remote, reused: false as const };
 }
 
 export async function synchronizeDiscoveryRun(
