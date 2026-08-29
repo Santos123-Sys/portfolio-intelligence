@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { portfolios, positions } from '@/lib/db/schema';
-import { eq, sum } from 'drizzle-orm';
+import { and, eq, sql, sum } from 'drizzle-orm';
 import { fetchEcbRates, displayTotal } from '@/lib/fx';
 import { Currency } from '@/lib/quant/types';
 import { authenticateRequest } from '@/lib/api-auth';
+import { assertSameOrigin } from '@/lib/auth';
+import { portfolioCreateSchema } from '@/lib/portfolio-setup';
+import { readBoundedJson } from '@/lib/request-body';
 
 export const runtime = 'nodejs';
 
@@ -65,5 +68,47 @@ export async function GET(req: Request) {
       displayTotal: null,
       displayTotalError: (e as Error).message,
     });
+  }
+}
+
+export async function POST(req: Request) {
+  const session = await authenticateRequest(req);
+  if (!session.ok) return session.response;
+  try {
+    assertSameOrigin(req);
+  } catch {
+    return NextResponse.json({ error: 'Cross-origin mutation rejected' }, { status: 403 });
+  }
+
+  const body = await readBoundedJson(req, 16 * 1024);
+  if (!body.ok) return NextResponse.json({ error: body.error }, { status: body.status });
+  const parsed = portfolioCreateSchema.safeParse(body.value);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const [duplicate] = await db
+    .select({ id: portfolios.id })
+    .from(portfolios)
+    .where(and(
+      eq(portfolios.ownerId, session.auth.userId),
+      sql`lower(${portfolios.name}) = lower(${parsed.data.name})`
+    ))
+    .limit(1);
+  if (duplicate) {
+    return NextResponse.json({ error: 'A portfolio with this name already exists' }, { status: 409 });
+  }
+
+  try {
+    const [portfolio] = await db.insert(portfolios).values({
+      ownerId: session.auth.userId,
+      name: parsed.data.name,
+      portfolioType: parsed.data.portfolioType,
+      baseCurrency: parsed.data.baseCurrency,
+      investmentObjective: parsed.data.investmentObjective,
+    }).returning();
+    return NextResponse.json({ portfolio }, { status: 201 });
+  } catch {
+    return NextResponse.json({ error: 'Unable to create portfolio' }, { status: 500 });
   }
 }

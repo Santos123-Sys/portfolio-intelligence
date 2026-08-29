@@ -9,6 +9,7 @@
  * it recomputes nothing.
  */
 import { Suspense, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { PortfolioCard, type PortfolioCardData } from '@/components/portfolio-card';
 import { DisplayTotal, type DisplayTotalData } from '@/components/display-total';
@@ -122,11 +123,8 @@ function OverviewContent() {
       {!loading && cards.length === 0 && (
         <div className="card">
           <h2>No portfolios configured</h2>
-          <p className="note">
-            Trigger /api/cron/refresh to load market data.
-            <br />
-            Or run <code>npm run seed</code> to load demo data.
-          </p>
+          <p className="note">Create your first portfolio and add at least one holding before running analysis.</p>
+          <Link className="action-button inline-action" href="/portfolio-setup">Set up portfolio</Link>
         </div>
       )}
 

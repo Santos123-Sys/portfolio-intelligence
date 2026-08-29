@@ -3,6 +3,9 @@ import { db } from '@/lib/db';
 import { positions, securities, aiAnalyses, priceHistory, portfolios } from '@/lib/db/schema';
 import { and, eq, desc, inArray } from 'drizzle-orm';
 import { authenticateRequest, portfolioIsOwned } from '@/lib/api-auth';
+import { assertSameOrigin } from '@/lib/auth';
+import { holdingCreateSchema } from '@/lib/portfolio-setup';
+import { readBoundedJson } from '@/lib/request-body';
 
 export const runtime = 'nodejs';
 
@@ -89,6 +92,102 @@ export async function GET(req: Request) {
   }));
 
   return NextResponse.json({ positions: withDayChange });
+}
+
+export async function POST(req: Request) {
+  const session = await authenticateRequest(req);
+  if (!session.ok) return session.response;
+  try {
+    assertSameOrigin(req);
+  } catch {
+    return NextResponse.json({ error: 'Cross-origin mutation rejected' }, { status: 403 });
+  }
+
+  const body = await readBoundedJson(req, 16 * 1024);
+  if (!body.ok) return NextResponse.json({ error: body.error }, { status: body.status });
+  const parsed = holdingCreateSchema.safeParse(body.value);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  try {
+    const created = await db.transaction(async (tx) => {
+      const [portfolio] = await tx
+        .select()
+        .from(portfolios)
+        .where(and(
+          eq(portfolios.id, parsed.data.portfolioId),
+          eq(portfolios.ownerId, session.auth.userId)
+        ))
+        .limit(1);
+      if (!portfolio) throw new PositionSetupError('Portfolio not found', 404);
+
+      let [security] = await tx
+        .select()
+        .from(securities)
+        .where(and(
+          eq(securities.ticker, parsed.data.ticker),
+          eq(securities.exchange, parsed.data.exchange)
+        ))
+        .limit(1);
+
+      if (!security) {
+        [security] = await tx.insert(securities).values({
+          ticker: parsed.data.ticker,
+          companyName: parsed.data.companyName,
+          exchange: parsed.data.exchange,
+          currency: parsed.data.currency,
+          sector: parsed.data.sector || null,
+          country: parsed.data.country || null,
+        }).onConflictDoNothing({
+          target: [securities.ticker, securities.exchange],
+        }).returning();
+        if (!security) {
+          [security] = await tx
+            .select()
+            .from(securities)
+            .where(and(
+              eq(securities.ticker, parsed.data.ticker),
+              eq(securities.exchange, parsed.data.exchange)
+            ))
+            .limit(1);
+        }
+      }
+      if (!security) throw new Error('Security creation did not return a record');
+
+      const [duplicate] = await tx
+        .select({ id: positions.id })
+        .from(positions)
+        .where(and(
+          eq(positions.portfolioId, portfolio.id),
+          eq(positions.securityId, security.id)
+        ))
+        .limit(1);
+      if (duplicate) {
+        throw new PositionSetupError('This security already has a position in the selected portfolio', 409);
+      }
+
+      const [position] = await tx.insert(positions).values({
+        portfolioId: portfolio.id,
+        securityId: security.id,
+        quantity: String(parsed.data.quantity),
+        avgCost: String(parsed.data.avgCost),
+      }).returning();
+      return { portfolio, security, position };
+    });
+    return NextResponse.json(created, { status: 201 });
+  } catch (error) {
+    if (error instanceof PositionSetupError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    return NextResponse.json({ error: 'Unable to create position' }, { status: 500 });
+  }
+}
+
+class PositionSetupError extends Error {
+  constructor(message: string, readonly status: 404 | 409) {
+    super(message);
+  }
 }
 
 /** Latest close vs. prior close, per security, from price_history. */

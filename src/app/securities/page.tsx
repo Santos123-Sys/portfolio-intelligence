@@ -1,4 +1,5 @@
 import { asc, inArray } from 'drizzle-orm';
+import Link from 'next/link';
 import { db } from '@/lib/db';
 import { securities } from '@/lib/db/schema';
 import { ownedSecurityIds } from '@/lib/api-auth';
@@ -17,7 +18,7 @@ export default async function SecuritiesPage() {
     <main>
       <h1>Securities</h1>
       <p className="sub">Security master for the investable universe and portfolio holdings.</p>
-      {rows.length === 0 ? <div className="card"><p className="note">No securities stored.</p></div> : (
+      {rows.length === 0 ? <div className="card"><p className="note">No securities stored.</p><Link className="action-button inline-action" href="/portfolio-setup">Add a holding</Link></div> : (
         <table>
           <thead><tr><th>Company</th><th>Ticker</th><th>Country</th><th>Exchange</th><th>Currency</th><th>Sector</th><th>Industry</th></tr></thead>
           <tbody>{rows.map((s) => (

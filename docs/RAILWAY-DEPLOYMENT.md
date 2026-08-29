@@ -166,11 +166,14 @@ CRON_SECRET=<same dashboard cron secret>
 5. Enroll MFA, sign out, and confirm that password-only login receives an MFA
    challenge and a used TOTP cannot be replayed.
 6. Upload a thesis PDF, wait for extraction, review ambiguities and confirm it.
-7. Start “Analyze current portfolios”; observe queued -> running -> imported.
-8. Verify every requested holding has one analysis and every portfolio has one
+7. Open **More -> Portfolio Setup**, create each portfolio, and add at least one
+   holding to every portfolio. The Agentic System button remains disabled until
+   the readiness panel reports no missing prerequisites.
+8. Start “Analyze current portfolios”; observe queued -> running -> imported.
+9. Verify every requested holding has one analysis and every portfolio has one
    synthesis.
-9. Open the proxied PDF while authenticated.
-10. Replay the same callback and verify idempotency; alter the manifest and
+10. Open the proxied PDF while authenticated.
+11. Replay the same callback and verify idempotency; alter the manifest and
    verify HTTP 409.
-11. Confirm neither service log contains a bearer key, raw thesis document or
+12. Confirm neither service log contains a bearer key, raw thesis document or
    raw provider payload.

@@ -10,7 +10,7 @@ import {
   retryExternalAgenticJob,
   startExternalAgenticRun,
 } from '@/lib/integrations/agentic-client';
-import { buildAgenticRunRequest } from '@/lib/integrations/grounding-builder';
+import { buildAgenticRunRequest, getAgenticReadiness } from '@/lib/integrations/grounding-builder';
 
 export const runtime = 'nodejs';
 
@@ -65,7 +65,11 @@ export async function GET(req: Request) {
     .orderBy(desc(externalAgenticRuns.requestedAt))
     .limit(50);
 
-  let runs = await listRuns();
+  const [initialRuns, readiness] = await Promise.all([
+    listRuns(),
+    getAgenticReadiness(session.auth.userId),
+  ]);
+  let runs = initialRuns;
   const active = runs.filter((run) => run.status === 'queued' || run.status === 'running');
   if (active.length) {
     await Promise.all(active.map(async (run) => {
@@ -88,12 +92,19 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({
-    runs: runs.map(({ id: _id, reportPdfUrl, ...run }) => ({
-      ...run,
-      reportUrl: reportPdfUrl || run.status === 'completed' || run.status === 'imported'
+    runs: runs.map((run) => ({
+      externalRunId: run.externalRunId,
+      status: run.status,
+      thesisVersion: run.thesisVersion,
+      requestedAt: run.requestedAt,
+      completedAt: run.completedAt,
+      importedAt: run.importedAt,
+      errorMessage: run.errorMessage,
+      reportUrl: run.reportPdfUrl || run.status === 'completed' || run.status === 'imported'
         ? `/api/integrations/agentic/reports?externalRunId=${encodeURIComponent(run.externalRunId)}`
         : null,
     })),
+    readiness,
   });
 }
 
