@@ -1,5 +1,13 @@
 import { z } from 'zod';
 
+export {
+  AGENT_REASONING_PROMPT_VERSION,
+  AGENT_REASONING_PROMPTS,
+  DETERMINISTIC_ENGINE_POLICIES,
+  type AgentReasoningPrompt,
+  type DeterministicEnginePolicy,
+} from './prompt-presets.js';
+
 export const MANIFEST_SCHEMA_VERSION = '1.0' as const;
 
 export const PortfolioRole = z.enum([

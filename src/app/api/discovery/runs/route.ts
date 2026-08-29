@@ -6,11 +6,10 @@ import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 import { thesisVersions } from '@/lib/db/schema';
 import { discoveryCandidates, externalDiscoveryRuns } from '@/lib/db/workflow-schema';
-import { buildDiscoveryRunRequest, synchronizeDiscoveryRun } from '@/lib/discovery-workflow';
+import { startDiscoveryRunForOwner, synchronizeDiscoveryRun } from '@/lib/discovery-workflow';
 import {
   fetchExternalDiscoveryRun,
   retryExternalDiscoveryRun,
-  startExternalDiscoveryRun,
 } from '@/lib/integrations/agentic-client';
 
 export const runtime = 'nodejs';
@@ -73,21 +72,11 @@ export async function POST(req: Request) {
   const parsed = startSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   try {
-    const built = await buildDiscoveryRunRequest(session.auth.userId, parsed.data.maxCandidatesPerPortfolio);
-    const remote = await startExternalDiscoveryRun(built.request);
-    const [run] = await db.insert(externalDiscoveryRuns).values({
+    const started = await startDiscoveryRunForOwner({
       ownerId: session.auth.userId,
-      thesisVersionId: built.thesisVersionId,
-      externalDiscoveryId: remote.externalDiscoveryId,
-      status: remote.status,
-      provider: built.provider,
-      requestJson: built.request,
-      resultJson: remote.result,
-      errorMessage: remote.errorMessage,
-      completedAt: remote.status === 'completed' || remote.status === 'failed' ? new Date() : null,
-    }).returning();
-    if (remote.status === 'completed') await synchronizeDiscoveryRun(run.id, session.auth.userId, remote);
-    return NextResponse.json({ run, remote }, { status: 202 });
+      maxCandidatesPerPortfolio: parsed.data.maxCandidatesPerPortfolio,
+    });
+    return NextResponse.json({ run: started.run, remote: started.remote }, { status: 202 });
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 502 });
   }

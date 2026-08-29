@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { AgentKind, AgentTool } from '@portfolio-intelligence/agentic-contract';
+import {
+  AGENT_REASONING_PROMPT_VERSION,
+  AGENT_REASONING_PROMPTS,
+  AgentKind,
+  AgentTool,
+  DETERMINISTIC_ENGINE_POLICIES,
+} from '@portfolio-intelligence/agentic-contract';
 import { assertSameOrigin } from '@/lib/auth';
 import { authenticateRequest } from '@/lib/api-auth';
 import { allowedToolsFor, getActiveAgentCustomization, validateAgentTools } from '@/lib/agent-config';
@@ -25,10 +31,13 @@ export async function GET(req: Request) {
   const configurations = await Promise.all(kinds.map(async (kind) => ({
     ...(await getActiveAgentCustomization(session.auth.userId, kind)),
     allowedTools: allowedToolsFor(kind),
+    reasoningPromptVersion: AGENT_REASONING_PROMPT_VERSION,
+    reasoningPrompt: AGENT_REASONING_PROMPTS[kind],
   })));
   return NextResponse.json({
     configurations,
-    immutablePolicy: 'Owner instructions are appended below service safety rules. Grounding, calculation, ownership and no-trading rules cannot be disabled.',
+    immutablePolicy: 'Source-derived reasoning prompts and owner instructions are appended below service safety rules. Grounding, calculation, ownership and no-trading rules cannot be disabled.',
+    deterministicEnginePolicies: DETERMINISTIC_ENGINE_POLICIES,
   });
 }
 
