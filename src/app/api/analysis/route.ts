@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { aiAnalyses, securities } from '@/lib/db/schema';
-import { and, eq, desc } from 'drizzle-orm';
+import { aiAnalyses, securities, thesisVersions } from '@/lib/db/schema';
+import { and, eq, desc, isNull } from 'drizzle-orm';
 import { authenticateRequest } from '@/lib/api-auth';
 import { assertSameOrigin } from '@/lib/auth';
 
@@ -48,11 +48,19 @@ export async function GET(req: Request) {
       dataTimestamp: aiAnalyses.dataTimestamp,
     })
     .from(aiAnalyses)
-    .innerJoin(securities, eq(aiAnalyses.securityId, securities.id));
+    .innerJoin(securities, eq(aiAnalyses.securityId, securities.id))
+    .innerJoin(thesisVersions, eq(aiAnalyses.thesisVersionId, thesisVersions.id));
 
   const rows = securityId
-    ? await base.where(and(eq(aiAnalyses.ownerId, session.auth.userId), eq(aiAnalyses.securityId, securityId))).orderBy(desc(aiAnalyses.analysisTimestamp))
-    : await base.where(eq(aiAnalyses.ownerId, session.auth.userId)).orderBy(desc(aiAnalyses.analysisTimestamp)).limit(50);
+    ? await base.where(and(
+        eq(aiAnalyses.ownerId, session.auth.userId),
+        eq(aiAnalyses.securityId, securityId),
+        isNull(thesisVersions.excludedAt)
+      )).orderBy(desc(aiAnalyses.analysisTimestamp))
+    : await base.where(and(
+        eq(aiAnalyses.ownerId, session.auth.userId),
+        isNull(thesisVersions.excludedAt)
+      )).orderBy(desc(aiAnalyses.analysisTimestamp)).limit(50);
 
   return NextResponse.json({ analyses: rows });
 }

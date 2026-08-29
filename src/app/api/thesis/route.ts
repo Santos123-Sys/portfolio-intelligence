@@ -10,6 +10,7 @@ import { thesisVersions } from '@/lib/db/schema';
 import { externalThesisExtractions, thesisMutationAudit } from '@/lib/db/workflow-schema';
 import { assertSameOrigin } from '@/lib/auth';
 import { authenticateRequest } from '@/lib/api-auth';
+import { excludeThesisVersion, ThesisVersionNotFoundError } from '@/lib/services/thesis-exclusion';
 
 export const runtime = 'nodejs';
 
@@ -23,7 +24,10 @@ export async function GET(req: Request) {
   const session = await authenticateRequest(req);
   if (!session.ok) return session.response;
   const versions = await db.select().from(thesisVersions)
-    .where(eq(thesisVersions.ownerId, session.auth.userId))
+    .where(and(
+      eq(thesisVersions.ownerId, session.auth.userId),
+      isNull(thesisVersions.excludedAt)
+    ))
     .orderBy(desc(thesisVersions.versionNumber));
   return NextResponse.json({ versions });
 }
@@ -46,6 +50,11 @@ export async function POST(req: Request) {
       const [latest] = await tx.select().from(thesisVersions)
         .where(eq(thesisVersions.ownerId, session.auth.userId))
         .orderBy(desc(thesisVersions.versionNumber)).limit(1);
+      const [active] = await tx.select().from(thesisVersions).where(and(
+        eq(thesisVersions.ownerId, session.auth.userId),
+        isNull(thesisVersions.excludedAt),
+        isNull(thesisVersions.supersededAt)
+      )).orderBy(desc(thesisVersions.versionNumber)).limit(1);
       const nextVersion = (latest?.versionNumber ?? 0) + 1;
       if (parsed.data.criteriaJson.version !== nextVersion) {
         throw new ConfirmationError(`Confirmed criteria must be thesis version ${nextVersion}`);
@@ -68,9 +77,9 @@ export async function POST(req: Request) {
         extractionId = extraction.id;
       }
 
-      if (latest && !latest.supersededAt) {
+      if (active) {
         await tx.update(thesisVersions).set({ supersededAt: new Date() })
-          .where(and(eq(thesisVersions.id, latest.id), eq(thesisVersions.ownerId, session.auth.userId)));
+          .where(and(eq(thesisVersions.id, active.id), eq(thesisVersions.ownerId, session.auth.userId)));
       }
       const [created] = await tx.insert(thesisVersions).values({
         ownerId: session.auth.userId,
@@ -84,7 +93,7 @@ export async function POST(req: Request) {
         action: extractionId ? 'confirmed_external_extraction' : 'confirmed_manual_criteria',
         actor: session.auth.email,
         metadata: {
-          supersededVersionId: latest?.id ?? null,
+          supersededVersionId: active?.id ?? null,
           externalExtractionId: parsed.data.externalExtractionId ?? null,
         },
       });
@@ -106,3 +115,33 @@ export async function POST(req: Request) {
 }
 
 class ConfirmationError extends Error {}
+
+export async function DELETE(req: Request) {
+  const session = await authenticateRequest(req);
+  if (!session.ok) return session.response;
+  try {
+    assertSameOrigin(req);
+  } catch {
+    return NextResponse.json({ error: 'Cross-origin mutation rejected' }, { status: 403 });
+  }
+
+  const thesisVersionId = new URL(req.url).searchParams.get('id');
+  const parsedId = z.string().uuid().safeParse(thesisVersionId);
+  if (!parsedId.success) {
+    return NextResponse.json({ error: 'A valid thesis version id is required' }, { status: 400 });
+  }
+
+  try {
+    const result = await excludeThesisVersion({
+      ownerId: session.auth.userId,
+      thesisVersionId: parsedId.data,
+      actor: session.auth.email,
+    });
+    return NextResponse.json({ excluded: true, ...result });
+  } catch (error) {
+    if (error instanceof ThesisVersionNotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+    return NextResponse.json({ error: 'Unable to exclude thesis version' }, { status: 500 });
+  }
+}

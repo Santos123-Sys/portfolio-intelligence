@@ -257,8 +257,13 @@ export const thesisVersions = pgTable(
     rawDocument: text('raw_document'),
     effectiveDate: timestamp('effective_date', { withTimezone: true }).defaultNow().notNull(),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
+    excludedAt: timestamp('excluded_at', { withTimezone: true }),
+    excludedBy: text('excluded_by'),
   },
-  (t) => ({ ownerVersionIdx: uniqueIndex('thesis_versions_owner_version_idx').on(t.ownerId, t.versionNumber) })
+  (t) => ({
+    ownerVersionIdx: uniqueIndex('thesis_versions_owner_version_idx').on(t.ownerId, t.versionNumber),
+    ownerExcludedIdx: index('thesis_versions_owner_excluded_idx').on(t.ownerId, t.excludedAt, t.versionNumber),
+  })
 );
 
 export const aiAnalyses = pgTable(

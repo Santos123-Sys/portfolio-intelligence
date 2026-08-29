@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import {
   AgenticRunRequest,
   AgenticRunSelection,
@@ -108,7 +108,10 @@ export async function getAgenticReadiness(ownerId: string): Promise<AgenticReadi
   const [latestThesis, ownerPortfolios, ownerPositions] = await Promise.all([
     db.select({ versionNumber: thesisVersions.versionNumber })
       .from(thesisVersions)
-      .where(eq(thesisVersions.ownerId, ownerId))
+      .where(and(
+        eq(thesisVersions.ownerId, ownerId),
+        isNull(thesisVersions.excludedAt)
+      ))
       .orderBy(desc(thesisVersions.versionNumber))
       .limit(1),
     db.select({ id: portfolios.id, name: portfolios.name })
@@ -136,8 +139,12 @@ export async function buildAgenticRunRequest(
     .select()
     .from(thesisVersions)
     .where(selection.thesisVersionId
-      ? and(eq(thesisVersions.ownerId, ownerId), eq(thesisVersions.id, selection.thesisVersionId))
-      : eq(thesisVersions.ownerId, ownerId))
+      ? and(
+          eq(thesisVersions.ownerId, ownerId),
+          eq(thesisVersions.id, selection.thesisVersionId),
+          isNull(thesisVersions.excludedAt)
+        )
+      : and(eq(thesisVersions.ownerId, ownerId), isNull(thesisVersions.excludedAt)))
     .orderBy(desc(thesisVersions.versionNumber))
     .limit(1);
   if (!thesis) throw new Error('Create and confirm an investment thesis before starting analysis');

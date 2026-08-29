@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import {
   AgenticRunRequest,
   DiscoveryCandidate,
@@ -46,7 +46,10 @@ export async function buildDiscoveryRunRequest(
   maxCandidatesPerPortfolio = 8
 ): Promise<{ request: DiscoveryRunRequest; provider: string; thesisVersionId: string }> {
   const [thesis, ownerPortfolios, agentConfig] = await Promise.all([
-    db.select().from(thesisVersions).where(eq(thesisVersions.ownerId, ownerId))
+    db.select().from(thesisVersions).where(and(
+      eq(thesisVersions.ownerId, ownerId),
+      isNull(thesisVersions.excludedAt)
+    ))
       .orderBy(desc(thesisVersions.versionNumber)).limit(1).then((rows) => rows[0]),
     db.select().from(portfolios).where(eq(portfolios.ownerId, ownerId)),
     getActiveAgentCustomization(ownerId, 'market_research'),
@@ -119,6 +122,19 @@ export async function synchronizeDiscoveryRun(
   )).limit(1);
   if (!local) throw new Error('Discovery run not found');
   if (local.externalDiscoveryId !== remote.externalDiscoveryId) throw new Error('Discovery identity changed');
+  const [usableThesis] = await db.select({ id: thesisVersions.id }).from(thesisVersions).where(and(
+    eq(thesisVersions.id, local.thesisVersionId),
+    eq(thesisVersions.ownerId, ownerId),
+    isNull(thesisVersions.excludedAt)
+  )).limit(1);
+  if (!usableThesis) {
+    const [updated] = await db.update(externalDiscoveryRuns).set({
+      status: 'failed',
+      errorMessage: 'The associated thesis version was excluded',
+      completedAt: new Date(),
+    }).where(eq(externalDiscoveryRuns.id, local.id)).returning();
+    return updated;
+  }
 
   if (remote.status !== 'completed') {
     const [updated] = await db.update(externalDiscoveryRuns).set({
@@ -166,7 +182,12 @@ async function ownedCandidate(ownerId: string, candidateId: string) {
   }).from(discoveryCandidates)
     .innerJoin(portfolios, eq(discoveryCandidates.portfolioId, portfolios.id))
     .innerJoin(externalDiscoveryRuns, eq(discoveryCandidates.runId, externalDiscoveryRuns.id))
-    .where(and(eq(discoveryCandidates.id, candidateId), eq(discoveryCandidates.ownerId, ownerId)))
+    .innerJoin(thesisVersions, eq(externalDiscoveryRuns.thesisVersionId, thesisVersions.id))
+    .where(and(
+      eq(discoveryCandidates.id, candidateId),
+      eq(discoveryCandidates.ownerId, ownerId),
+      isNull(thesisVersions.excludedAt)
+    ))
     .limit(1);
   return row ?? null;
 }
@@ -285,8 +306,14 @@ export async function approveCandidateAndStartAnalysis(ownerId: string, candidat
     throw new Error('No provider fundamentals were available; the financial analysis was not started');
   }
 
-  const thesis = ThesisCriteria.parse((await db.select().from(thesisVersions)
-    .where(eq(thesisVersions.id, row.run.thesisVersionId)).limit(1))[0]?.criteriaJson);
+  const [thesisVersion] = await db.select().from(thesisVersions)
+    .where(and(
+      eq(thesisVersions.id, row.run.thesisVersionId),
+      eq(thesisVersions.ownerId, ownerId),
+      isNull(thesisVersions.excludedAt)
+    )).limit(1);
+  if (!thesisVersion) throw new Error('The candidate thesis version has been excluded');
+  const thesis = ThesisCriteria.parse(thesisVersion.criteriaJson);
   const [securityConfig, synthesisConfig] = await Promise.all([
     getActiveAgentCustomization(ownerId, 'security_analysis'),
     getActiveAgentCustomization(ownerId, 'portfolio_synthesis'),

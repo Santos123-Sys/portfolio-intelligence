@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { assertSameOrigin } from '@/lib/auth';
 import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
-import { aiAnalyses, portfolios } from '@/lib/db/schema';
+import { aiAnalyses, portfolios, thesisVersions } from '@/lib/db/schema';
 import {
   discoveryCandidates,
   externalAgenticRuns,
@@ -32,7 +32,11 @@ export async function GET(req: Request) {
   }).from(discoveryCandidates)
     .innerJoin(portfolios, eq(discoveryCandidates.portfolioId, portfolios.id))
     .innerJoin(externalDiscoveryRuns, eq(discoveryCandidates.runId, externalDiscoveryRuns.id))
-    .where(eq(discoveryCandidates.ownerId, session.auth.userId))
+    .innerJoin(thesisVersions, eq(externalDiscoveryRuns.thesisVersionId, thesisVersions.id))
+    .where(and(
+      eq(discoveryCandidates.ownerId, session.auth.userId),
+      isNull(thesisVersions.excludedAt)
+    ))
     .orderBy(desc(discoveryCandidates.createdAt));
   const externalIds = rows.flatMap((row) => row.candidate.externalAnalysisRunId ? [row.candidate.externalAnalysisRunId] : []);
   const externalRuns = externalIds.length

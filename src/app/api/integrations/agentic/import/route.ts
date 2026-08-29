@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { aiAnalyses, portfolios, securities, thesisVersions } from '@/lib/db/schema';
 import {
@@ -113,7 +113,8 @@ export async function POST(req: Request) {
     .where(and(
       eq(thesisVersions.ownerId, existing.ownerId),
       eq(thesisVersions.id, request.data.thesis.versionId),
-      eq(thesisVersions.versionNumber, parsed.manifest.thesisVersion)
+      eq(thesisVersions.versionNumber, parsed.manifest.thesisVersion),
+      isNull(thesisVersions.excludedAt)
     ))
     .limit(1);
 

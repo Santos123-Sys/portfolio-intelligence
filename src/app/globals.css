@@ -84,8 +84,8 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
 .inline-action { display: inline-block; }
 .thesis-extraction-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .thesis-extraction-actions .action-button { margin-top: 0; }
-.thesis-extraction-actions .dismiss-button { border-color: var(--danger); color: var(--danger); }
-.thesis-extraction-actions .dismiss-button:not(:disabled):hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.dismiss-button { border-color: var(--danger); color: var(--danger); }
+.dismiss-button:not(:disabled):hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
 /* User-owned portfolio and holding setup */
 .setup-readiness { margin-bottom: 1rem; }

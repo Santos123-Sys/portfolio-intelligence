@@ -179,7 +179,7 @@ export default function InvestmentThesisPage() {
 
   async function dismiss(extraction: ExtractionRow) {
     const dismissalNotice = extraction.confirmedAt
-      ? 'The confirmed thesis version will remain active.'
+      ? 'The linked confirmed thesis version and extracted result will also be excluded.'
       : extraction.status === 'queued' || extraction.status === 'running'
         ? 'This does not cancel work already accepted by the agentic service, but its result will remain excluded from this dashboard.'
         : 'Its extracted criteria will not become canonical.';
@@ -195,11 +195,36 @@ export default function InvestmentThesisPage() {
         const body = await response.json().catch(() => ({})) as { error?: string };
         throw new Error(body.error ?? `Dismissal failed (${response.status})`);
       }
-      setExtractions((current) => current.filter((item) => item.id !== extraction.id));
       if (selectedId === extraction.id) {
         setSelectedId(null);
         setCriteriaDraft('');
       }
+      await load();
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function excludeVersion(thesis: ThesisVersionRow) {
+    const confirmed = window.confirm(
+      `Exclude thesis version ${thesis.versionNumber}? It and its linked extraction data will disappear from active views. ` +
+      'Historical audit references will remain. If this is the active version, the latest remaining confirmed version will become active.'
+    );
+    if (!confirmed) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/thesis?id=${encodeURIComponent(thesis.id)}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `Thesis exclusion failed (${response.status})`);
+      }
+      setSelectedId(null);
+      setCriteriaDraft('');
+      await load();
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
@@ -306,6 +331,15 @@ export default function InvestmentThesisPage() {
               <h3>Version {thesis.versionNumber}</h3>
               <p className="note">Effective: {new Date(thesis.effectiveDate).toLocaleString()}</p>
               <span className={`badge ${thesis.supersededAt ? 'watch' : 'ok'}`}>{thesis.supersededAt ? 'Superseded' : 'Active'}</span>
+              <button
+                className="action-button dismiss-button"
+                type="button"
+                onClick={() => void excludeVersion(thesis)}
+                disabled={busy}
+                aria-label={`Exclude thesis version ${thesis.versionNumber}`}
+              >
+                Exclude version
+              </button>
               <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem', color: 'var(--muted)', fontSize: '0.75rem' }}>
                 {JSON.stringify(thesis.criteriaJson, null, 2)}
               </pre>
