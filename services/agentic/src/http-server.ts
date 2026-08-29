@@ -2,12 +2,14 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import {
   AgenticRunRequest,
+  DiscoveryRunRequest,
   MAX_THESIS_BASE64_CHARACTERS,
   MAX_THESIS_PDF_BYTES,
   MAX_THESIS_TEXT_BYTES,
   ThesisExtractionRequest,
   validateRunRequestCoherence,
   type ExternalRunStatus,
+  type DiscoveryRunStatus,
   type ThesisDocument,
   type ThesisExtractionStatus,
 } from '@portfolio-intelligence/agentic-contract';
@@ -144,6 +146,31 @@ function extractionStatus(job: AgenticJob): ThesisExtractionStatus {
   return common;
 }
 
+function discoveryStatus(job: AgenticJob): DiscoveryRunStatus {
+  const common = {
+    externalDiscoveryId: job.externalId,
+    status: job.status,
+    updatedAt: job.updatedAt.toISOString(),
+  } as const;
+  if (job.status === 'failed') {
+    return { ...common, errorMessage: job.errorMessage ?? 'Market discovery failed' };
+  }
+  if (job.status === 'completed') {
+    if (!job.result || !('marketMandates' in job.result)) {
+      throw new HttpError(500, 'Completed discovery is missing its result');
+    }
+    return { ...common, result: job.result };
+  }
+  return {
+    ...common,
+    progress: {
+      completed: job.progressCompleted,
+      total: job.progressTotal,
+      currentStage: job.currentStage,
+    },
+  };
+}
+
 class HttpError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -190,6 +217,14 @@ export function createAgenticHttpServer(deps: HttpServerDependencies) {
         return sendJson(response, 202, extractionStatus(job));
       }
 
+      if (url.pathname === '/v1/discovery-runs' && request.method === 'POST') {
+        const parsed = DiscoveryRunRequest.safeParse(await readJson(request, 8 * 1024 * 1024));
+        if (!parsed.success) throw new HttpError(400, 'Discovery run request failed contract validation');
+        const externalId = createExternalId('discovery');
+        const job = await deps.repository.create('market_discovery', externalId, parsed.data, 1);
+        return sendJson(response, 202, discoveryStatus(job));
+      }
+
       const runReport = url.pathname.match(/^\/v1\/analysis-runs\/([^/]+)\/report$/);
       if (runReport && request.method === 'GET') {
         const job = await deps.repository.findByExternalId(decodeURIComponent(runReport[1]));
@@ -226,6 +261,15 @@ export function createAgenticHttpServer(deps: HttpServerDependencies) {
         return sendJson(response, 202, extractionStatus(retried));
       }
 
+      const discoveryRetry = url.pathname.match(/^\/v1\/discovery-runs\/([^/]+)\/retry$/);
+      if (discoveryRetry && request.method === 'POST') {
+        const existing = await deps.repository.findByExternalId(decodeURIComponent(discoveryRetry[1]));
+        if (!existing || existing.kind !== 'market_discovery') throw new HttpError(404, 'Discovery run not found');
+        const retried = await deps.repository.retry(existing.id);
+        if (!retried) throw new HttpError(409, 'Only failed discovery runs can be retried');
+        return sendJson(response, 202, discoveryStatus(retried));
+      }
+
       const runMatch = url.pathname.match(/^\/v1\/analysis-runs\/([^/]+)$/);
       if (runMatch && request.method === 'GET') {
         const job = await deps.repository.findByExternalId(decodeURIComponent(runMatch[1]));
@@ -238,6 +282,13 @@ export function createAgenticHttpServer(deps: HttpServerDependencies) {
         const job = await deps.repository.findByExternalId(decodeURIComponent(extractionMatch[1]));
         if (!job || job.kind !== 'thesis_extraction') throw new HttpError(404, 'Thesis extraction not found');
         return sendJson(response, 200, extractionStatus(job));
+      }
+
+      const discoveryMatch = url.pathname.match(/^\/v1\/discovery-runs\/([^/]+)$/);
+      if (discoveryMatch && request.method === 'GET') {
+        const job = await deps.repository.findByExternalId(decodeURIComponent(discoveryMatch[1]));
+        if (!job || job.kind !== 'market_discovery') throw new HttpError(404, 'Discovery run not found');
+        return sendJson(response, 200, discoveryStatus(job));
       }
 
       throw new HttpError(404, 'Not found');

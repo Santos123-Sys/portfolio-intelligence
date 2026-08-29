@@ -10,6 +10,37 @@ export const PortfolioRole = z.enum([
 ]);
 export type PortfolioRole = z.infer<typeof PortfolioRole>;
 
+export const AgentKind = z.enum([
+  'thesis_extraction',
+  'market_research',
+  'security_analysis',
+  'portfolio_synthesis',
+]);
+export type AgentKind = z.infer<typeof AgentKind>;
+
+export const AgentTool = z.enum([
+  'thesis_document',
+  'structured_universe',
+  'web_search',
+  'grounding_bundle',
+]);
+export type AgentTool = z.infer<typeof AgentTool>;
+
+/**
+ * Owner-configurable instructions are always appended to immutable service
+ * policy. They can narrow an agent's scope, but cannot remove grounding,
+ * calculation, ownership, or no-trading constraints.
+ */
+export const AgentCustomization = z.object({
+  agentKind: AgentKind,
+  configVersion: z.number().int().positive(),
+  name: z.string().trim().min(1).max(120),
+  scope: z.string().trim().min(1).max(2_000),
+  promptAddendum: z.string().trim().max(4_000),
+  enabledTools: z.array(AgentTool).max(4),
+}).strict();
+export type AgentCustomization = z.infer<typeof AgentCustomization>;
+
 const score = z.number().int().min(0).max(100);
 
 export const ThesisPortfolioCriteria = z.object({
@@ -125,8 +156,121 @@ export const AgenticRunRequest = z.object({
     portfolioId: z.string().uuid(),
     bundle: GroundingBundle,
   })).min(1),
-}).strict();
+  origin: z.object({
+    kind: z.enum(['portfolio_monitoring', 'discovery_candidate']),
+    candidateId: z.string().uuid().optional(),
+  }).strict().optional(),
+  agentConfigs: z.array(AgentCustomization).max(2).optional(),
+}).strict().superRefine((request, context) => {
+  if (request.origin?.kind === 'discovery_candidate' && !request.origin.candidateId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['origin', 'candidateId'],
+      message: 'Discovery-candidate analysis requires candidateId',
+    });
+  }
+  const allowed = new Set(['security_analysis', 'portfolio_synthesis']);
+  if (request.agentConfigs?.some((config) => !allowed.has(config.agentKind))) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['agentConfigs'],
+      message: 'Analysis runs accept only security_analysis and portfolio_synthesis configurations',
+    });
+  }
+});
 export type AgenticRunRequest = z.infer<typeof AgenticRunRequest>;
+
+const universeScalar = z.union([z.number().finite(), z.string(), z.boolean(), z.null()]);
+
+export const SecurityUniverseRecord = z.object({
+  ticker: z.string().trim().min(1),
+  exchange: z.string().trim().min(1),
+  companyName: z.string().trim().min(1),
+  currency: z.string().trim().min(1),
+  country: z.string().nullable(),
+  sector: z.string().nullable(),
+  industry: z.string().nullable(),
+  assetType: z.string().trim().min(1),
+  observedAt: z.string().datetime(),
+  provider: z.string().trim().min(1),
+  sourceUrl: z.string().url(),
+  attributes: z.record(z.string(), universeScalar),
+}).strict();
+export type SecurityUniverseRecord = z.infer<typeof SecurityUniverseRecord>;
+
+export const DiscoveryRunRequest = z.object({
+  thesis: z.object({
+    versionId: z.string().uuid(),
+    criteria: ThesisCriteria,
+  }).strict(),
+  portfolios: z.array(z.object({
+    id: z.string().uuid(),
+    name: z.string().trim().min(1),
+    role: PortfolioRole.exclude(['not_suitable']),
+    baseCurrency: z.string().trim().min(1),
+    investmentObjective: z.string(),
+  }).strict()).min(1),
+  universe: z.array(SecurityUniverseRecord).min(1).max(500),
+  maxCandidatesPerPortfolio: z.number().int().min(1).max(20).default(8),
+  agentConfig: AgentCustomization.optional(),
+}).strict().superRefine((request, context) => {
+  if (request.agentConfig && request.agentConfig.agentKind !== 'market_research') {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['agentConfig', 'agentKind'],
+      message: 'Discovery runs accept only a market_research configuration',
+    });
+  }
+});
+export type DiscoveryRunRequest = z.infer<typeof DiscoveryRunRequest>;
+
+export const DiscoveryCandidate = z.object({
+  portfolioId: z.string().uuid(),
+  ticker: z.string().trim().min(1),
+  exchange: z.string().trim().min(1),
+  companyName: z.string().trim().min(1),
+  currency: z.string().trim().min(1),
+  country: z.string().nullable(),
+  sector: z.string().nullable(),
+  thesisAlignmentScore: score,
+  rationale: z.string().trim().min(1),
+  matchedCriteria: z.array(z.string()),
+  violatedCriteria: z.array(z.string()),
+  groundedIn: z.array(z.string()).min(1),
+  sourceUrls: z.array(z.string().url()).min(1),
+  informationGaps: z.array(z.string()),
+}).strict();
+export type DiscoveryCandidate = z.infer<typeof DiscoveryCandidate>;
+
+export const MarketDiscoveryOutput = z.object({
+  thesisVersion: z.number().int().positive(),
+  marketMandates: z.array(z.object({
+    portfolioId: z.string().uuid(),
+    role: PortfolioRole.exclude(['not_suitable']),
+    exchanges: z.array(z.string().min(1)).min(1),
+    currency: z.string().min(1),
+    rationale: z.string().min(1),
+  }).strict()).min(1),
+  candidates: z.array(DiscoveryCandidate),
+  /** URLs copied by the service from actual web-search tool metadata, never model-authored. */
+  verifiedWebSources: z.array(z.string().url()),
+  limitations: z.array(z.string()),
+}).strict();
+export type MarketDiscoveryOutput = z.infer<typeof MarketDiscoveryOutput>;
+
+export const DiscoveryRunStatus = z.object({
+  externalDiscoveryId: z.string().min(1),
+  status: z.enum(['queued', 'running', 'completed', 'failed']),
+  progress: z.object({
+    completed: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+    currentStage: z.string(),
+  }).strict().optional(),
+  result: MarketDiscoveryOutput.optional(),
+  errorMessage: z.string().min(1).optional(),
+  updatedAt: z.string().datetime(),
+}).strict();
+export type DiscoveryRunStatus = z.infer<typeof DiscoveryRunStatus>;
 
 export const AgenticRunSelection = z.object({
   thesisVersionId: z.string().uuid().optional(),
@@ -190,7 +334,18 @@ export const ThesisDocument = z.object({
 }).strict();
 export type ThesisDocument = z.infer<typeof ThesisDocument>;
 
-export const ThesisExtractionRequest = z.object({ document: ThesisDocument }).strict();
+export const ThesisExtractionRequest = z.object({
+  document: ThesisDocument,
+  agentConfig: AgentCustomization.optional(),
+}).strict().superRefine((request, context) => {
+  if (request.agentConfig && request.agentConfig.agentKind !== 'thesis_extraction') {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['agentConfig', 'agentKind'],
+      message: 'Thesis extraction accepts only a thesis_extraction configuration',
+    });
+  }
+});
 export type ThesisExtractionRequest = z.infer<typeof ThesisExtractionRequest>;
 
 export const ThesisExtractionStatus = z.object({
@@ -299,6 +454,96 @@ export function validateRunRequestCoherence(request: AgenticRunRequest): void {
   const requested = new Set(securityKeys);
   if (groundingKeys.length !== securityKeys.length || groundingKeys.some((key) => !requested.has(key))) {
     throw new ContractValidationError('Every requested security must have exactly one grounding bundle');
+  }
+}
+
+export function universeGroundingKeys(record: SecurityUniverseRecord): string[] {
+  return [
+    'identity:ticker',
+    'identity:exchange',
+    'identity:companyName',
+    'identity:currency',
+    ...(record.country ? ['identity:country'] : []),
+    ...(record.sector ? ['identity:sector'] : []),
+    ...(record.industry ? ['identity:industry'] : []),
+    ...Object.keys(record.attributes).map((key) => `attribute:${key}`),
+  ];
+}
+
+export function validateDiscoveryOutput(
+  output: MarketDiscoveryOutput,
+  request: DiscoveryRunRequest
+): void {
+  if (output.thesisVersion !== request.thesis.criteria.version) {
+    throw new ContractValidationError('Discovery output thesis version does not match the confirmed thesis');
+  }
+
+  const portfoliosById = new Map(request.portfolios.map((portfolio) => [portfolio.id, portfolio]));
+  if (output.marketMandates.length !== portfoliosById.size) {
+    throw new ContractValidationError('Discovery output must include one market mandate per portfolio');
+  }
+  const mandateIds = output.marketMandates.map((mandate) => mandate.portfolioId);
+  if (new Set(mandateIds).size !== mandateIds.length || mandateIds.some((id) => !portfoliosById.has(id))) {
+    throw new ContractValidationError('Discovery market mandates contain an unknown or duplicate portfolio');
+  }
+  const universeExchanges = new Set(request.universe.map((record) => record.exchange));
+  const mandatesByPortfolio = new Map(output.marketMandates.map((mandate) => [mandate.portfolioId, mandate]));
+  for (const mandate of output.marketMandates) {
+    const portfolio = portfoliosById.get(mandate.portfolioId)!;
+    if (mandate.role !== portfolio.role || mandate.currency !== portfolio.baseCurrency) {
+      throw new ContractValidationError(`Discovery mandate changed portfolio identity for ${portfolio.id}`);
+    }
+    if (mandate.exchanges.some((exchange) => !universeExchanges.has(exchange))) {
+      throw new ContractValidationError(`Discovery mandate introduced an exchange absent from the supplied universe`);
+    }
+  }
+
+  const universe = new Map(request.universe.map((record) => [
+    `${record.exchange}:${record.ticker}`,
+    record,
+  ]));
+  const externallyRetrievedSources = new Set(output.verifiedWebSources);
+  const seen = new Set<string>();
+  const perPortfolio = new Map<string, number>();
+  for (const candidate of output.candidates) {
+    const portfolio = portfoliosById.get(candidate.portfolioId);
+    if (!portfolio) throw new ContractValidationError(`Candidate references unknown portfolio ${candidate.portfolioId}`);
+    const uniqueKey = `${candidate.portfolioId}:${candidate.exchange}:${candidate.ticker}`;
+    if (seen.has(uniqueKey)) throw new ContractValidationError(`Duplicate discovery candidate ${uniqueKey}`);
+    seen.add(uniqueKey);
+    const count = (perPortfolio.get(candidate.portfolioId) ?? 0) + 1;
+    perPortfolio.set(candidate.portfolioId, count);
+    if (count > request.maxCandidatesPerPortfolio) {
+      throw new ContractValidationError(`Too many candidates for portfolio ${candidate.portfolioId}`);
+    }
+
+    const record = universe.get(`${candidate.exchange}:${candidate.ticker}`);
+    if (!record) throw new ContractValidationError(`Candidate ${candidate.ticker} is absent from the supplied universe`);
+    if (
+      candidate.companyName !== record.companyName ||
+      candidate.currency !== record.currency ||
+      candidate.country !== record.country ||
+      candidate.sector !== record.sector
+    ) {
+      throw new ContractValidationError(`Candidate identity changed for ${candidate.ticker}`);
+    }
+    const mandate = mandatesByPortfolio.get(candidate.portfolioId)!;
+    if (!mandate.exchanges.includes(candidate.exchange) || candidate.currency !== portfolio.baseCurrency) {
+      throw new ContractValidationError(`Candidate ${candidate.ticker} does not match its portfolio market mandate`);
+    }
+    const availableGrounding = new Set(universeGroundingKeys(record));
+    const fabricatedGrounding = candidate.groundedIn.filter((key) => !availableGrounding.has(key));
+    if (fabricatedGrounding.length) {
+      throw new ContractValidationError(
+        `Discovery grounding failed for ${candidate.ticker}: ${fabricatedGrounding.join(', ')}`
+      );
+    }
+    if (!candidate.sourceUrls.includes(record.sourceUrl)) {
+      throw new ContractValidationError(`Candidate ${candidate.ticker} omitted its structured-universe source`);
+    }
+    if (candidate.sourceUrls.some((url) => url !== record.sourceUrl && !externallyRetrievedSources.has(url))) {
+      throw new ContractValidationError(`Candidate ${candidate.ticker} cited a source absent from its universe record`);
+    }
   }
 }
 

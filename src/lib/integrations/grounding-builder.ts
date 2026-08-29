@@ -10,6 +10,7 @@ import { db } from '@/lib/db';
 import { portfolios, positions, riskMetrics, securities, thesisVersions } from '@/lib/db/schema';
 import { marketDataObservations } from '@/lib/db/workflow-schema';
 import { assessAgenticReadiness, type AgenticReadiness } from '@/lib/portfolio-setup';
+import { getActiveAgentCustomization } from '@/lib/agent-config';
 
 interface HoldingEvidence {
   positionId: string;
@@ -209,6 +210,10 @@ export async function buildAgenticRunRequest(
       ))
       .orderBy(desc(marketDataObservations.retrievedAt)),
   ]);
+  const [securityAnalysisConfig, synthesisConfig] = await Promise.all([
+    getActiveAgentCustomization(ownerId, 'security_analysis'),
+    getActiveAgentCustomization(ownerId, 'portfolio_synthesis'),
+  ]);
 
   const request = AgenticRunRequest.parse({
     thesis: { versionId: thesis.id, criteria },
@@ -231,6 +236,8 @@ export async function buildAgenticRunRequest(
         observationRows.filter((observation) => observation.securityId === holding.securityId)
       ),
     })),
+    origin: { kind: 'portfolio_monitoring' },
+    agentConfigs: [securityAnalysisConfig, synthesisConfig],
   });
   validateRunRequestCoherence(request);
   return request;

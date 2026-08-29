@@ -1,6 +1,8 @@
 import { getEnv } from '@/lib/env';
 import {
   AgenticRunRequest,
+  DiscoveryRunRequest,
+  DiscoveryRunStatus,
   ExternalRunStatus,
   ThesisExtractionRequest,
   ThesisExtractionStatus,
@@ -30,6 +32,35 @@ export async function startExternalAgenticRun(input: AgenticRunRequest): Promise
   }
 
   return ExternalRunStatus.parse(await response.json());
+}
+
+export async function startExternalDiscoveryRun(
+  input: DiscoveryRunRequest
+): Promise<DiscoveryRunStatus> {
+  const response = await agenticFetch('/v1/discovery-runs', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return DiscoveryRunStatus.parse(await response.json());
+}
+
+export async function fetchExternalDiscoveryRun(
+  externalDiscoveryId: string
+): Promise<DiscoveryRunStatus> {
+  const response = await agenticFetch(
+    `/v1/discovery-runs/${encodeURIComponent(externalDiscoveryId)}`
+  );
+  return DiscoveryRunStatus.parse(await response.json());
+}
+
+export async function retryExternalDiscoveryRun(
+  externalDiscoveryId: string
+): Promise<DiscoveryRunStatus> {
+  const response = await agenticFetch(
+    `/v1/discovery-runs/${encodeURIComponent(externalDiscoveryId)}/retry`,
+    { method: 'POST' }
+  );
+  return DiscoveryRunStatus.parse(await response.json());
 }
 
 export async function fetchExternalAgenticRun(externalRunId: string): Promise<ExternalRunStatus> {

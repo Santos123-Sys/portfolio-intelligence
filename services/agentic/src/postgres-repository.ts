@@ -129,6 +129,16 @@ export class PostgresJobRepository implements JobRepository {
     `;
   }
 
+  async completeDiscovery(id: string, result: AgenticJob['result']): Promise<void> {
+    await this.sql`
+      update agentic_jobs
+      set status = 'completed', result_json = ${this.sql.json(result as never)}, current_stage = 'completed',
+          progress_completed = progress_total, completed_at = now(), updated_at = now(),
+          lease_owner = null, lease_expires_at = null
+      where id = ${id}
+    `;
+  }
+
   async completeAnalysis(
     id: string,
     manifest: Extract<AgenticJob['result'], { schemaVersion: string }>,

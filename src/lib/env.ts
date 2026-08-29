@@ -25,6 +25,13 @@ const schema = z.object({
   AGENTIC_SYSTEM_API_KEY: z.string().min(32, 'AGENTIC_SYSTEM_API_KEY must contain at least 32 characters').optional(),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 }).superRefine((env, context) => {
+  if (env.MARKET_DATA_PROVIDER === 'eodhd' && !env.MARKET_DATA_API_KEY) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['MARKET_DATA_API_KEY'],
+      message: 'MARKET_DATA_API_KEY is required when MARKET_DATA_PROVIDER=eodhd',
+    });
+  }
   if (Boolean(env.AGENTIC_SYSTEM_BASE_URL) !== Boolean(env.AGENTIC_SYSTEM_API_KEY)) {
     context.addIssue({
       code: z.ZodIssueCode.custom,

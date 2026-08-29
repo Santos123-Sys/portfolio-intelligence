@@ -3,10 +3,83 @@ import { processJob } from '../src/process-job.js';
 import { AgenticPipelineError } from '../src/openai-pipeline.js';
 import { MemoryRepository } from './memory-repository.js';
 import { analysis, grounding, portfolioId, runRequest, synthesis } from './fixtures.js';
+import type { DiscoveryRunRequest, MarketDiscoveryOutput } from '@portfolio-intelligence/agentic-contract';
 
 const fakePdf = Buffer.from('%PDF-1.4\n%%EOF\n');
 
 describe('durable job processing', () => {
+  it('persists a provider-grounded market discovery result without rendering a report', async () => {
+    const repository = new MemoryRepository();
+    const request: DiscoveryRunRequest = {
+      thesis: runRequest.thesis,
+      portfolios: [{
+        id: portfolioId,
+        name: 'Swiss Quality',
+        role: 'swiss_quality',
+        baseCurrency: 'CHF',
+        investmentObjective: 'Durable compounding',
+      }],
+      universe: [{
+        ticker: 'NESN',
+        exchange: 'XSWX',
+        companyName: 'Nestle SA',
+        currency: 'CHF',
+        country: 'Switzerland',
+        sector: 'Consumer Defensive',
+        industry: 'Packaged Foods',
+        assetType: 'Listed Equity',
+        observedAt: '2026-08-29T12:00:00.000Z',
+        provider: 'eodhd',
+        sourceUrl: 'https://eodhd.com/financial-apis/stock-market-screener-api',
+        attributes: { dividend_yield: 0.03 },
+      }],
+      maxCandidatesPerPortfolio: 5,
+    };
+    const result: MarketDiscoveryOutput = {
+      thesisVersion: request.thesis.criteria.version,
+      marketMandates: [{
+        portfolioId,
+        role: 'swiss_quality',
+        exchanges: ['XSWX'],
+        currency: 'CHF',
+        rationale: 'Matches the confirmed Swiss-quality mandate.',
+      }],
+      candidates: [{
+        portfolioId,
+        ticker: 'NESN',
+        exchange: 'XSWX',
+        companyName: 'Nestle SA',
+        currency: 'CHF',
+        country: 'Switzerland',
+        sector: 'Consumer Defensive',
+        thesisAlignmentScore: 80,
+        rationale: 'Provider evidence supports initial review.',
+        matchedCriteria: ['Swiss listing'],
+        violatedCriteria: [],
+        groundedIn: ['identity:exchange', 'attribute:dividend_yield'],
+        sourceUrls: ['https://eodhd.com/financial-apis/stock-market-screener-api'],
+        informationGaps: ['Recurring cash flow is not in screener data'],
+      }],
+      verifiedWebSources: [],
+      limitations: ['Bounded provider universe'],
+    };
+    await repository.create('market_discovery', 'discovery-process', request, 1);
+    const job = (await repository.claimNext('worker-1', 300))!;
+    await processJob(job, {
+      repository,
+      pipeline: {
+        extractThesis: async () => { throw new Error('not used'); },
+        discoverSecurities: async () => result,
+        analyzeSecurity: async () => { throw new Error('not used'); },
+        synthesizePortfolio: async () => { throw new Error('not used'); },
+      },
+      storage: { put: async () => { throw new Error('not used'); } },
+    });
+    const completed = await repository.findByExternalId('discovery-process');
+    expect(completed?.status).toBe('completed');
+    expect(completed?.result).toEqual(result);
+  });
+
   it('completes every requested analysis, synthesis, manifest and report before success', async () => {
     const repository = new MemoryRepository();
     const queued = await repository.create('analysis_run', 'agent-run-process', runRequest, 4);
@@ -16,6 +89,7 @@ describe('durable job processing', () => {
       repository,
       pipeline: {
         extractThesis: async () => { throw new Error('not used'); },
+        discoverSecurities: async () => { throw new Error('not used'); },
         analyzeSecurity: async (bundle) => { calls.push(`analysis:${bundle.ticker}`); return analysis; },
         synthesizePortfolio: async (portfolio) => { calls.push(`synthesis:${portfolio.id}`); return synthesis; },
       },
@@ -44,6 +118,7 @@ describe('durable job processing', () => {
       repository,
       pipeline: {
         extractThesis: async () => { throw new Error('not used'); },
+        discoverSecurities: async () => { throw new Error('not used'); },
         analyzeSecurity: async (bundle) => {
           if (bundle.ticker === 'ROG') throw new AgenticPipelineError('analysis', 'ROG analysis failed safely');
           return analysis;

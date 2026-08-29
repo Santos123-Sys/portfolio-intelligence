@@ -1,5 +1,6 @@
 import {
   AgenticRunRequest,
+  DiscoveryRunRequest,
   ThesisExtractionRequest,
   validateRunRequestCoherence,
   type AnalysisOutput,
@@ -13,7 +14,7 @@ import type { AgenticJob, JobRepository } from './types.js';
 
 export interface ProcessingDependencies {
   repository: JobRepository;
-  pipeline: Pick<OpenAIAgenticPipeline, 'extractThesis' | 'analyzeSecurity' | 'synthesizePortfolio'>;
+  pipeline: Pick<OpenAIAgenticPipeline, 'extractThesis' | 'discoverSecurities' | 'analyzeSecurity' | 'synthesizePortfolio'>;
   storage: Pick<ReportStorage, 'put'>;
   renderPdf?: typeof renderReportPdf;
 }
@@ -24,8 +25,17 @@ export async function processJob(job: AgenticJob, deps: ProcessingDependencies):
       const request = ThesisExtractionRequest.safeParse(job.payload);
       if (!request.success) throw new AgenticPipelineError('extraction', 'Stored thesis payload failed contract validation');
       await deps.repository.updateProgress(job.id, 0, 1, 'thesis_extraction');
-      const result = await deps.pipeline.extractThesis(request.data.document);
+      const result = await deps.pipeline.extractThesis(request.data.document, request.data.agentConfig);
       await deps.repository.completeExtraction(job.id, result);
+      return;
+    }
+
+    if (job.kind === 'market_discovery') {
+      const request = DiscoveryRunRequest.safeParse(job.payload);
+      if (!request.success) throw new AgenticPipelineError('analysis', 'Stored discovery payload failed contract validation');
+      await deps.repository.updateProgress(job.id, 0, 1, 'market_discovery');
+      const result = await deps.pipeline.discoverSecurities(request.data);
+      await deps.repository.completeDiscovery(job.id, result);
       return;
     }
 
@@ -54,13 +64,22 @@ export async function processJob(job: AgenticJob, deps: ProcessingDependencies):
           portfolioId === portfolio.id && bundle.ticker === security.ticker && bundle.exchange === security.exchange
         );
         if (!grounding) throw new AgenticPipelineError('analysis', `Grounding bundle missing for ${security.ticker}`);
-        analyses.push(await deps.pipeline.analyzeSecurity(grounding.bundle, request.data.thesis.criteria));
+        analyses.push(await deps.pipeline.analyzeSecurity(
+          grounding.bundle,
+          request.data.thesis.criteria,
+          request.data.agentConfigs?.find((config) => config.agentKind === 'security_analysis')
+        ));
         bundles.push(grounding.bundle);
         completed += 1;
       }
 
       await deps.repository.updateProgress(job.id, completed, total, `portfolio_synthesis:${portfolio.id}`);
-      const synthesis = await deps.pipeline.synthesizePortfolio(portfolio, analyses, bundles);
+      const synthesis = await deps.pipeline.synthesizePortfolio(
+        portfolio,
+        analyses,
+        bundles,
+        request.data.agentConfigs?.find((config) => config.agentKind === 'portfolio_synthesis')
+      );
       results.push({ portfolioId: portfolio.id, analyses, synthesis });
       completed += 1;
     }

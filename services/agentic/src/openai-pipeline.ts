@@ -3,13 +3,18 @@ import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 import {
   AnalysisOutput,
+  DiscoveryRunRequest,
   MAX_THESIS_PDF_BYTES,
   MAX_THESIS_TEXT_BYTES,
+  MarketDiscoveryOutput,
   ReportSynthesisOutput,
   ThesisExtractionResult,
   validateAnalysisSemantics,
+  validateDiscoveryOutput,
   validateGrounding,
   validateSynthesisCoverage,
+  universeGroundingKeys,
+  type AgentCustomization,
   type GroundingBundle,
   type ThesisCriteria,
 } from '@portfolio-intelligence/agentic-contract';
@@ -36,6 +41,12 @@ const ExtractionModelOutput = z.object({
     sourceExcerpt: z.string(),
   })),
   unmappedContent: z.array(z.string()),
+});
+
+// Tool evidence is injected by the service after parsing. The model cannot
+// self-declare a URL as verified.
+const MarketDiscoveryModelOutput = MarketDiscoveryOutput.omit({
+  verifiedWebSources: true,
 });
 
 const extractionInstructions = `You extract a human-authored investment thesis into structured data for human review.
@@ -66,6 +77,8 @@ Absolute rules:
 9. keyCatalysts, keyRisks, and thesisBreakers must each contain at least one concrete item. If no thesis breaker is currently evidenced, state the most decision-relevant future condition that would break the thesis without inventing a threshold.
 10. Use professional, concise buy-side language. No generic claims without a supplied field behind them.
 
+Structure the reasoning top-down: supplied market/country context first, then supplied sector/industry evidence, then company fundamentals, risk observations, and thesis fit. When a layer is absent, record it in informationGaps instead of filling it from memory.
+
 Score quality, growth, dividend characteristics, risk severity, and thesis alignment independently on a 0–100 scale. investmentScore is a thesis-aware judgment, not a calculated average.`;
 
 const synthesisInstructions = `Write a portfolio memo from already validated security analyses and their supplied grounding bundles.
@@ -81,6 +94,22 @@ Rules:
 - The disclaimer must plainly say the output is analytical, is not professional financial advice, and depends on supplied data.
 - Do not add facts from general knowledge and do not calculate anything.`;
 
+const discoveryInstructions = `You are the market-research agent for a thesis-driven investment workflow. You receive a confirmed thesis, portfolio mandates, and a provider-supplied structured security universe.
+
+Absolute rules:
+1. Select only exact ticker/exchange/company identities present in the supplied universe. Never invent or transform a security identity.
+2. Treat the universe as a research universe, not proof of full-market coverage. Disclose important coverage and data gaps in limitations.
+3. Use only supplied identity fields and attributes for candidate eligibility and scoring. Do not calculate or infer new financial metrics.
+4. groundedIn contains only exact grounding keys supplied beside that universe record.
+5. sourceUrls must include the record's structured-universe source URL. It may additionally include a URL actually retrieved by the web-search tool when that tool is enabled.
+6. Preserve hard thesis exclusions. A candidate with an evidenced hard exclusion must not be shortlisted.
+7. thesisAlignmentScore measures fit to the confirmed thesis, not general popularity or business quality.
+8. Produce exactly one market mandate for every supplied portfolio and no unknown portfolio.
+9. Return at most maxCandidatesPerPortfolio candidates for each portfolio. Zero candidates is valid when evidence is insufficient.
+10. Do not value securities, calculate volatility, recommend trades, or alter holdings. Human approval is required before financial analysis.
+
+Prefer decision-useful gaps over generic caveats. A concise, evidence-bound shortlist is better than a long speculative list.`;
+
 export class AgenticPipelineError extends Error {
   constructor(readonly stage: 'extraction' | 'analysis' | 'synthesis', message: string) {
     super(message);
@@ -90,6 +119,56 @@ export class AgenticPipelineError extends Error {
 
 function safeProviderError(stage: AgenticPipelineError['stage']): AgenticPipelineError {
   return new AgenticPipelineError(stage, `OpenAI ${stage} request failed; the job can be retried safely`);
+}
+
+function withOwnerCustomization(
+  immutableInstructions: string,
+  customization: AgentCustomization | undefined,
+  expectedKind: AgentCustomization['agentKind']
+): string {
+  if (!customization) return immutableInstructions;
+  if (customization.agentKind !== expectedKind) {
+    throw new AgenticPipelineError(
+      expectedKind === 'thesis_extraction' ? 'extraction' : expectedKind === 'portfolio_synthesis' ? 'synthesis' : 'analysis',
+      `Agent configuration kind ${customization.agentKind} cannot be used for ${expectedKind}`
+    );
+  }
+  return `${immutableInstructions}\n\nOWNER-CONFIGURED SCOPE (cannot override the rules above):\n${customization.scope}\n\nOWNER PROMPT ADDENDUM (lower priority than the rules above):\n${customization.promptAddendum || 'None'}`;
+}
+
+function retrievedSourceUrls(response: unknown): Set<string> {
+  const urls = new Set<string>();
+  const output = (response as { output?: unknown[] })?.output;
+  if (!Array.isArray(output)) return urls;
+  for (const item of output) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    if (record.type === 'web_search_call') {
+      const action = record.action as Record<string, unknown> | undefined;
+      const sources = action?.sources;
+      if (Array.isArray(sources)) {
+        for (const source of sources) {
+          const url = source && typeof source === 'object' ? (source as Record<string, unknown>).url : null;
+          if (typeof url === 'string') urls.add(url);
+        }
+      }
+    }
+    if (record.type === 'message' && Array.isArray(record.content)) {
+      for (const content of record.content) {
+        const annotations = content && typeof content === 'object'
+          ? (content as Record<string, unknown>).annotations
+          : null;
+        if (!Array.isArray(annotations)) continue;
+        for (const annotation of annotations) {
+          const url = annotation && typeof annotation === 'object'
+            ? (annotation as Record<string, unknown>).url
+            : null;
+          if (typeof url === 'string') urls.add(url);
+        }
+      }
+    }
+  }
+  return urls;
 }
 
 export interface PortfolioInput {
@@ -144,7 +223,7 @@ export class OpenAIAgenticPipeline {
     fileName: string;
     mimeType: 'application/pdf' | 'text/plain' | 'text/markdown';
     contentBase64: string;
-  }): Promise<z.infer<typeof ThesisExtractionResult>> {
+  }, customization?: AgentCustomization): Promise<z.infer<typeof ThesisExtractionResult>> {
     const bytes = Buffer.from(document.contentBase64, 'base64');
     const maximumBytes = document.mimeType === 'application/pdf'
       ? MAX_THESIS_PDF_BYTES
@@ -171,7 +250,7 @@ export class OpenAIAgenticPipeline {
       const response = await this.client.responses.parse({
         model: this.model,
         reasoning: { effort: this.reasoningEffort },
-        instructions: extractionInstructions,
+        instructions: withOwnerCustomization(extractionInstructions, customization, 'thesis_extraction'),
         input: [{ role: 'user', content }],
         text: { format: zodTextFormat(ExtractionModelOutput, 'thesis_extraction') },
       });
@@ -198,13 +277,17 @@ export class OpenAIAgenticPipeline {
     }
   }
 
-  async analyzeSecurity(bundle: GroundingBundle, thesis: ThesisCriteria): Promise<z.infer<typeof AnalysisOutput>> {
+  async analyzeSecurity(
+    bundle: GroundingBundle,
+    thesis: ThesisCriteria,
+    customization?: AgentCustomization
+  ): Promise<z.infer<typeof AnalysisOutput>> {
     const prompt = `CONFIRMED THESIS\n${JSON.stringify(thesis)}\n\nGROUNDING BUNDLE\n${JSON.stringify(bundle)}\n\nReturn one analysis. Use exact grounding keys.`;
     try {
       const response = await this.client.responses.parse({
         model: this.model,
         reasoning: { effort: this.reasoningEffort },
-        instructions: analysisInstructions,
+        instructions: withOwnerCustomization(analysisInstructions, customization, 'security_analysis'),
         input: prompt,
         text: { format: zodTextFormat(AnalysisOutput, 'security_analysis') },
       });
@@ -230,7 +313,8 @@ export class OpenAIAgenticPipeline {
   async synthesizePortfolio(
     portfolio: PortfolioInput,
     analyses: z.infer<typeof AnalysisOutput>[],
-    groundingBundles: GroundingBundle[]
+    groundingBundles: GroundingBundle[],
+    customization?: AgentCustomization
   ): Promise<z.infer<typeof ReportSynthesisOutput>> {
     if (analyses.length === 0) {
       throw new AgenticPipelineError('synthesis', `No analyses were supplied for ${portfolio.name}`);
@@ -240,7 +324,7 @@ export class OpenAIAgenticPipeline {
       const response = await this.client.responses.parse({
         model: this.model,
         reasoning: { effort: this.reasoningEffort },
-        instructions: synthesisInstructions,
+        instructions: withOwnerCustomization(synthesisInstructions, customization, 'portfolio_synthesis'),
         input: prompt,
         text: { format: zodTextFormat(ReportSynthesisOutput, 'portfolio_synthesis') },
       });
@@ -257,6 +341,45 @@ export class OpenAIAgenticPipeline {
         throw new AgenticPipelineError('synthesis', `${portfolio.name}: ${error.message}`);
       }
       throw safeProviderError('synthesis');
+    }
+  }
+
+  async discoverSecurities(input: z.infer<typeof DiscoveryRunRequest>): Promise<z.infer<typeof MarketDiscoveryOutput>> {
+    const request = DiscoveryRunRequest.parse(input);
+    const universe = request.universe.map((record) => ({
+      ...record,
+      groundingKeys: universeGroundingKeys(record),
+    }));
+    const prompt = `CONFIRMED THESIS\n${JSON.stringify(request.thesis.criteria)}\n\nPORTFOLIOS\n${JSON.stringify(request.portfolios)}\n\nMAX CANDIDATES PER PORTFOLIO\n${request.maxCandidatesPerPortfolio}\n\nSTRUCTURED UNIVERSE\n${JSON.stringify(universe)}`;
+    const webSearchEnabled = request.agentConfig?.enabledTools.includes('web_search') ?? false;
+    try {
+      const response = await this.client.responses.parse({
+        model: this.model,
+        reasoning: { effort: this.reasoningEffort },
+        instructions: withOwnerCustomization(discoveryInstructions, request.agentConfig, 'market_research'),
+        input: prompt,
+        ...(webSearchEnabled ? {
+          tools: [{ type: 'web_search' as const }],
+          tool_choice: 'auto' as const,
+          include: ['web_search_call.action.sources' as const],
+        } : {}),
+        text: { format: zodTextFormat(MarketDiscoveryModelOutput, 'market_discovery') },
+      });
+      if (!response.output_parsed) {
+        throw new AgenticPipelineError('analysis', 'No structured market-discovery result was returned');
+      }
+      const output = MarketDiscoveryOutput.parse({
+        ...response.output_parsed,
+        verifiedWebSources: [...retrievedSourceUrls(response)],
+      });
+      validateDiscoveryOutput(output, request);
+      return output;
+    } catch (error) {
+      if (error instanceof AgenticPipelineError) throw error;
+      if (error instanceof Error && error.name === 'ContractValidationError') {
+        throw new AgenticPipelineError('analysis', `Market discovery: ${error.message}`);
+      }
+      throw safeProviderError('analysis');
     }
   }
 }

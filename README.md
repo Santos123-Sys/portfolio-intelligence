@@ -131,6 +131,8 @@ packages/agentic-contract Shared strict Zod contract and cross-system validators
 services/agentic/      Authenticated API, PostgreSQL worker, OpenAI pipeline, PDF and storage
 src/lib/integrations   Dashboard grounding builder, HTTP client and manifest adapter
 src/lib/connectors/  PriceProvider interface + deterministic stub (ADR-005 open)
+src/lib/discovery-workflow.ts  Provider-backed shortlist, approval and one-at-a-time analysis
+src/lib/quant/dcf.ts  Human-confirmed, deterministic two-stage FCFF valuation
 src/lib/services/    Recompute chain, distributed job lock
 src/lib/db/          Drizzle schema, ownership model and revocable sessions
 src/app/api/         Session-protected dashboard and integration routes
@@ -182,7 +184,7 @@ keeping deployment and schema evolution in one repository.
 
 Stated plainly, because a spec that overstates completeness is worse than no spec.
 
-- **No real market data.** `StubProvider` generates a reproducible pseudo-random walk seeded from the ticker. Every row is tagged `source: 'stub'`. ADR-005 is open — Twelve Data and EODHD both list XSWX and BVMF, but fundamentals depth for those two exchanges specifically is unverified.
+- **Live discovery requires a paid/configured data source.** The EODHD adapter now covers the XSWX/BVMF screener universe, historical prices and normalized fundamentals. The deterministic stub remains for development but discovery and candidate analysis refuse to use it. Production needs `MARKET_DATA_PROVIDER=eodhd` and a plan-appropriate `MARKET_DATA_API_KEY`; provider licensing and exchange-level fundamentals coverage remain the operator's responsibility.
 - **Risk-free rates are hardcoded** in `recompute.ts`. Sharpe is directionally useful and not yet trustworthy in absolute terms.
 - **TWR ignores cash flows.** The function supports them; the recompute service doesn't yet pass transactions in. Until it does, TWR equals cumulative return. The metric carries a caveat saying so.
 - **Railway resources are declared but not yet applied to the live project.** `.railway/railway.ts` defines the integrated API, worker, two databases, private bucket and service wiring. A live Railway plan must be reconciled with the existing dashboard before it is applied, and the shared `OPENAI_API_KEY` must be supplied outside Git.

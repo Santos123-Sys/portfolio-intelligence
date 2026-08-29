@@ -68,7 +68,8 @@ export default defineRailway((context) => {
       INITIAL_ADMIN_EMAIL: preserve(),
       INITIAL_ADMIN_NAME: preserve(),
       INITIAL_ADMIN_PASSWORD: preserve(),
-      MARKET_DATA_PROVIDER: 'stub',
+      MARKET_DATA_PROVIDER: 'eodhd',
+      MARKET_DATA_API_KEY: context.shared.MARKET_DATA_API_KEY,
       WEB_SEARCH_PROVIDER: 'none',
       AGENTIC_SYSTEM_API_KEY: agenticApi.env.AGENTIC_SYSTEM_API_KEY,
       AGENTIC_SYSTEM_BASE_URL:

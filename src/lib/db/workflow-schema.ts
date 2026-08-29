@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, numeric, jsonb, index, uniqueIndex, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, numeric, jsonb, index, uniqueIndex, integer, boolean } from 'drizzle-orm/pg-core';
 import { aiAnalyses, portfolios, securities, thesisVersions, users } from './schema';
 
 /**
@@ -30,6 +30,114 @@ export const marketDataObservations = pgTable(
     securityMetricIdx: index('market_observations_security_metric_idx').on(t.securityId, t.metricName, t.retrievedAt),
     statusIdx: index('market_observations_status_idx').on(t.status, t.retrievedAt),
   })
+);
+
+/** Versioned owner customization layered beneath immutable agent safety rules. */
+export const agentConfigurations = pgTable(
+  'agent_configurations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    agentKind: text('agent_kind').notNull(),
+    versionNumber: integer('version_number').notNull(),
+    name: text('name').notNull(),
+    scope: text('scope').notNull(),
+    promptAddendum: text('prompt_addendum').notNull().default(''),
+    enabledTools: jsonb('enabled_tools').$type<string[]>().notNull(),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    ownerKindVersionIdx: uniqueIndex('agent_configs_owner_kind_version_idx')
+      .on(t.ownerId, t.agentKind, t.versionNumber),
+    activeIdx: index('agent_configs_owner_kind_active_idx').on(t.ownerId, t.agentKind, t.active),
+  })
+);
+
+/** One provider-grounded opportunity-discovery job over a confirmed thesis. */
+export const externalDiscoveryRuns = pgTable(
+  'external_discovery_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    thesisVersionId: uuid('thesis_version_id').references(() => thesisVersions.id).notNull(),
+    externalDiscoveryId: text('external_discovery_id').notNull().unique(),
+    status: text('status').notNull().default('queued'),
+    provider: text('provider').notNull(),
+    requestJson: jsonb('request_json').notNull(),
+    resultJson: jsonb('result_json'),
+    errorMessage: text('error_message'),
+    requestedAt: timestamp('requested_at', { withTimezone: true }).defaultNow().notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (t) => ({ ownerStatusIdx: index('discovery_runs_owner_status_idx').on(t.ownerId, t.status, t.requestedAt) })
+);
+
+/** Shortlisted security awaiting an explicit human decision before analysis. */
+export const discoveryCandidates = pgTable(
+  'discovery_candidates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    runId: uuid('run_id').references(() => externalDiscoveryRuns.id, { onDelete: 'cascade' }).notNull(),
+    portfolioId: uuid('portfolio_id').references(() => portfolios.id, { onDelete: 'cascade' }).notNull(),
+    securityId: uuid('security_id').references(() => securities.id, { onDelete: 'set null' }),
+    ticker: text('ticker').notNull(),
+    exchange: text('exchange').notNull(),
+    companyName: text('company_name').notNull(),
+    currency: text('currency').notNull(),
+    country: text('country'),
+    sector: text('sector'),
+    discoveryJson: jsonb('discovery_json').notNull(),
+    decision: text('decision').notNull().default('pending'),
+    rationale: text('decision_rationale'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    workflowStatus: text('workflow_status').notNull().default('awaiting_review'),
+    externalAnalysisRunId: text('external_analysis_run_id'),
+    analysisId: uuid('analysis_id').references(() => aiAnalyses.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    runSecurityIdx: uniqueIndex('discovery_candidates_run_security_idx')
+      .on(t.runId, t.portfolioId, t.exchange, t.ticker),
+    ownerWorkflowIdx: index('discovery_candidates_owner_workflow_idx').on(t.ownerId, t.workflowStatus, t.createdAt),
+  })
+);
+
+/** Deterministic standalone metrics calculated from a candidate's price series. */
+export const securityRiskSnapshots = pgTable(
+  'security_risk_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    candidateId: uuid('candidate_id').references(() => discoveryCandidates.id, { onDelete: 'cascade' }).notNull(),
+    securityId: uuid('security_id').references(() => securities.id, { onDelete: 'cascade' }).notNull(),
+    metricsJson: jsonb('metrics_json').notNull(),
+    provider: text('provider').notNull(),
+    dataAsOf: timestamp('data_as_of', { withTimezone: true }).notNull(),
+    computedAt: timestamp('computed_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ candidateTimeIdx: index('security_risk_candidate_time_idx').on(t.candidateId, t.computedAt) })
+);
+
+/** Human-confirmed assumptions and deterministic valuation output. */
+export const valuationScenarios = pgTable(
+  'valuation_scenarios',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    candidateId: uuid('candidate_id').references(() => discoveryCandidates.id, { onDelete: 'cascade' }).notNull(),
+    analysisId: uuid('analysis_id').references(() => aiAnalyses.id, { onDelete: 'set null' }),
+    method: text('method').notNull(),
+    status: text('status').notNull(),
+    assumptionsJson: jsonb('assumptions_json').notNull(),
+    resultJson: jsonb('result_json').notNull(),
+    sourceReferences: jsonb('source_references').$type<string[]>().notNull(),
+    approvedBy: text('approved_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ candidateCreatedIdx: index('valuation_candidate_created_idx').on(t.candidateId, t.createdAt) })
 );
 
 /** Human-in-the-loop decisions over AI-generated candidate analyses. */

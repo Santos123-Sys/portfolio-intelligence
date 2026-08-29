@@ -6,7 +6,9 @@ agentic API, worker, isolated databases and private report bucket.
 Before any live apply:
 
 1. Read `docs/RAILWAY-DEPLOYMENT.md`.
-2. Add the shared `OPENAI_API_KEY` in Railway without committing its value.
+2. Add the shared `OPENAI_API_KEY` and `MARKET_DATA_API_KEY` in Railway without
+   committing either value. `MARKET_DATA_API_KEY` must be an EODHD API token
+   with access to the exchanges and fundamentals used by discovery.
 3. Verify the existing dashboard is named `portfolio-intelligence` and that the
    configured `PUBLIC_APP_URL` is its active HTTPS origin.
 4. Clear the existing service's deprecated Config File Path.
