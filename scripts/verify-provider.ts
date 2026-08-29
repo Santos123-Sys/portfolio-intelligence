@@ -215,10 +215,47 @@ async function verifyEodhd(): Promise<number> {
     return 1;
   }
 
+  // Prices are only half the question. Discovery needs a security universe,
+  // and EODHD entitles those endpoints separately — a key that returns every
+  // price above can still 403 on the screener. Probe what this plan reaches so
+  // the answer is on the screen instead of surfacing later as a failed run.
+  console.log('\nUniverse endpoints (needed for stock discovery):');
+  const universeProbes: Array<{ label: string; path: string }> = [
+    { label: 'screener        (All-World-Extended / All-In-One)', path: '/api/screener?filters=' + encodeURIComponent('[["exchange","=","SW"]]') + '&limit=1' },
+    { label: 'exchange-symbol-list (all plans, incl. free)     ', path: '/api/exchange-symbol-list/SW' },
+    { label: 'eod-bulk-last-day    (turnover ranking)          ', path: '/api/eod-bulk-last-day/SW?filter=extended' },
+  ];
+
+  const reachable = new Set<string>();
+  for (const probe of universeProbes) {
+    const joiner = probe.path.includes('?') ? '&' : '?';
+    const url = `https://eodhd.com${probe.path}${joiner}api_token=${apiKey}&fmt=json`;
+    try {
+      const res = await fetch(url);
+      const mark = res.ok ? 'YES' : res.status === 403 ? 'NO (403 — not on this plan)' : `NO (HTTP ${res.status})`;
+      if (res.ok) reachable.add(probe.label.trim().split(' ')[0]);
+      console.log(`  ${mark.padEnd(28)} ${probe.label}`);
+    } catch (e) {
+      console.log(`  ${'NO (request failed)'.padEnd(28)} ${probe.label}`);
+    }
+  }
+
   console.log(
     `\nRESULT: USABLE for ${REQUIRED_EXCHANGES.join(' and ')} on this key.\n` +
       `ADR-005 can be closed on this evidence.`
   );
+
+  if (!reachable.has('screener')) {
+    console.log(
+      reachable.has('exchange-symbol-list')
+        ? `\nDiscovery: the Screener API is not on this plan, so the universe is built\n` +
+          `from exchange-symbol-list instead` +
+          (reachable.has('eod-bulk-last-day')
+            ? `, ranked by last-close turnover so the large caps\nsurvive the per-exchange limit. No action needed.`
+            : `. eod-bulk-last-day is also unavailable, so the\nuniverse is UNRANKED — it is capped arbitrarily and may omit large caps.\nThe agent is told to disclose this; consider a plan that includes bulk EOD.`)
+        : `\nDiscovery: NOT POSSIBLE on this plan. Neither the screener nor\nexchange-symbol-list is reachable, and there is no other source for a\nsecurity universe.`
+    );
+  }
   return 0;
 }
 
