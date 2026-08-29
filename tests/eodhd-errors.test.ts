@@ -114,6 +114,45 @@ describe('getSecurityUniverse on a plan without the Screener API', () => {
     expect(records.every((r) => r.sector === null && r.industry === null)).toBe(true);
   });
 
+  it('survives a 423 on the bulk endpoint — the status this plan actually returns', async () => {
+    // Measured against a live Basic plan: /api/eod-bulk-last-day answers 423
+    // while /api/eod and /api/exchange-symbol-list both answer 200. An earlier
+    // version rethrew anything that was not a 403, so this exact combination
+    // would have failed discovery on a plan where it works.
+    const basicPlanWith423: Route = (url) =>
+      url.includes('/api/exchange-symbol-list') ? { status: 200, body: SYMBOL_LIST }
+      : url.includes('/api/eod-bulk-last-day') ? { status: 423, body: '' }
+      : { status: 403, body: '' };
+    const records = await withRoutes(basicPlanWith423, (p) => p.getSecurityUniverse('XSWX', 10));
+    expect(records.length).toBeGreaterThan(0);
+    expect(records[0].attributes.universe_ranking).toBe('unranked');
+  });
+
+  it('falls back past a 423 on the screener too, not just a 403', async () => {
+    const records = await withRoutes(
+      (url) =>
+        url.includes('/api/screener') ? { status: 423, body: '' }
+        : url.includes('/api/exchange-symbol-list') ? { status: 200, body: SYMBOL_LIST }
+        : { status: 200, body: BULK },
+      (p) => p.getSecurityUniverse('XSWX', 10)
+    );
+    expect(records.map((r) => r.ticker)).toContain('NESN');
+  });
+
+  it('lets an unavailable ranking endpoint degrade rather than kill the run, whatever the status', async () => {
+    // Ranking is an enhancement; the symbol list is the requirement. A 500 on
+    // the optional call must not take down a universe that is otherwise fine.
+    const records = await withRoutes(
+      (url) =>
+        url.includes('/api/screener') ? { status: 403, body: '' }
+        : url.includes('/api/exchange-symbol-list') ? { status: 200, body: SYMBOL_LIST }
+        : { status: 500, body: '' }, // the optional ranking call
+      (p) => p.getSecurityUniverse('XSWX', 10)
+    );
+    expect(records.length).toBeGreaterThan(0);
+    expect(records[0].attributes.universe_ranking).toBe('unranked');
+  });
+
   it('degrades to unranked, and says so, when the bulk endpoint is also unavailable', async () => {
     const noBulk: Route = (url) =>
       url.includes('/api/exchange-symbol-list') ? { status: 200, body: SYMBOL_LIST } : { status: 403, body: '' };
@@ -128,14 +167,21 @@ describe('getSecurityUniverse on a plan without the Screener API', () => {
     ).rejects.toThrow(/exchange-symbol-list/);
   });
 
-  it('does not swallow a non-403 screener failure', async () => {
-    // Only a plan limit is recoverable. A 500 is a real fault and must surface.
+  it('does not swallow a non-plan-limit screener failure', async () => {
+    // Only a plan limit is recoverable on the required call. A 500 there is a
+    // real fault and must surface rather than be masked by the fallback.
     await expect(
       withRoutes(
         (url) => (url.includes('/api/screener') ? { status: 500, body: '' } : { status: 200, body: SYMBOL_LIST }),
         (p) => p.getSecurityUniverse('XSWX', 10)
       )
     ).rejects.toThrow(/server error/);
+  });
+
+  it('describes 423 as a plan limit, not a broken key', () => {
+    const message = describeEodhdFailure('/api/eod-bulk-last-day/SW', 423);
+    expect(message).toMatch(/not included in your plan/);
+    expect(message).toMatch(/token itself is fine/);
   });
 
   it('never echoes the API token, which travels in the query string', async () => {

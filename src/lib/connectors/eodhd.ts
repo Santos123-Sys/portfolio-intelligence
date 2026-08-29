@@ -82,6 +82,13 @@ export function describeEodhdFailure(path: string, status: number): string {
       `verbatim, and a quoted key passes validation but is sent to EODHD with the quotes.`
     );
   }
+  if (status === 423 || status === 402) {
+    return (
+      `EODHD returned ${status} for ${endpoint}, which this API uses to mean the endpoint ` +
+      `is not included in your plan. The token itself is fine — confirm with: ` +
+      `npm run verify:provider eodhd.`
+    );
+  }
   if (status === 429) {
     return `EODHD rate limit reached (429) for ${endpoint}. Safe to retry after a delay.`;
   }
@@ -117,11 +124,22 @@ export class EodhdRequestError extends Error {
   }
 }
 
-/** A 403 means the token was accepted and the plan does not carry this
- * endpoint. It is the one failure worth falling back from rather than
- * surfacing — every other status is a real problem the caller should see. */
+/**
+ * Statuses that mean "the token is fine, this endpoint is not on your plan".
+ *
+ * 403 is the documented one. 423 is not documented anywhere by EODHD, but it
+ * is what /api/eod-bulk-last-day actually returns on a Basic plan whose
+ * /api/eod and /api/exchange-symbol-list calls both return 200 — measured, not
+ * assumed. 402 is included because it is the conventional payment-required
+ * signal and would mean the same thing here.
+ *
+ * 401 is deliberately absent: that is a rejected token, a real fault, and must
+ * surface rather than be quietly routed around.
+ */
+const PLAN_LIMIT_STATUSES = new Set([402, 403, 423]);
+
 function isPlanLimit(error: unknown): boolean {
-  return error instanceof EodhdRequestError && error.status === 403;
+  return error instanceof EodhdRequestError && PLAN_LIMIT_STATUSES.has(error.status);
 }
 
 export class EodhdProvider implements PriceProvider {
@@ -188,9 +206,16 @@ export class EodhdProvider implements PriceProvider {
     let payload: unknown;
     try {
       payload = await this.request(`/api/eod-bulk-last-day/${encodeURIComponent(exchangeCode)}`, {});
-    } catch (error) {
-      if (isPlanLimit(error)) return turnover;
-      throw error;
+    } catch {
+      // Best-effort by design, and the reason is worth stating: ranking is an
+      // enhancement, the symbol list is the requirement. An earlier version
+      // rethrew anything that was not a 403, which meant a single unavailable
+      // optional endpoint took the whole universe down with it — discovery
+      // would have failed on a plan where it could have worked. Whatever went
+      // wrong here, an unranked universe beats no universe, and the
+      // degradation is not silent: every record carries
+      // universe_ranking: 'unranked' for the agent to disclose.
+      return turnover;
     }
     if (!Array.isArray(payload)) return turnover;
     for (const value of payload) {
