@@ -104,11 +104,65 @@ and B3 closes 403s on `/api/screener`.
 |---|---|---|
 | Daily refresh, prices | `/api/eod` | Working |
 | Fundamentals | `/api/fundamentals` | Untested — probe before relying on it |
-| **Stock discovery** | `/api/screener` | **403 — not on the plan** |
+| **Stock discovery** | `/api/screener` | 403 on Basic — falls back to `exchange-symbol-list` |
 
-Discovery stays blocked until Screener is added to the EODHD subscription. No
-code change reaches this: `getSecurityUniverse` has no other source, and the
-guard in `discovery-workflow.ts` refuses to substitute stub data on purpose.
+**Resolved for the Basic plan.** `getSecurityUniverse` no longer depends on the
+screener. It now prefers the richest source the plan allows and falls back:
+
+1. **`/api/screener`** — ranked by market capitalisation. Best, but an
+   All-World-Extended / All-In-One feature that 403s on smaller plans.
+2. **`/api/exchange-symbol-list`** — ships with every plan including the free
+   tier — plus one **`/api/eod-bulk-last-day`** call to rank the list by last
+   close x volume. On the current Basic plan this second call returns 423, so
+   the universe is unranked in practice today.
+3. **`/api/exchange-symbol-list` alone**, unranked, with the limitation recorded
+   on every record so the agent must disclose it.
+
+A plan-limit status (402, 403, **423**) triggers a fallback on the required
+call. Any other status there is a real fault and surfaces. The optional ranking
+call degrades on *any* failure — see below.
+
+### Measured against a live Basic plan
+
+```
+200  exchange-symbol-list     <- the universe source works
+423  eod-bulk-last-day        <- undocumented; means "not on your plan"
+403  screener                 <- the known Basic limit
+```
+
+**423 is not in EODHD's documentation.** It is what `/api/eod-bulk-last-day`
+actually returns on a plan whose `/api/eod` and `/api/exchange-symbol-list`
+calls both return 200. An implementation that treated only 403 as a plan limit
+would rethrow it and fail discovery on a plan where discovery works — which is
+exactly what the first version of this code did, until the endpoint was probed
+for real.
+
+Two lessons encoded in the code as a result:
+
+- The plan-limit set is `{402, 403, 423}`, not `{403}`. 401 stays out of it: a
+  rejected token is a real fault and must surface.
+- **The optional ranking call swallows every failure.** Ranking is an
+  enhancement; the symbol list is the requirement. Letting an unavailable
+  optional endpoint take down a working universe is a failure mode worth
+  designing out, not a status code worth enumerating. The degradation is not
+  silent — every record carries `universe_ranking: 'unranked'`.
+
+### Why the ranking is not optional
+
+The symbol list carries no size field. Truncating it alphabetically to fit the
+per-exchange limit drops Nestlé, Novartis, Roche and UBS off a Swiss universe
+while keeping every company beginning with A — worse than useless for a quality
+thesis, and it fails *silently*: the run looks successful and simply never
+considers the large caps. Turnover is a coarse proxy for size, but it is a real
+provider-supplied number and it keeps the large caps in.
+
+### Preferred shares are kept on purpose
+
+The asset-type filter is an exclusion list, not an allow-list of "Common
+Stock". PETR4 — one of the largest names on B3 — is a *preferred* share, and
+much of the Brazilian market is preferreds and units. Allow-listing common
+stock only would have silently deleted the B3 large caps this system exists to
+analyse.
 
 `describeEodhdFailure` in `eodhd.ts` now distinguishes these at the point of
 failure — a 403 says the token was accepted and the plan is the limit, a 401

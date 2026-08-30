@@ -58,7 +58,7 @@ function latestStatement(section: unknown): JsonRecord {
  * place. The token is never echoed — it travels in the query string and this
  * text reaches the browser.
  */
-function describeEodhdFailure(path: string, status: number): string {
+export function describeEodhdFailure(path: string, status: number): string {
   const endpoint = path.startsWith('/api/screener')
     ? 'the Screener API (/api/screener), which stock discovery needs'
     : path.startsWith('/api/eod')
@@ -82,6 +82,13 @@ function describeEodhdFailure(path: string, status: number): string {
       `verbatim, and a quoted key passes validation but is sent to EODHD with the quotes.`
     );
   }
+  if (status === 423 || status === 402) {
+    return (
+      `EODHD returned ${status} for ${endpoint}, which this API uses to mean the endpoint ` +
+      `is not included in your plan. The token itself is fine — confirm with: ` +
+      `npm run verify:provider eodhd.`
+    );
+  }
   if (status === 429) {
     return `EODHD rate limit reached (429) for ${endpoint}. Safe to retry after a delay.`;
   }
@@ -89,6 +96,50 @@ function describeEodhdFailure(path: string, status: number): string {
     return `EODHD returned a server error (${status}) for ${endpoint}. Safe to retry.`;
   }
   return `EODHD request for ${endpoint} failed with HTTP ${status}.`;
+}
+
+/**
+ * Asset types excluded from a discovery universe.
+ *
+ * Deliberately an exclusion list rather than an allow-list of "Common Stock":
+ * PETR4, one of the largest names on B3, is a *preferred* share, and half of
+ * the Brazilian market is units and preferreds. Allow-listing common stock
+ * only would silently delete the B3 large caps this system exists to analyse.
+ */
+const EXCLUDED_ASSET_TYPES = ['etf', 'fund', 'bond', 'index', 'currency', 'note', 'warrant', 'right'];
+
+function isTradableEquityType(assetType: string): boolean {
+  const lowered = assetType.toLowerCase();
+  return !EXCLUDED_ASSET_TYPES.some((excluded) => lowered.includes(excluded));
+}
+
+/**
+ * Carries the HTTP status so callers can branch on it without parsing prose.
+ * The message stays human-facing; the status stays machine-facing.
+ */
+export class EodhdRequestError extends Error {
+  constructor(readonly status: number, readonly endpoint: string, message: string) {
+    super(message);
+    this.name = 'EodhdRequestError';
+  }
+}
+
+/**
+ * Statuses that mean "the token is fine, this endpoint is not on your plan".
+ *
+ * 403 is the documented one. 423 is not documented anywhere by EODHD, but it
+ * is what /api/eod-bulk-last-day actually returns on a Basic plan whose
+ * /api/eod and /api/exchange-symbol-list calls both return 200 — measured, not
+ * assumed. 402 is included because it is the conventional payment-required
+ * signal and would mean the same thing here.
+ *
+ * 401 is deliberately absent: that is a rejected token, a real fault, and must
+ * surface rather than be quietly routed around.
+ */
+const PLAN_LIMIT_STATUSES = new Set([402, 403, 423]);
+
+function isPlanLimit(error: unknown): boolean {
+  return error instanceof EodhdRequestError && PLAN_LIMIT_STATUSES.has(error.status);
 }
 
 export class EodhdProvider implements PriceProvider {
@@ -109,11 +160,138 @@ export class EodhdProvider implements PriceProvider {
       signal: AbortSignal.timeout(30_000),
       headers: { accept: 'application/json' },
     });
-    if (!response.ok) throw new Error(describeEodhdFailure(path, response.status));
+    if (!response.ok) {
+      throw new EodhdRequestError(response.status, path, describeEodhdFailure(path, response.status));
+    }
     return response.json();
   }
 
+  /**
+   * Builds the discovery universe, preferring the richest source the plan allows.
+   *
+   *   1. /api/screener            ranked by market capitalisation. Best, but it
+   *                               is an All-World-Extended / All-In-One feature
+   *                               and 403s on smaller plans.
+   *   2. /api/exchange-symbol-list ships with every plan including the free tier.
+   *      + /api/eod-bulk-last-day  one extra call for last close and volume, so
+   *                               the list can be ranked by turnover instead of
+   *                               arbitrarily truncated.
+   *   3. /api/exchange-symbol-list alone, unranked, with the limitation recorded
+   *                               on each record so the agent must disclose it.
+   *
+   * Why the ranking in step 2 is not optional: the symbol list carries no size
+   * field, and an exchange list truncated alphabetically drops Nestlé, Novartis,
+   * Roche and UBS off a Swiss universe while keeping every company beginning
+   * with A. That is worse than useless for a quality thesis, and it would fail
+   * silently — the run would look successful and simply never consider the
+   * large caps. Turnover (close x volume) is a coarse proxy for size, but it is
+   * a real, provider-supplied number and it keeps the large caps in.
+   */
   async getSecurityUniverse(exchange: string, limit: number): Promise<SecurityUniverseRecord[]> {
+    try {
+      return await this.screenerUniverse(exchange, limit);
+    } catch (error) {
+      if (!isPlanLimit(error)) throw error;
+    }
+    return this.symbolListUniverse(exchange, limit);
+  }
+
+  /**
+   * Last close and volume for an entire exchange in one call, keyed by symbol.
+   * Returns an empty map when the plan does not carry the bulk endpoint, which
+   * degrades the universe to unranked rather than failing the run.
+   */
+  private async exchangeTurnover(exchangeCode: string): Promise<Map<string, { turnover: number; date: string }>> {
+    const turnover = new Map<string, { turnover: number; date: string }>();
+    let payload: unknown;
+    try {
+      payload = await this.request(`/api/eod-bulk-last-day/${encodeURIComponent(exchangeCode)}`, {});
+    } catch {
+      // Best-effort by design, and the reason is worth stating: ranking is an
+      // enhancement, the symbol list is the requirement. An earlier version
+      // rethrew anything that was not a 403, which meant a single unavailable
+      // optional endpoint took the whole universe down with it — discovery
+      // would have failed on a plan where it could have worked. Whatever went
+      // wrong here, an unranked universe beats no universe, and the
+      // degradation is not silent: every record carries
+      // universe_ranking: 'unranked' for the agent to disclose.
+      return turnover;
+    }
+    if (!Array.isArray(payload)) return turnover;
+    for (const value of payload) {
+      const row = object(value);
+      const code = text(first(row, 'code', 'Code'));
+      const close = finite(first(row, 'adjusted_close', 'close'));
+      const volume = finite(first(row, 'volume'));
+      const date = text(first(row, 'date'));
+      if (!code || close === null || volume === null || close <= 0 || volume <= 0) continue;
+      turnover.set(code.toUpperCase(), { turnover: close * volume, date: date ?? '' });
+    }
+    return turnover;
+  }
+
+  private async symbolListUniverse(exchange: string, limit: number): Promise<SecurityUniverseRecord[]> {
+    const info = exchangeInfo(exchange);
+    const boundedLimit = Math.max(1, Math.min(limit, 500));
+    const endpoint = `/api/exchange-symbol-list/${encodeURIComponent(info.code)}`;
+    const payload = await this.request(endpoint, {});
+    const rows = Array.isArray(payload) ? payload : [];
+    const turnover = await this.exchangeTurnover(info.code);
+    const ranked = turnover.size > 0;
+    const observedAt = new Date().toISOString();
+    const sourceUrl = `https://eodhd.com${endpoint}`;
+
+    const candidates = rows.flatMap((value) => {
+      const row = object(value);
+      const code = text(first(row, 'Code', 'code'));
+      const companyName = text(first(row, 'Name', 'name'));
+      const assetType = text(first(row, 'Type', 'type')) ?? 'Common Stock';
+      if (!code || !companyName || !isTradableEquityType(assetType)) return [];
+      const liquidity = turnover.get(code.toUpperCase());
+      return [{ code, companyName, assetType, row, liquidity }];
+    });
+
+    // Descending turnover keeps the large caps; the tiebreak keeps the order
+    // deterministic so two runs on the same day produce the same universe.
+    candidates.sort((a, b) =>
+      (b.liquidity?.turnover ?? 0) - (a.liquidity?.turnover ?? 0) || a.code.localeCompare(b.code)
+    );
+
+    const truncated = candidates.length > boundedLimit;
+    return candidates.slice(0, boundedLimit).map(({ code, companyName, assetType, row, liquidity }) => {
+      const attributes: SecurityUniverseRecord['attributes'] = {
+        // Provenance the agent can cite, and must be able to, because this
+        // universe is a subset chosen by a rule it did not choose.
+        universe_source: 'exchange-symbol-list',
+        universe_ranking: ranked ? 'last_close_turnover' : 'unranked',
+        universe_truncated: truncated,
+      };
+      const isin = text(first(row, 'Isin', 'isin'));
+      if (isin) attributes.isin = isin;
+      if (liquidity) {
+        attributes.last_close_turnover = liquidity.turnover;
+        if (liquidity.date) attributes.last_close_date = liquidity.date;
+      }
+      return {
+        ticker: code,
+        exchange,
+        companyName,
+        currency: text(first(row, 'Currency', 'currency')) ?? info.currency,
+        country: text(first(row, 'Country', 'country')) ?? info.country,
+        // The symbol list carries no classification. Null is honest; inventing
+        // a sector here would put a fabricated field in front of the agent.
+        sector: null,
+        industry: null,
+        assetType,
+        observedAt,
+        provider: 'eodhd',
+        sourceUrl,
+        attributes,
+      };
+    });
+  }
+
+  private async screenerUniverse(exchange: string, limit: number): Promise<SecurityUniverseRecord[]> {
     const info = exchangeInfo(exchange);
     const boundedLimit = Math.max(1, Math.min(limit, 100));
     const payload = await this.request('/api/screener', {
