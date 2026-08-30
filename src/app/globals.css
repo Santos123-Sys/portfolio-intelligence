@@ -239,3 +239,249 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
   .compact-field input { width: 100%; }
   .candidate-heading { align-items: center; }
 }
+
+/* ===========================================================================
+   UX foundation
+   ---------------------------------------------------------------------------
+   Everything below normalises behaviour that had drifted as pages were added:
+   control sizing, focus visibility, press feedback, and touch ergonomics. It
+   is appended rather than merged into the sections above so the diff stays
+   reviewable and each rule's reason stays attached to it.
+
+   The visual language is deliberately unchanged. This is a dense analytical
+   tool whose value is predictability, so the work here is making the existing
+   design behave consistently rather than giving it a new look.
+   =========================================================================== */
+
+:root {
+  /* 44px is the smallest reliable thumb target (Apple HIG; WCAG 2.5.5 asks
+     24px as a floor, which is too small for a primary action held one-handed).
+     Expressed as a token so a control can opt in with min-height rather than
+     each site guessing its own padding. */
+  --tap-min: 44px;
+  /* One radius and one control padding, so a field in a filter bar and a field
+     in a form are recognisably the same control. Seven separate definitions
+     had drifted to four radii and five paddings. */
+  --control-radius: 7px;
+  --control-padding: 0.65rem 0.75rem;
+  --focus-ring: 2px;
+}
+
+/* --- Touch and pointer ergonomics ---------------------------------------- */
+
+html {
+  /* iOS inflates font sizes in landscape without this, which breaks the
+     careful size hierarchy the cards and tables depend on. */
+  -webkit-text-size-adjust: 100%;
+}
+
+button,
+[role='button'],
+a.nav-link,
+summary {
+  /* Removes the grey flash iOS paints over any tapped element, which reads as
+     a rendering glitch next to the deliberate :active state defined below. */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation; /* drops the 300ms double-tap-to-zoom delay */
+}
+
+/* --- Consistent focus, for keyboard users -------------------------------- */
+
+/* There was no focus style on any button or link, so keyboard navigation was
+   invisible. :focus-visible rather than :focus keeps the ring off mouse
+   clicks, where it reads as noise. */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--control-radius);
+}
+
+/* --- Press feedback ------------------------------------------------------ */
+
+/* A tap with no acknowledgement reads as a dead control, and on touch there is
+   no hover state to fall back on. A 1px translate is felt more than seen,
+   which is the point. */
+button:not(:disabled):active,
+.portfolio-tab:active,
+.nav-link:active {
+  transform: translateY(1px);
+}
+
+button,
+.portfolio-tab,
+.nav-link,
+input,
+select,
+textarea {
+  transition: background-color 120ms ease, border-color 120ms ease,
+    color 120ms ease, transform 80ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Vestibular safety: the transform and transitions above are the only motion
+     in the app, and both are removable without losing meaning. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  button:not(:disabled):active,
+  .portfolio-tab:active,
+  .nav-link:active {
+    transform: none;
+  }
+}
+
+/* --- One control shape --------------------------------------------------- */
+
+/* These selectors already existed with divergent radii, paddings and
+   backgrounds. Re-stating them together is what makes a field look the same
+   wherever it appears — the consistency is the feature. */
+.setup-form input,
+.setup-form select,
+.setup-form textarea,
+.security-form input,
+.login-form input,
+.filter-bar input,
+.filter-bar select,
+.compact-field input,
+.valuation-grid input {
+  min-height: var(--tap-min);
+  border-radius: var(--control-radius);
+  padding: var(--control-padding);
+  font: inherit;
+}
+
+/* Textareas are sized by rows, not by a thumb, so the tap floor does not
+   apply; only the shape is shared. */
+.setup-form textarea,
+.reasoning-policy textarea {
+  min-height: 6rem;
+  border-radius: var(--control-radius);
+}
+
+/* iOS zooms the viewport when a focused input's text is under 16px. The app's
+   0.82rem controls triggered it on every filter and numeric field, which threw
+   away the layout mid-interaction. */
+input,
+select,
+textarea {
+  font-size: max(16px, 1rem);
+}
+
+.action-button,
+.setup-form button,
+.security-form button,
+.login-form button,
+.candidate-actions button,
+.portfolio-tab,
+.theme-toggle {
+  min-height: var(--tap-min);
+  border-radius: var(--control-radius);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+/* Checkboxes default to roughly 13px, far under any thumb. Scaling the box
+   and padding its label row gives the whole row a usable hit area. */
+.confirmation-row input[type='checkbox'],
+.tool-picker input[type='checkbox'] {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--accent);
+}
+.confirmation-row,
+.tool-picker label {
+  min-height: var(--tap-min);
+  align-items: center;
+}
+
+/* Disclosure triggers were text-sized hit areas. */
+.risk-strip summary,
+.analysis-evidence summary,
+.reasoning-policy summary,
+.security-card details summary {
+  min-height: var(--tap-min);
+  display: flex;
+  align-items: center;
+  padding: 0.25rem 0;
+}
+
+/* The metric drill trigger had zero padding, making the tap area exactly the
+   height of its text. */
+.metric-drill-trigger {
+  min-height: var(--tap-min);
+  padding: 0.35rem 0;
+}
+
+/* --- Phone layout -------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  main {
+    /* The 1.5rem gutter plus a 2rem top pad wastes vertical space on a phone
+       where the fold is the scarcest resource. */
+    padding: 1.25rem 1rem 3rem;
+  }
+
+  h1 { font-size: 1.25rem; }
+  .sub { margin-bottom: 1.25rem; }
+
+  .grid,
+  .setup-grid,
+  .security-grid,
+  .valuation-grid,
+  .risk-strip {
+    /* auto-fit with a 260-320px minimum leaves a sliver of a second column on
+       a 360px screen. One column below this width is the honest answer. */
+    grid-template-columns: 1fr;
+  }
+
+  .compact-field input {
+    /* Was a fixed 110px, which is narrower than the numbers it holds. */
+    width: 100%;
+  }
+
+  .candidate-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  /* Full-width primary actions sit in the thumb arc instead of the top-right
+     corner, which is the hardest place to reach one-handed. */
+  .setup-form button,
+  .login-form button,
+  .security-form button {
+    width: 100%;
+  }
+
+  .candidate-actions button,
+  .thesis-extraction-actions .action-button {
+    flex: 1 1 auto;
+  }
+
+  /* A wide table on a phone is a horizontal scroll either way; making that
+     scroll explicit beats letting the page itself scroll sideways. */
+  .table-scroll {
+    margin-inline: -1rem;
+    padding-inline: 1rem;
+  }
+}
+
+/* --- Status colour is never the only signal ------------------------------ */
+
+/* .badge.breach and .badge.watch differ from .badge.ok by hue alone, which
+   about 1 in 12 men cannot rely on. The marker restates the state in a form
+   that survives both colour blindness and a greyscale print. */
+.badge.breach::before { content: '! '; }
+.badge.watch::before { content: '· '; }
