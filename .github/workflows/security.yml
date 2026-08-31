@@ -1,7 +1,12 @@
-name: Security verification
+# The name of the `verify` job below is what branch protection points at as the
+# required status check. Renaming the job silently detaches the gate: protection
+# keeps waiting for a check that no longer reports, or the rule stops matching
+# and merges go through unchecked. tests/ci-gate.test.ts pins it for that reason.
+name: CI
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
   schedule:
@@ -11,7 +16,7 @@ permissions:
   contents: read
 
 jobs:
-  application-security:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

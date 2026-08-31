@@ -43,6 +43,13 @@
       "when": 1787976375795,
       "tag": "0005_sleepy_obadiah_stane",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788140366607,
+      "tag": "0006_curvy_bug",
+      "breakpoints": true
     }
   ]
 }

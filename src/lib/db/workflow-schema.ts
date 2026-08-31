@@ -254,3 +254,29 @@ export const externalAgenticAnalyses = pgTable(
     runSecurityIdx: uniqueIndex('external_analysis_run_portfolio_security_idx').on(t.runId, t.portfolioId, t.securityId),
   })
 );
+
+/**
+ * Every attempted external market-data call, win or lose. This is the record
+ * that answers "why is my universe unranked" or "how much of today's budget
+ * is spent" without guessing — and it backs the gateway's own decisions: the
+ * daily call budget counts rows here, and a recent plan_limit row is what
+ * lets a later call skip a network round trip already known to fail.
+ */
+export const providerCalls = pgTable(
+  'provider_calls',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    provider: text('provider').notNull(),
+    // A stable route template, never the full URL: no API key, no per-symbol
+    // segment. See endpointTemplate() in src/lib/connectors/gateway.ts.
+    endpoint: text('endpoint').notNull(),
+    calledAt: timestamp('called_at', { withTimezone: true }).defaultNow().notNull(),
+    outcome: text('outcome').notNull(), // ok | plan_limit | rate_limited | error
+    httpStatus: integer('http_status'),
+    durationMs: integer('duration_ms').notNull(),
+  },
+  (t) => ({
+    providerCalledIdx: index('provider_calls_provider_called_idx').on(t.provider, t.calledAt),
+    endpointOutcomeIdx: index('provider_calls_endpoint_outcome_idx').on(t.provider, t.endpoint, t.outcome, t.calledAt),
+  })
+);

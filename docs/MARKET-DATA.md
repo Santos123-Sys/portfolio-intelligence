@@ -169,6 +169,44 @@ failure — a 403 says the token was accepted and the plan is the limit, a 401
 says the token itself was rejected. The previous message was a bare status
 code, which sent a reader hunting for a broken key that was working fine.
 
+## The provider gateway
+
+Every EODHD network call now routes through a gateway
+(`src/lib/services/provider-gateway.ts`) rather than calling `fetch` directly.
+It exists for three reasons, in the order it checks them:
+
+1. **Plan-limit memory.** Once an endpoint has returned a plan-limit status
+   (402/403/423), the gateway remembers it and skips the network call the next
+   time discovery runs — for `MARKET_DATA_GATEWAY_PLAN_LIMIT_MEMORY_HOURS`
+   (default 24). Before this, every discovery run tried `/api/screener` again
+   and paid for a round trip to a call already known to fail, on every run,
+   forever.
+2. **A per-minute budget** (`MARKET_DATA_GATEWAY_CALLS_PER_MINUTE`, default
+   60), enforced in-process, so concurrent calls across exchanges cannot burst
+   past a sane rate.
+3. **A per-day budget** (`MARKET_DATA_GATEWAY_CALLS_PER_DAY`, default 2,000),
+   enforced against the day's row count in `provider_calls`, so it survives a
+   mid-day restart rather than resetting.
+
+**The defaults are self-imposed, not measured.** EODHD's own site is not
+reachable from the environment this was built in, so the real per-minute and
+per-day ceilings for the current plan are unconfirmed — the defaults above are
+conservative placeholders, chosen to be safely below any plausible vendor
+limit rather than to match one. Raise them once you have measured the real
+numbers; a limit set too low costs a delay, one set too high costs a lockout,
+so conservative is the direction to default toward.
+
+Every attempted call — success, plan limit, rate limit, or error — is written
+to `provider_calls` (provider, endpoint template, outcome, HTTP status,
+duration) whether or not it succeeded. That table is what turns "why is my
+universe unranked" from a guess into a query.
+
+A budget error is not a plan limit and is never treated as one: hitting the
+day's self-imposed cap propagates as a real failure on the required call
+(`getSecurityUniverse`'s screener/symbol-list path), while the *optional*
+turnover-ranking call still degrades to unranked on any failure, budget errors
+included — same as it always has.
+
 ## The quoting trap
 
 Railway stores variable values **verbatim** — no shell or dotenv parser strips

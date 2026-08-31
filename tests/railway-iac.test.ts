@@ -37,6 +37,20 @@ describe('Railway infrastructure definition', () => {
     expect(dashboard?.deploy?.healthcheckPath).toBe('/api/health');
   });
 
+  it('gives every service a healthcheck, including the worker that has no traffic', async () => {
+    const services = await productionServices();
+
+    expect(
+      Object.fromEntries(
+        services.map(({ name, deploy }) => [name, deploy?.healthcheckPath])
+      )
+    ).toEqual({
+      'agentic-api': '/health',
+      'agentic-worker': '/health',
+      'portfolio-intelligence': '/api/health',
+    });
+  });
+
   it('uses generated, preserved or cross-resource secret values rather than literals', async () => {
     const services = await productionServices();
     const dashboard = services.find(({ name }) => name === 'portfolio-intelligence');

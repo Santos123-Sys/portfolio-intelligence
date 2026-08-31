@@ -12,6 +12,17 @@ interface DiscoveryRun {
   completedAt: string | null;
   errorMessage: string | null;
   candidateCount: number;
+  /**
+   * The full agent output. It was already being returned by the runs API and
+   * simply never read: a run that completed with zero candidates showed
+   * "Issue: —", while the agent's own account of why it found nothing sat in
+   * this field. An empty result with no stated reason is worse than a failure,
+   * because there is nothing to act on.
+   */
+  resultJson: {
+    limitations?: string[];
+    marketMandates?: Array<{ portfolioId: string; rationale: string }>;
+  } | null;
 }
 
 interface RiskMetric {
@@ -61,6 +72,25 @@ interface Candidate {
     informationGaps: string[] | null;
   } | null;
   valuation: { resultJson: { currency: string; fairValuePerShare: number } } | null;
+}
+
+/**
+ * What to show in the Issue column.
+ *
+ * A failed run has an errorMessage. A completed run with candidates has
+ * nothing to report. The case that was silently blank is the third one: a run
+ * that completed and found nothing. The agent is required to explain coverage
+ * and evidence gaps in `limitations`, so that explanation is the issue — it is
+ * the only thing that tells the reader whether to widen the thesis, wait for
+ * better data, or look at the universe.
+ */
+function runIssue(run: DiscoveryRun): string {
+  if (run.errorMessage) return run.errorMessage;
+  if (run.status !== 'completed' || run.candidateCount > 0) return '—';
+  const limitations = run.resultJson?.limitations ?? [];
+  if (limitations.length > 0) return `No candidates matched. ${limitations.join(' ')}`;
+  return 'No candidates matched, and the agent recorded no limitations explaining why. '
+    + 'Check that the security universe covers the exchanges your thesis targets.';
 }
 
 export default function AIStockDiscoveryPage() {
@@ -188,6 +218,39 @@ export default function AIStockDiscoveryPage() {
 
       {error && <p className="login-error workflow-error" role="alert">{error}</p>}
 
+      {/*
+        The three prerequisites below were previously invisible until they were
+        violated: discovery-workflow.ts throws for each of them at click time,
+        so the only way to learn the required order was to press the button and
+        read an error. Stating the sequence up front is the difference between
+        a workflow and a guessing game — and each item links to the page that
+        satisfies it, so the reader can act without hunting through the nav.
+      */}
+      <section className="card prerequisites">
+        <h2>Before you start</h2>
+        <ol className="prerequisite-list">
+          <li>
+            <strong>Create your portfolios.</strong> Discovery needs at least one Swiss
+            Quality or Brazilian Growth portfolio.{' '}
+            <a className="text-link" href="/portfolio-setup">Portfolio setup</a>
+          </li>
+          <li>
+            <strong>Confirm your investment thesis.</strong> The thesis defines the criteria
+            candidates are matched against, and its mandates must cover the portfolios above.{' '}
+            <a className="text-link" href="/investment-thesis">Investment thesis</a>
+          </li>
+          <li>
+            <strong>Configure live market data.</strong> Discovery refuses synthetic data, so
+            it needs <code>MARKET_DATA_PROVIDER=eodhd</code> and a working API key. Stub data
+            is never used to recommend a security.
+          </li>
+        </ol>
+        <p className="note">
+          Once all three hold, the numbered stages below run in order: research finds
+          candidates, you approve them, and only approved candidates are analysed.
+        </p>
+      </section>
+
       <section className="card workflow-stage">
         <div>
           <h2>1. Start market research</h2>
@@ -211,7 +274,7 @@ export default function AIStockDiscoveryPage() {
               <td>{run.provider}</td>
               <td><span className={`badge ${run.status === 'failed' ? 'breach' : run.status === 'completed' ? 'ok' : 'watch'}`}>{run.status}</span></td>
               <td>{run.candidateCount}</td>
-              <td className="note">{run.errorMessage ?? '—'}</td>
+              <td className="note">{runIssue(run)}</td>
               <td>{run.status === 'failed' ? <button type="button" onClick={() => void retryDiscovery(run.id)} disabled={busy !== null}>
                 {busy === `discovery:${run.id}` ? 'Retrying…' : 'Retry'}
               </button> : '—'}</td>

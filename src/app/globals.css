@@ -485,3 +485,12 @@ textarea {
    that survives both colour blindness and a greyscale print. */
 .badge.breach::before { content: '! '; }
 .badge.watch::before { content: '· '; }
+
+/* Ordered prerequisites for a multi-stage workflow.
+   The numbered list is the point: these steps are not interchangeable, and the
+   marker carries that information without a sentence having to say it. */
+.prerequisites { margin-bottom: 1rem; }
+.prerequisite-list { display: grid; gap: 0.6rem; margin: 0 0 0.75rem; padding-left: 1.4rem; }
+.prerequisite-list li { color: var(--muted); font-size: 0.85rem; line-height: 1.55; }
+.prerequisite-list strong { color: var(--text); font-weight: 500; }
+.prerequisite-list code { background: var(--bg); border-radius: 4px; padding: 0.1rem 0.3rem; font-size: 0.8em; }

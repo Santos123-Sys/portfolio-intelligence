@@ -31,6 +31,24 @@ These are not style preferences. Breaking one produces numbers that look right a
    separately deployed agentic service, validates its callback, and imports the
    manifest transactionally.
 
+## The merge gate
+
+`.github/workflows/security.yml` runs the dependency audit, lint, typecheck,
+tests and the production build on every pull request. It only *gates* a merge if
+the repository requires it, which is a setting, not a file — GitHub does not read
+branch protection from the repository.
+
+To require it: **Settings → Branches → Add branch ruleset** (or edit the existing
+rule) for `main`, enable **Require status checks to pass before merging**, and add
+**`verify`** to the required checks. Enable **Require branches to be up to date
+before merging** alongside it, otherwise a PR that was green against a stale base
+can still break `main`.
+
+`verify` is the job name in the workflow, and that name is what the rule matches
+on. `tests/ci-gate.test.ts` pins it: renaming the job without updating the rule
+would silently detach the gate, and there is no warning from GitHub when it
+happens.
+
 ## Before opening a PR
 
 ```bash
