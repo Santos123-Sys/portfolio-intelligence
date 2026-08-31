@@ -130,25 +130,25 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
       <p className="note">Currency: {setup.defaults.currency} · Evidence as of {setup.defaults.dataAsOf ? new Date(setup.defaults.dataAsOf).toLocaleDateString() : 'unknown'}.</p>
       <div className="valuation-grid">
         <label>Starting free cash flow
-          <input type="number" required value={values.startingFreeCashFlow ?? ''} onChange={(event) => update('startingFreeCashFlow', event.target.value)} />
+          <input type="number" inputMode="decimal" required value={values.startingFreeCashFlow ?? ''} onChange={(event) => update('startingFreeCashFlow', event.target.value)} />
         </label>
         <label>Net debt
-          <input type="number" required value={values.netDebt ?? ''} onChange={(event) => update('netDebt', event.target.value)} />
+          <input type="number" inputMode="decimal" required value={values.netDebt ?? ''} onChange={(event) => update('netDebt', event.target.value)} />
         </label>
         <label>Shares outstanding
-          <input type="number" min="0" step="any" required value={values.sharesOutstanding ?? ''} onChange={(event) => update('sharesOutstanding', event.target.value)} />
+          <input type="number" inputMode="decimal" min="0" step="any" required value={values.sharesOutstanding ?? ''} onChange={(event) => update('sharesOutstanding', event.target.value)} />
         </label>
         <label>Forecast years
-          <input type="number" min="1" max="10" required value={values.forecastYears ?? ''} onChange={(event) => update('forecastYears', event.target.value)} />
+          <input type="number" inputMode="numeric" min="1" max="10" required value={values.forecastYears ?? ''} onChange={(event) => update('forecastYears', event.target.value)} />
         </label>
         <label>Annual growth (%)
-          <input type="number" min="-50" max="50" step="0.1" required value={values.annualGrowthRate ?? ''} onChange={(event) => update('annualGrowthRate', event.target.value)} />
+          <input type="number" inputMode="decimal" min="-50" max="50" step="0.1" required value={values.annualGrowthRate ?? ''} onChange={(event) => update('annualGrowthRate', event.target.value)} />
         </label>
         <label>Discount rate (%)
-          <input type="number" min="0.01" max="50" step="0.1" required value={values.discountRate ?? ''} onChange={(event) => update('discountRate', event.target.value)} />
+          <input type="number" inputMode="decimal" min="0.01" max="50" step="0.1" required value={values.discountRate ?? ''} onChange={(event) => update('discountRate', event.target.value)} />
         </label>
         <label>Terminal growth (%)
-          <input type="number" min="-5" max="5" step="0.1" required value={values.terminalGrowthRate ?? ''} onChange={(event) => update('terminalGrowthRate', event.target.value)} />
+          <input type="number" inputMode="decimal" min="-5" max="5" step="0.1" required value={values.terminalGrowthRate ?? ''} onChange={(event) => update('terminalGrowthRate', event.target.value)} />
         </label>
       </div>
       <label className="confirmation-row">

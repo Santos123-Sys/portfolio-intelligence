@@ -204,7 +204,7 @@ export default function PortfolioSetupPage() {
             </label>
             <label>
               Base currency
-              <input name="baseCurrency" maxLength={3} pattern="[A-Za-z]{3}" required placeholder="CHF" />
+              <input name="baseCurrency" autoCapitalize="characters" autoCorrect="off" spellCheck={false} maxLength={3} pattern="[A-Za-z]{3}" required placeholder="CHF" />
             </label>
             <label>
               Investment objective
@@ -233,18 +233,18 @@ export default function PortfolioSetupPage() {
               </select>
             </label>
             <div className="setup-form-row">
-              <label>Ticker<input name="ticker" maxLength={20} required placeholder="NESN" /></label>
-              <label>Exchange MIC<input name="exchange" maxLength={4} pattern="[A-Za-z]{4}" required placeholder="XSWX" /></label>
+              <label>Ticker<input name="ticker" autoCapitalize="characters" autoCorrect="off" spellCheck={false} maxLength={20} required placeholder="NESN" /></label>
+              <label>Exchange MIC<input name="exchange" autoCapitalize="characters" autoCorrect="off" spellCheck={false} maxLength={4} pattern="[A-Za-z]{4}" required placeholder="XSWX" /></label>
             </div>
             <label>Company name<input name="companyName" maxLength={160} required placeholder="Nestlé S.A." /></label>
             <div className="setup-form-row">
-              <label>Currency<input name="currency" maxLength={3} pattern="[A-Za-z]{3}" required placeholder="CHF" /></label>
-              <label>Country<input name="country" maxLength={2} pattern="[A-Za-z]{2}" placeholder="CH" /></label>
+              <label>Currency<input name="currency" autoCapitalize="characters" autoCorrect="off" spellCheck={false} maxLength={3} pattern="[A-Za-z]{3}" required placeholder="CHF" /></label>
+              <label>Country<input name="country" autoCapitalize="characters" autoCorrect="off" spellCheck={false} maxLength={2} pattern="[A-Za-z]{2}" placeholder="CH" /></label>
             </div>
             <label>Sector<input name="sector" maxLength={100} placeholder="Consumer Staples" /></label>
             <div className="setup-form-row">
-              <label>Quantity<input name="quantity" type="number" min="0.00000001" step="any" required /></label>
-              <label>Average cost<input name="avgCost" type="number" min="0" step="any" required /></label>
+              <label>Quantity<input name="quantity" type="number" inputMode="decimal" min="0.00000001" step="any" required /></label>
+              <label>Average cost<input name="avgCost" type="number" inputMode="decimal" min="0" step="any" required /></label>
             </div>
             <p className="note">Weights, market values and risk metrics remain dashboard-computed fields and are not entered here.</p>
             {positionMessage && <p className={positionMessage.endsWith('added.') ? 'security-state' : 'login-error'} role="status">{positionMessage}</p>}
