@@ -1,33 +1,31 @@
 'use client';
 
 /**
- * Header — Section 5.4: Logo | Title | Portfolio Breadcrumb | Nav Links |
- * Theme Toggle. The primary Nav is the spec's seven-page information
- * architecture (Section 5.3); pages built before this spec pass are kept
- * reachable under "More" rather than deleted, since they cover ground (thesis
- * upload, candidate review, provenance) the new pages don't replace.
+ * The primary navigation follows the user's investment workflow. Supporting
+ * operational pages remain available under More without competing with the
+ * next action a user must take to move from thesis to an invested portfolio.
  */
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { usePortfolioBreadcrumb } from '@/lib/portfolio-context';
 
-const PRIMARY_NAV = [
+const WORKFLOW_NAV = [
   ['/', 'Overview'],
-  ['/allocation', 'Allocation'],
-  ['/positions', 'Positions'],
-  ['/risk', 'Risk Detail'],
-  ['/intelligence', 'AI Feed'],
-  ['/decisions', 'Decision Log'],
+  ['/investment-thesis', '1. Thesis'],
+  ['/ai-stock-discovery', '2. Discover'],
+  ['/positions', '3. Portfolio'],
+  ['/risk', 'Monitor'],
 ] as const;
 
 const EXTENDED_NAV = [
-  ['/portfolio-setup', 'Portfolio Setup'],
-  ['/investment-thesis', 'Investment Thesis'],
-  ['/ai-stock-discovery', 'AI Stock Discovery'],
-  ['/agentic-system', 'Agentic System'],
-  ['/agent-settings', 'Agent Settings'],
-  ['/candidates', 'Candidates'],
+  ['/portfolio-setup', 'Portfolio setup & manual holdings'],
+  ['/allocation', 'Allocation'],
+  ['/intelligence', 'AI Feed'],
+  ['/decisions', 'Decision Log'],
+  ['/candidates', 'Candidate records'],
+  ['/agentic-system', 'Existing-holdings analysis'],
+  ['/agent-settings', 'Agent settings'],
   ['/securities', 'Securities'],
   ['/account/security', 'Account Security'],
 ] as const;
@@ -102,7 +100,7 @@ export function Header() {
         </Link>
 
         <nav aria-label="Main navigation" className="primary-nav">
-          {PRIMARY_NAV.map(([href, label]) => (
+          {WORKFLOW_NAV.map(([href, label]) => (
             <Link
               key={href}
               href={href}

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 
 interface PortfolioRow {
   id: string;
@@ -85,13 +85,6 @@ export default function PortfolioSetupPage() {
     void loadData();
   }, [loadData]);
 
-  const portfoliosWithPositions = useMemo(
-    () => new Set(positions.map((position) => position.portfolioId)),
-    [positions]
-  );
-  const emptyPortfolios = portfolios.filter((portfolio) => !portfoliosWithPositions.has(portfolio.id));
-  const setupReady = portfolios.length > 0 && positions.length > 0 && emptyPortfolios.length === 0;
-
   async function createPortfolio(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
@@ -161,27 +154,29 @@ export default function PortfolioSetupPage() {
   return (
     <main>
       <h1>Portfolio Setup</h1>
-      <p className="sub">Create user-owned portfolios and add the holdings that the agentic system may analyze.</p>
+      <p className="sub">Name the destination portfolios for your thesis and, only after an investment decision, record the positions you actually own.</p>
 
       {loadError && <p className="security-message error" role="alert">{loadError}</p>}
 
       <section className="card setup-readiness" aria-live="polite">
-        <h2>Analysis readiness</h2>
+        <h2>Discovery setup</h2>
         {loading ? (
           <p className="note">Checking setup…</p>
-        ) : setupReady ? (
+        ) : portfolios.length > 0 ? (
           <>
-            <p className="security-state">Portfolio data is ready for agentic analysis.</p>
-            <Link className="action-button inline-action" href="/agentic-system">Open Agentic System</Link>
+            <p className="security-state">A destination portfolio is ready. Positions are not required for market research.</p>
+            <p className="note">Next: run discovery, review the candidates, and record a position only after you make an investment decision.</p>
+            <Link className="action-button inline-action" href="/ai-stock-discovery">Go to stock discovery</Link>
           </>
         ) : (
           <>
-            <p className="caveat">Complete the items below before starting analysis.</p>
+            <p className="caveat">Start with the investment thesis. Create a portfolio here only when the thesis does not provide a destination name.</p>
             <ul className="note">
-              {portfolios.length === 0 && <li>Create a portfolio.</li>}
-              {portfolios.length > 0 && positions.length === 0 && <li>Add at least one position.</li>}
-              {emptyPortfolios.map((portfolio) => <li key={portfolio.id}>Add a position to {portfolio.name}.</li>)}
+              <li>Confirm the investment thesis and its market mandate.</li>
+              <li>If needed, create a named portfolio destination.</li>
+              <li>Run market research. Do not add a position at this stage.</li>
             </ul>
+            <Link className="action-button inline-action" href="/investment-thesis">Open investment thesis</Link>
           </>
         )}
       </section>
@@ -217,6 +212,7 @@ export default function PortfolioSetupPage() {
 
         <section className="card">
           <h2>Add position</h2>
+          <p className="note">Use this only after a candidate has been reviewed and you have decided to invest, or when recording an existing holding.</p>
           <form className="setup-form" onSubmit={createPosition}>
             <label>
               Portfolio
