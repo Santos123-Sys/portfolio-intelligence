@@ -13,6 +13,7 @@ import {
 } from '@portfolio-intelligence/agentic-contract';
 import { getActiveAgentCustomization } from './agent-config';
 import { getPriceProvider } from './connectors';
+import { loadDiscoveryUniverse } from './discovery-provider';
 import { db } from './db';
 import { aiAnalyses, portfolios, priceHistory, securities, thesisVersions } from './db/schema';
 import {
@@ -95,12 +96,11 @@ export async function buildDiscoveryRunRequest(
     throw new Error('Create a Swiss Quality or Brazilian Growth portfolio that is present in the confirmed thesis before stock discovery');
   }
 
-  const provider = getPriceProvider();
-  if (!provider.getSecurityUniverse || provider.name === 'stub' || provider.name === 'yahoo-search') {
-    throw new Error('Live discovery requires MARKET_DATA_PROVIDER=eodhd and a valid MARKET_DATA_API_KEY; stub data is never used to recommend candidates');
-  }
   const exchanges = [...new Set(equityPortfolios.map((portfolio) => ROLE_EXCHANGE[portfolio.role]!))];
-  const batches = await Promise.all(exchanges.map((exchange) => provider.getSecurityUniverse!(exchange, 100)));
+  // At most 25 names per market: a 20–50-company structural universe is the
+  // input to qualitative research, not the final recommendation list.
+  const loaded = await Promise.all(exchanges.map((exchange) => loadDiscoveryUniverse(exchange, 25)));
+  const batches = loaded.map((result) => result.records);
   const universe = uniqueBy(batches.flat(), (record) => `${record.exchange}:${record.ticker}`);
   if (!universe.length) throw new Error('The configured market-data provider returned an empty security universe');
 
@@ -111,7 +111,7 @@ export async function buildDiscoveryRunRequest(
     maxCandidatesPerPortfolio,
     agentConfig,
   });
-  return { request, provider: provider.name, thesisVersionId: thesis.id };
+  return { request, provider: [...new Set(loaded.map((result) => `${result.provider}${result.cached ? ':cached' : ''}`))].join(', '), thesisVersionId: thesis.id };
 }
 
 export async function startDiscoveryRunForOwner(input: {
@@ -130,7 +130,7 @@ export async function startDiscoveryRunForOwner(input: {
 
   const built = await buildDiscoveryRunRequest(
     input.ownerId,
-    input.maxCandidatesPerPortfolio ?? 8,
+    input.maxCandidatesPerPortfolio ?? 6,
     input.thesisVersionId
   );
   const remote = await startExternalDiscoveryRun(built.request);

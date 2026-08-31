@@ -40,7 +40,7 @@ describe('confirmed-thesis discovery transition', () => {
     expect(start).toHaveBeenCalledWith({
       ownerId: 'owner-1',
       thesisVersionId: 'thesis-2',
-      maxCandidatesPerPortfolio: 8,
+      maxCandidatesPerPortfolio: 6,
       reuseExistingForThesis: true,
     });
     expect(result).toEqual({ status: 'started', runId: 'run-1', runStatus: 'queued' });

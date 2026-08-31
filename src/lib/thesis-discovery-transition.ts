@@ -24,7 +24,7 @@ export async function startDiscoveryAfterThesisConfirmation(
     const started = await start({
       ownerId: input.ownerId,
       thesisVersionId: input.thesisVersionId,
-      maxCandidatesPerPortfolio: 8,
+      maxCandidatesPerPortfolio: 6,
       reuseExistingForThesis: true,
     });
     return {

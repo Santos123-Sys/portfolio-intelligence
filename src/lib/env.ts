@@ -12,6 +12,12 @@ const schema = z.object({
   DATABASE_URL: databaseUrlSchema,
   MARKET_DATA_API_KEY: z.string().min(1).optional(),
   MARKET_DATA_PROVIDER: z.enum(['stub', 'stooq', 'twelvedata', 'eodhd', 'yahoo-search']).default('stub'),
+  /** Low-cost breadth provider. Market validation deliberately remains separate. */
+  DISCOVERY_PROVIDER: z.enum(['eodhd', 'finnhub']).default('eodhd'),
+  DISCOVERY_FALLBACK_PROVIDER: z.enum(['none', 'eodhd']).default('none'),
+  FINNHUB_API_KEY: z.string().min(1).optional(),
+  /** How long a successful discovery-universe snapshot can satisfy a fallback request. */
+  DISCOVERY_UNIVERSE_CACHE_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(168),
   // Self-imposed ceilings the provider gateway enforces before making a call,
   // not a measurement of what the vendor actually allows — docs/architecture.md
   // already flags exact vendor rate limits as unverified from this codebase.
@@ -21,7 +27,7 @@ const schema = z.object({
   MARKET_DATA_GATEWAY_CALLS_PER_MINUTE: z.coerce.number().int().positive().default(60),
   MARKET_DATA_GATEWAY_CALLS_PER_DAY: z.coerce.number().int().positive().default(2_000),
   MARKET_DATA_GATEWAY_PLAN_LIMIT_MEMORY_HOURS: z.coerce.number().int().positive().default(24),
-  WEB_SEARCH_PROVIDER: z.enum(['none', 'brave']).default('none'),
+  WEB_SEARCH_PROVIDER: z.enum(['none', 'brave', 'tavily']).default('none'),
   WEB_SEARCH_API_KEY: z.string().min(1).optional(),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must contain at least 32 characters'),
   /** Separate key used only to encrypt TOTP seeds and hash recovery codes. */
@@ -39,6 +45,13 @@ const schema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['MARKET_DATA_API_KEY'],
       message: 'MARKET_DATA_API_KEY is required when MARKET_DATA_PROVIDER=eodhd',
+    });
+  }
+  if (env.DISCOVERY_PROVIDER === 'finnhub' && !env.FINNHUB_API_KEY) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['FINNHUB_API_KEY'],
+      message: 'FINNHUB_API_KEY is required when DISCOVERY_PROVIDER=finnhub',
     });
   }
   if (Boolean(env.AGENTIC_SYSTEM_BASE_URL) !== Boolean(env.AGENTIC_SYSTEM_API_KEY)) {
@@ -93,6 +106,7 @@ export function getEnv(): Env {
   const parsed = schema.safeParse({
     ...process.env,
     MARKET_DATA_API_KEY: optional(process.env.MARKET_DATA_API_KEY),
+    FINNHUB_API_KEY: optional(process.env.FINNHUB_API_KEY),
     WEB_SEARCH_API_KEY: optional(process.env.WEB_SEARCH_API_KEY),
     CRON_SECRET: optional(process.env.CRON_SECRET),
     AGENTIC_SYSTEM_BASE_URL: optional(process.env.AGENTIC_SYSTEM_BASE_URL),
