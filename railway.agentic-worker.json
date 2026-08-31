@@ -7,6 +7,8 @@
   "deploy": {
     "preDeployCommand": "npm run agentic:migrate",
     "startCommand": "npm run agentic:worker",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }

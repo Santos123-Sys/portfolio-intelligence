@@ -165,7 +165,10 @@ CRON_SECRET=<same dashboard cron secret>
 ## End-to-end verification
 
 1. All pre-deploy migrations finish successfully.
-2. Dashboard `/api/health` and agentic API `/health` return HTTP 200.
+2. Dashboard `/api/health`, agentic API `/health` and agentic worker `/health`
+   return HTTP 200. The worker endpoint answers 503 while it has not polled the
+   job queue within its budget, so a wedged worker fails its healthcheck instead
+   of reporting Online while jobs pile up behind it.
 3. An unauthenticated dashboard request redirects to `/login`; an
    unauthenticated agentic `/v1/**` call returns HTTP 401.
 4. The login response contains CSP, HSTS, `nosniff`, `DENY` framing and

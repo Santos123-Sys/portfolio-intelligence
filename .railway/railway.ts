@@ -85,6 +85,10 @@ export default defineRailway((context) => {
     },
     preDeploy: 'npm run agentic:migrate',
     start: 'npm run agentic:worker',
+    // The worker serves only a liveness endpoint. ON_FAILURE restarts a crash;
+    // this is what catches a hang, where the process is up but no longer polling.
+    healthcheck: '/health',
+    healthcheckTimeout: 300,
     deploy: {
       restartPolicyType: 'ON_FAILURE',
       restartPolicyMaxRetries: 10,
@@ -101,6 +105,7 @@ export default defineRailway((context) => {
       AGENTIC_INTERNAL_BASE_URL:
         'http://${{agentic-api.RAILWAY_PRIVATE_DOMAIN}}:${{agentic-api.PORT}}',
       AGENTIC_WORKER_POLL_MS: '1000',
+      AGENTIC_WORKER_HEALTH_IDLE_BUDGET_MS: '60000',
       AGENTIC_JOB_LEASE_SECONDS: '300',
       AGENTIC_CALLBACK_MAX_ATTEMPTS: '8',
       AGENTIC_BUCKET_NAME: ref(agenticArtifacts, 'BUCKET'),
