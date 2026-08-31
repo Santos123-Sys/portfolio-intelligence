@@ -109,7 +109,9 @@ digests. Account owners can change their password or enroll MFA at
 Browser responses include CSP, HSTS in production, anti-framing, MIME-sniffing,
 referrer and permissions headers. Cross-origin mutations are rejected and all
 queries use Drizzle's parameterized query builder. Dependency advisories, tests,
-type checks and the production build run in `.github/workflows/security.yml`.
+type checks and the production build run in `.github/workflows/security.yml` as
+the `verify` job. Requiring it before merge is a repository setting rather than a
+file; `CONTRIBUTING.md` records the exact rule.
 
 Application code cannot supply an edge WAF or volumetric DDoS absorption. The
 required Cloudflare/Railway controls and incident checklist are documented in
