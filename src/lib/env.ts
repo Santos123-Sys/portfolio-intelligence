@@ -12,6 +12,15 @@ const schema = z.object({
   DATABASE_URL: databaseUrlSchema,
   MARKET_DATA_API_KEY: z.string().min(1).optional(),
   MARKET_DATA_PROVIDER: z.enum(['stub', 'stooq', 'twelvedata', 'eodhd', 'yahoo-search']).default('stub'),
+  // Self-imposed ceilings the provider gateway enforces before making a call,
+  // not a measurement of what the vendor actually allows — docs/architecture.md
+  // already flags exact vendor rate limits as unverified from this codebase.
+  // Defaults are deliberately conservative; raise them once you have measured
+  // your real limit. A default too low costs a delay, one too high costs a
+  // lockout, so the conservative direction is the safe one to default to.
+  MARKET_DATA_GATEWAY_CALLS_PER_MINUTE: z.coerce.number().int().positive().default(60),
+  MARKET_DATA_GATEWAY_CALLS_PER_DAY: z.coerce.number().int().positive().default(2_000),
+  MARKET_DATA_GATEWAY_PLAN_LIMIT_MEMORY_HOURS: z.coerce.number().int().positive().default(24),
   WEB_SEARCH_PROVIDER: z.enum(['none', 'brave']).default('none'),
   WEB_SEARCH_API_KEY: z.string().min(1).optional(),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must contain at least 32 characters'),

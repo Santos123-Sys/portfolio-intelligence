@@ -1,4 +1,5 @@
 import { getEnv } from '../env';
+import { getProviderGateway } from '../services/provider-gateway';
 import { PriceProvider } from './base';
 import { StubProvider } from './stub';
 import { YahooSearchProvider } from './yahoo-search';
@@ -20,7 +21,7 @@ export function getPriceProvider(): PriceProvider {
       return new StooqProvider();
     case 'eodhd':
       if (!env.MARKET_DATA_API_KEY) throw new Error('MARKET_DATA_API_KEY is required for EODHD');
-      return new EodhdProvider(env.MARKET_DATA_API_KEY);
+      return new EodhdProvider(env.MARKET_DATA_API_KEY, getProviderGateway());
     case 'twelvedata':
       throw new Error(
         `Provider '${env.MARKET_DATA_PROVIDER}' is not implemented yet. ` +

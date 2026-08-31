@@ -1,5 +1,12 @@
 import type { SecurityUniverseRecord } from '@portfolio-intelligence/agentic-contract';
 import type { DailyBar, Fundamentals, PriceProvider } from './base';
+import {
+  KnownPlanLimitError,
+  endpointTemplate,
+  passthroughGateway,
+  type CallResult,
+  type RequestGateway,
+} from './gateway';
 
 const SOURCE_URL = 'https://eodhd.com/financial-apis/stock-market-screener-api';
 const FUNDAMENTALS_SOURCE_URL = 'https://eodhd.com/financial-apis/stock-etfs-fundamental-data-feeds';
@@ -138,15 +145,29 @@ export class EodhdRequestError extends Error {
  */
 const PLAN_LIMIT_STATUSES = new Set([402, 403, 423]);
 
+/**
+ * True for a status this application chose to treat as a plan limit, and also
+ * for a KnownPlanLimitError — the gateway's own memory of one, thrown before
+ * any request was made. Both mean the same thing to a caller deciding whether
+ * to fall back: this route is not available, try the next one.
+ */
 function isPlanLimit(error: unknown): boolean {
-  return error instanceof EodhdRequestError && PLAN_LIMIT_STATUSES.has(error.status);
+  return (error instanceof EodhdRequestError && PLAN_LIMIT_STATUSES.has(error.status))
+    || error instanceof KnownPlanLimitError;
+}
+
+function classifyEodhdResponse(response: Response): CallResult {
+  if (response.ok) return { outcome: 'ok', httpStatus: response.status };
+  if (PLAN_LIMIT_STATUSES.has(response.status)) return { outcome: 'plan_limit', httpStatus: response.status };
+  if (response.status === 429) return { outcome: 'rate_limited', httpStatus: response.status };
+  return { outcome: 'error', httpStatus: response.status };
 }
 
 export class EodhdProvider implements PriceProvider {
   readonly name = 'eodhd';
   readonly supportedExchanges = Object.keys(EXCHANGE_CODES);
 
-  constructor(private readonly apiKey: string) {
+  constructor(private readonly apiKey: string, private readonly gateway: RequestGateway = passthroughGateway) {
     if (!apiKey.trim()) throw new Error('MARKET_DATA_API_KEY is required for EODHD');
   }
 
@@ -155,10 +176,16 @@ export class EodhdProvider implements PriceProvider {
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
     url.searchParams.set('api_token', this.apiKey);
     url.searchParams.set('fmt', 'json');
-    const response = await fetch(url, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(30_000),
-      headers: { accept: 'application/json' },
+    const response = await this.gateway.run({
+      provider: this.name,
+      endpoint: endpointTemplate(path),
+      perform: () =>
+        fetch(url, {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(30_000),
+          headers: { accept: 'application/json' },
+        }),
+      classify: classifyEodhdResponse,
     });
     if (!response.ok) {
       throw new EodhdRequestError(response.status, path, describeEodhdFailure(path, response.status));
