@@ -326,4 +326,41 @@ describe('schema failures name the field that failed', () => {
     const output = await pipeline.discoverSecurities(discoveryRequest as never);
     expect(output.thesisVersion).toBe(thesis.version);
   });
+
+  it('pins mandate identity to the trusted portfolio when the thesis source is unspecified', async () => {
+    const requestWithUnspecifiedSource = {
+      ...discoveryRequest,
+      thesis: {
+        ...discoveryRequest.thesis,
+        criteria: {
+          ...discoveryRequest.thesis.criteria,
+          portfolios: discoveryRequest.thesis.criteria.portfolios.map((mandate) => ({
+            ...mandate,
+            currency: mandate.role === 'swiss_quality' ? 'Unspecified' : mandate.currency,
+          })),
+        },
+      },
+    };
+    const pipeline = new OpenAIAgenticPipeline('k', 'gpt-5.6', 'medium', clientReturning({
+      marketMandates: [{
+        portfolioId,
+        role: 'brazilian_growth',
+        exchanges: ['XSWX'],
+        currency: 'Unspecified',
+        rationale: 'Source currency was not specified.',
+      }],
+      candidates: [],
+      limitations: ['Universe is unranked.'],
+    }));
+
+    const output = await pipeline.discoverSecurities(requestWithUnspecifiedSource as never);
+    expect(output.marketMandates[0]).toMatchObject({
+      portfolioId,
+      role: 'swiss_quality',
+      currency: 'CHF',
+    });
+    expect(output.limitations).toContain(
+      'Confirmed swiss_quality thesis source lists currency as "Unspecified"; trusted portfolio currency CHF is used for mandate identity.'
+    );
+  });
 });
