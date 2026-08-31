@@ -95,10 +95,9 @@ export default function AgenticSystemPage() {
 
   return (
     <main>
-      <h1>Agentic System Integration</h1>
+      <h1>Existing-Holdings Analysis</h1>
       <p className="sub">
-        One integrated system: the dashboard supplies confirmed evidence, the private agentic worker interprets it,
-        and validated results return here for human review.
+        Review positions you already own. For new ideas, start with Thesis and Discover; this page is not a prerequisite for market research.
       </p>
 
       <div className="grid">
@@ -124,9 +123,9 @@ export default function AgenticSystemPage() {
             <p className="security-state">Ready: thesis v{readiness.thesisVersion}, {readiness.portfolioCount} portfolio(s), {readiness.positionCount} position(s).</p>
           ) : readiness ? (
             <>
-              <p className="caveat">Analysis prerequisites are incomplete.</p>
+              <p className="caveat">Existing-holdings analysis prerequisites are incomplete.</p>
               <ul className="note">{readiness.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
-              <Link className="text-link" href="/portfolio-setup">Complete portfolio setup</Link>
+              <Link className="text-link" href="/portfolio-setup">Record existing holdings</Link>
             </>
           ) : <p className="note">Checking analysis readiness…</p>}
           {actionError && <p className="login-error" role="alert">{actionError}</p>}
