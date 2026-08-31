@@ -57,29 +57,43 @@ Never apply this file to an existing project without reconciling a plan first.
    `OPENAI_API_KEY`. Enter the real OpenAI API key there; never put it in Git or
    this document.
 2. Add a second shared secret named `MARKET_DATA_API_KEY` containing an EODHD
-   token whose plan includes the global Screener, End-of-Day history and
-   Fundamentals APIs. Discovery is intentionally disabled when only stub data
-   is configured.
-3. Confirm the existing public service is named `portfolio-intelligence`. If it
+   token whose plan includes the End-of-Day history and Fundamentals APIs.
+   The implementation separates broad discovery from validation: set
+   `DISCOVERY_PROVIDER=finnhub` and `FINNHUB_API_KEY` directly on the dashboard
+   once a Finnhub key is available. The current EODHD discovery behavior remains
+   safe until then.
+3. When the Tavily key is ready, set these two variables on the private
+   `agentic-worker` service only (not the dashboard):
+
+   ```text
+   WEB_SEARCH_PROVIDER=tavily
+   WEB_SEARCH_API_KEY=<real Tavily key>
+   ```
+
+   The IaC definition uses `preserve()` for these manual values, so applying an
+   infrastructure plan will not overwrite or expose the key. Do not enter
+   `tvly_...` as a placeholder: it is not a usable credential and would make
+   research calls fail.
+4. Confirm the existing public service is named `portfolio-intelligence`. If it
    has a different name, update `.railway/railway.ts` before planning.
-4. Confirm its generated public URL is
+5. Confirm its generated public URL is
    `https://portfolio-intelligence-production-d042.up.railway.app`, or update
    `PUBLIC_APP_URL` in `.railway/railway.ts` to the active HTTPS origin.
-5. Preserve the existing dashboard `SESSION_SECRET` and
+6. Preserve the existing dashboard `SESSION_SECRET` and
    `MFA_ENCRYPTION_KEY`. The IaC definition deliberately uses `preserve()` for
    these values so applying infrastructure cannot invalidate sessions or stored
    MFA seeds.
-6. Clear the dashboard service's deprecated Config File Path in **Settings**.
+7. Clear the dashboard service's deprecated Config File Path in **Settings**.
    Do not trigger a deployment between clearing it and completing the IaC plan.
-7. Using Railway CLI 5.42.1 or newer from an authenticated operator session,
+8. Using Railway CLI 5.42.1 or newer from an authenticated operator session,
    link the existing project and run `railway config plan`. Planning is
    read-only. The intended plan may add the two named PostgreSQL resources,
    `agentic-api`, `agentic-worker` and `agentic-artifacts`; it must not delete or
    replace the existing dashboard or any database containing data.
-8. Stop if the plan contains an unexpected destroy, service replacement, domain
+9. Stop if the plan contains an unexpected destroy, service replacement, domain
    removal or database replacement. Re-import/reconcile the live names before
    proceeding.
-9. Apply only the reviewed plan. The person using the web application does not
+10. Apply only the reviewed plan. The person using the web application does not
    need Railway CLI or SSH; CLI access is only an infrastructure-operator step.
 
 The repository can prepare and validate the desired state, but Railway still
@@ -115,8 +129,11 @@ injects `PORT`; do not hard-code it.
 ## Agentic worker variables
 
 The IaC definition supplies the agentic database, bearer key, model settings,
-private callback/API URLs, retry/lease settings and bucket references. The only
-manual worker secret is the project-level shared `OPENAI_API_KEY`.
+private callback/API URLs, retry/lease settings and bucket references. The
+manual worker secrets are the project-level shared `OPENAI_API_KEY` and, when
+web research is enabled, the service-level `WEB_SEARCH_API_KEY`. Set
+`WEB_SEARCH_PROVIDER=tavily` alongside that key on `agentic-worker`; neither
+value belongs on the public dashboard service.
 
 The callback URL must reference the dashboard service's domain and port, not
 the worker's own `$PORT`.

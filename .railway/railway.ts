@@ -70,6 +70,14 @@ export default defineRailway((context) => {
       INITIAL_ADMIN_PASSWORD: preserve(),
       MARKET_DATA_PROVIDER: 'eodhd',
       MARKET_DATA_API_KEY: context.shared.MARKET_DATA_API_KEY,
+      // These two preserve manually managed Finnhub values. Leaving them unset
+      // retains the current EODHD discovery behaviour; setting
+      // DISCOVERY_PROVIDER=finnhub switches broad-universe discovery without
+      // exposing the key to the browser or committing it to Git.
+      DISCOVERY_PROVIDER: preserve(),
+      FINNHUB_API_KEY: preserve(),
+      DISCOVERY_FALLBACK_PROVIDER: 'eodhd',
+      DISCOVERY_UNIVERSE_CACHE_HOURS: '168',
       // Self-imposed provider gateway budgets, not a measured vendor limit —
       // see docs/MARKET-DATA.md#the-provider-gateway. Spelled out here rather
       // than left to the code default so raising them later is a one-line
@@ -77,6 +85,9 @@ export default defineRailway((context) => {
       MARKET_DATA_GATEWAY_CALLS_PER_MINUTE: '60',
       MARKET_DATA_GATEWAY_CALLS_PER_DAY: '2000',
       MARKET_DATA_GATEWAY_PLAN_LIMIT_MEMORY_HOURS: '24',
+      // Web research is intentionally worker-only. Keeping this dashboard
+      // variable disabled prevents a Tavily credential from being injected
+      // into the public application service.
       WEB_SEARCH_PROVIDER: 'none',
       AGENTIC_SYSTEM_API_KEY: agenticApi.env.AGENTIC_SYSTEM_API_KEY,
       AGENTIC_SYSTEM_BASE_URL:
@@ -120,6 +131,12 @@ export default defineRailway((context) => {
       AGENTIC_BUCKET_REGION: ref(agenticArtifacts, 'REGION'),
       AGENTIC_BUCKET_ACCESS_KEY_ID: ref(agenticArtifacts, 'ACCESS_KEY_ID'),
       AGENTIC_BUCKET_SECRET_ACCESS_KEY: ref(agenticArtifacts, 'SECRET_ACCESS_KEY'),
+      // Managed manually on this private service. `preserve()` lets the
+      // operator set WEB_SEARCH_PROVIDER=tavily and WEB_SEARCH_API_KEY in
+      // Railway without putting a placeholder or a real secret in Git.
+      // Unset values resolve to the worker's safe `none` default.
+      WEB_SEARCH_PROVIDER: preserve(),
+      WEB_SEARCH_API_KEY: preserve(),
     },
   });
 

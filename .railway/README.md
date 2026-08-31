@@ -8,7 +8,11 @@ Before any live apply:
 1. Read `docs/RAILWAY-DEPLOYMENT.md`.
 2. Add the shared `OPENAI_API_KEY` and `MARKET_DATA_API_KEY` in Railway without
    committing either value. `MARKET_DATA_API_KEY` must be an EODHD API token
-   with access to the exchanges and fundamentals used by discovery.
+   with access to the exchanges and fundamentals used by validation. Add
+   `DISCOVERY_PROVIDER=finnhub` and `FINNHUB_API_KEY` directly to the dashboard
+   only when the Finnhub key is ready. Add `WEB_SEARCH_PROVIDER=tavily` and
+   `WEB_SEARCH_API_KEY` directly to `agentic-worker` only when the Tavily key
+   is ready. Those four values are preserved by IaC rather than committed.
 3. Verify the existing dashboard is named `portfolio-intelligence` and that the
    configured `PUBLIC_APP_URL` is its active HTTPS origin.
 4. Clear the existing service's deprecated Config File Path.
