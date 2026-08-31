@@ -31,6 +31,8 @@ const workerSchema = commonSchema.extend({
   OPENAI_REASONING_EFFORT_ANALYSIS: reasoningEffort.optional(),
   OPENAI_REASONING_EFFORT_SYNTHESIS: reasoningEffort.optional(),
   OPENAI_REASONING_EFFORT_DISCOVERY: reasoningEffort.optional(),
+  WEB_SEARCH_PROVIDER: z.enum(['none', 'brave', 'tavily']).default('none'),
+  WEB_SEARCH_API_KEY: z.string().min(1).optional(),
   DASHBOARD_IMPORT_URL: z.string().url(),
   // Railway injects PORT; the worker serves only its liveness endpoint on it.
   // The local default differs from the API's so both can run side by side.
@@ -40,6 +42,10 @@ const workerSchema = commonSchema.extend({
   AGENTIC_JOB_LEASE_SECONDS: z.coerce.number().int().min(30).max(3_600).default(300),
   AGENTIC_CALLBACK_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(8),
   AGENTIC_INTERNAL_BASE_URL: z.string().url().optional(),
+}).superRefine((config, context) => {
+  if (config.WEB_SEARCH_PROVIDER !== 'none' && !config.WEB_SEARCH_API_KEY) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['WEB_SEARCH_API_KEY'], message: 'WEB_SEARCH_API_KEY is required when web research is enabled' });
+  }
 });
 
 export type ApiConfig = z.infer<typeof apiSchema>;

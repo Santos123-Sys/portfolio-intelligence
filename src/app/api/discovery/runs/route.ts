@@ -15,7 +15,7 @@ import {
 export const runtime = 'nodejs';
 
 const startSchema = z.object({
-  maxCandidatesPerPortfolio: z.number().int().min(1).max(20).default(8),
+  maxCandidatesPerPortfolio: z.number().int().min(1).max(7).default(6),
 }).strict();
 
 async function list(ownerId: string) {

@@ -240,9 +240,9 @@ export default function AIStockDiscoveryPage() {
             <a className="text-link" href="/investment-thesis">Investment thesis</a>
           </li>
           <li>
-            <strong>Configure live market data.</strong> Discovery refuses synthetic data, so
-            it needs <code>MARKET_DATA_PROVIDER=eodhd</code> and a working API key. Stub data
-            is never used to recommend a security.
+            <strong>Configure live research providers.</strong> Discovery needs
+            <code>DISCOVERY_PROVIDER=finnhub</code> with <code>FINNHUB_API_KEY</code>; web research
+            uses Tavily or Brave. EODHD remains the validation source after your approval.
           </li>
         </ol>
         <p className="note">
@@ -254,10 +254,10 @@ export default function AIStockDiscoveryPage() {
       <section className="card workflow-stage">
         <div>
           <h2>1. Start market research</h2>
-          <p className="note">Discovery refuses synthetic data and never adds a security to a portfolio. It requires the EODHD provider and your confirmed thesis.</p>
+          <p className="note">The workflow builds a 20–50-company universe, applies the available structural filters, adds source-backed web research, and returns a 5–15 candidate shortlist. It never adds a security to a portfolio. EODHD is used only after you approve a candidate.</p>
         </div>
         <label className="compact-field">Maximum candidates per portfolio
-          <input type="number" min="1" max="20" value={candidateLimit} onChange={(event) => setCandidateLimit(event.target.value)} />
+          <input type="number" min="1" max="7" value={candidateLimit} onChange={(event) => setCandidateLimit(event.target.value)} />
         </label>
         <button className="action-button" type="button" onClick={() => void startDiscovery()} disabled={busy !== null}>
           {busy === 'start' ? 'Starting research…' : 'Find thesis-matched stocks'}

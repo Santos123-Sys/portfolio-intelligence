@@ -12,7 +12,9 @@ const repository = new PostgresJobRepository(config.AGENTIC_DATABASE_URL);
 const pipeline = new OpenAIAgenticPipeline(
   config.OPENAI_API_KEY,
   config.OPENAI_MODEL,
-  stageReasoningEffort(config)
+  stageReasoningEffort(config),
+  undefined,
+  { provider: config.WEB_SEARCH_PROVIDER, apiKey: config.WEB_SEARCH_API_KEY }
 );
 const storage = new ReportStorage(config);
 const workerId = `worker-${randomUUID()}`;

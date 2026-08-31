@@ -2,6 +2,27 @@ import { pgTable, uuid, text, timestamp, numeric, jsonb, index, uniqueIndex, int
 import { aiAnalyses, portfolios, securities, thesisVersions, users } from './schema';
 
 /**
+ * A provider-independent, reusable discovery universe. This is not a source of
+ * truth for valuation; it lets a temporarily unavailable discovery API fall
+ * back to a known, dated universe rather than synthetic data.
+ */
+export const discoveryUniverseSnapshots = pgTable(
+  'discovery_universe_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    provider: text('provider').notNull(),
+    exchange: text('exchange').notNull(),
+    recordsJson: jsonb('records_json').notNull(),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    providerExchangeIdx: uniqueIndex('discovery_universe_provider_exchange_idx').on(t.provider, t.exchange),
+    expiryIdx: index('discovery_universe_expiry_idx').on(t.expiresAt),
+  })
+);
+
+/**
  * Atomic external-data evidence. This table is deliberately metric-oriented so
  * the system can keep the source URL, retrieval query, status and raw payload
  * next to every market or fundamental value consumed by downstream logic.

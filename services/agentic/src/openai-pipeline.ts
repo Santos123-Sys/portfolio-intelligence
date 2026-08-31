@@ -13,6 +13,7 @@ import OpenAI, {
 } from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z, ZodError } from 'zod';
+import { researchCompany, type WebResearchConfig } from './web-research.js';
 import {
   AGENT_REASONING_PROMPTS,
   AnalysisOutput,
@@ -184,18 +185,18 @@ Rules:
 - The disclaimer must plainly say the output is analytical, is not professional financial advice, and depends on supplied data.
 - Do not add facts from general knowledge and do not calculate anything.`;
 
-const discoveryInstructions = `You are the market-research agent for a thesis-driven investment workflow. You receive a confirmed thesis, portfolio mandates, and a provider-supplied structured security universe.
+const discoveryInstructions = `You are the final market-research agent for a thesis-driven investment workflow. You receive a confirmed thesis, portfolio mandates, a structurally filtered provider universe, and independently retrieved web-research evidence.
 
 Absolute rules:
 1. Select only exact ticker/exchange/company identities present in the supplied universe. Never invent or transform a security identity.
 2. Treat the universe as a research universe, not proof of full-market coverage. Disclose important coverage and data gaps in limitations.
-3. Use only supplied identity fields and attributes for candidate eligibility and scoring. Do not calculate or infer new financial metrics.
+3. Use only supplied identity fields, attributes and web-research evidence for candidate eligibility and scoring. Do not calculate or infer new financial metrics.
 4. groundedIn contains only exact grounding keys supplied beside that universe record.
-5. sourceUrls must include the record's structured-universe source URL. It may additionally include a URL actually retrieved by the web-search tool when that tool is enabled.
+5. sourceUrls must include the record's structured-universe source URL. It may additionally include only a URL supplied in the web-research evidence.
 6. Preserve hard thesis exclusions. A candidate with an evidenced hard exclusion must not be shortlisted.
 7. thesisAlignmentScore measures fit to the confirmed thesis, not general popularity or business quality.
 8. Produce exactly one market mandate for every supplied portfolio and no unknown portfolio.
-9. Return at most maxCandidatesPerPortfolio candidates for each portfolio. Zero candidates is valid when evidence is insufficient.
+9. Return at most maxCandidatesPerPortfolio candidates for each portfolio. Zero candidates is valid when evidence is insufficient. The intended combined shortlist is 5–15, not a broad universe.
 10. Do not value securities, calculate volatility, recommend trades, or alter holdings. Human approval is required before financial analysis.
 
 Prefer decision-useful gaps over generic caveats. A concise, evidence-bound shortlist is better than a long speculative list.`;
@@ -457,6 +458,7 @@ export function validateSynthesisEvidence(
 export class OpenAIAgenticPipeline {
   private readonly client: OpenAI;
   private readonly effort: StageReasoningEffort;
+  private readonly webResearch: WebResearchConfig;
 
   constructor(
     apiKey: string,
@@ -464,10 +466,12 @@ export class OpenAIAgenticPipeline {
     /** A single effort for every stage, or a per-stage map. See
      * resolveStageEffort — the scalar form is the previous behaviour. */
     reasoningEffort: ReasoningEffort | Partial<StageReasoningEffort> = 'medium',
-    client?: OpenAI
+    client?: OpenAI,
+    webResearch: WebResearchConfig = { provider: 'none' }
   ) {
     this.effort = resolveStageEffort(reasoningEffort);
     this.client = client ?? new OpenAI({ apiKey, timeout: 180_000, maxRetries: 2 });
+    this.webResearch = webResearch;
   }
 
   async extractThesis(document: {
@@ -601,23 +605,26 @@ export class OpenAIAgenticPipeline {
 
   async discoverSecurities(input: z.infer<typeof DiscoveryRunRequest>): Promise<z.infer<typeof MarketDiscoveryOutput>> {
     const request = DiscoveryRunRequest.parse(input);
+    const webEvidence = new Map<string, Awaited<ReturnType<typeof researchCompany>>>();
+    // The dashboard supplies no more than 50 structurally-filtered records.
+    // Sequential calls make the qualitative research budget explicit and avoid
+    // bursting a free-tier search API.
+    for (const record of request.universe) {
+      webEvidence.set(`${record.exchange}:${record.ticker}`, await researchCompany(record.companyName, record.ticker, this.webResearch));
+    }
     const universe = request.universe.map((record) => ({
       ...record,
       groundingKeys: universeGroundingKeys(record),
+      webResearch: webEvidence.get(`${record.exchange}:${record.ticker}`),
     }));
     const prompt = `CONFIRMED THESIS\n${JSON.stringify(request.thesis.criteria)}\n\nPORTFOLIOS\n${JSON.stringify(request.portfolios)}\n\nMAX CANDIDATES PER PORTFOLIO\n${request.maxCandidatesPerPortfolio}\n\nSTRUCTURED UNIVERSE\n${JSON.stringify(universe)}`;
-    const webSearchEnabled = request.agentConfig?.enabledTools.includes('web_search') ?? false;
+    const verifiedWebSources = [...webEvidence.values()].flatMap((evidence) => evidence.urls);
     try {
       const response = await this.client.responses.parse({
         model: this.model,
         reasoning: { effort: this.effort.discovery },
         instructions: withOwnerCustomization(discoveryInstructions, request.agentConfig, 'market_research'),
         input: prompt,
-        ...(webSearchEnabled ? {
-          tools: [{ type: 'web_search' as const }],
-          tool_choice: 'auto' as const,
-          include: ['web_search_call.action.sources' as const],
-        } : {}),
         text: { format: zodTextFormat(MarketDiscoveryModelOutput, 'market_discovery') },
       });
       if (!response.output_parsed) {
@@ -626,7 +633,7 @@ export class OpenAIAgenticPipeline {
       const output = MarketDiscoveryOutput.parse({
         ...response.output_parsed,
         thesisVersion: request.thesis.criteria.version,
-        verifiedWebSources: retrievedSourceUrls(response).urls,
+        verifiedWebSources,
       });
       validateDiscoveryOutput(output, request);
       return output;

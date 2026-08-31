@@ -50,6 +50,13 @@
       "when": 1788140366607,
       "tag": "0006_curvy_bug",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788147499201,
+      "tag": "0007_stale_scarlet_witch",
+      "breakpoints": true
     }
   ]
 }
