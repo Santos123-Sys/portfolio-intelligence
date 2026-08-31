@@ -7,6 +7,8 @@ const workflow = readFileSync('src/lib/discovery-workflow.ts', 'utf8');
 const search = readFileSync('src/lib/search/web-search.ts', 'utf8');
 const workerConfig = readFileSync('services/agentic/src/config.ts', 'utf8');
 const railway = readFileSync('.railway/railway.ts', 'utf8');
+const discoveryPage = readFileSync('src/app/ai-stock-discovery/page.tsx', 'utf8');
+const discoveryRoute = readFileSync('src/app/api/discovery/runs/route.ts', 'utf8');
 
 describe('low-cost provider architecture', () => {
   it('separates discovery from EODHD validation', () => {
@@ -33,5 +35,10 @@ describe('low-cost provider architecture', () => {
     expect(railway).toContain('FINNHUB_API_KEY: preserve()');
     expect(railway).toContain('WEB_SEARCH_PROVIDER: preserve()');
     expect(railway).toContain('WEB_SEARCH_API_KEY: preserve()');
+  });
+
+  it('uses a candidate default accepted by the API', () => {
+    expect(discoveryPage).toContain("useState('6')");
+    expect(discoveryRoute).toContain('.max(7).default(6)');
   });
 });

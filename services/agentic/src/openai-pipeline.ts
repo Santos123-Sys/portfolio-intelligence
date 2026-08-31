@@ -140,6 +140,43 @@ export const MarketDiscoveryModelOutput = MarketDiscoveryOutput
   .omit({ verifiedWebSources: true, thesisVersion: true, candidates: true })
   .extend({ candidates: z.array(DiscoveryCandidateModelOutput) });
 
+const UNSPECIFIED_CURRENCY_VALUES = new Set(['NOT SPECIFIED', 'UNSPECIFIED', 'ANY', 'N/A']);
+
+/**
+ * The model may explain a mandate, but it does not own portfolio identity.
+ * Role and base currency come from the dashboard's portfolio record. Keeping
+ * this normalization immediately beside the model boundary prevents a thesis
+ * placeholder such as "Unspecified" from mutating a CHF portfolio mandate.
+ * Unknown portfolio IDs are deliberately left untouched so contract validation
+ * still rejects them instead of silently assigning them to a real portfolio.
+ */
+function pinMarketMandateIdentity(
+  mandates: z.infer<typeof MarketDiscoveryModelOutput>['marketMandates'],
+  request: z.infer<typeof DiscoveryRunRequest>
+) {
+  const portfoliosById = new Map(request.portfolios.map((portfolio) => [portfolio.id, portfolio]));
+  return mandates.map((mandate) => {
+    const portfolio = portfoliosById.get(mandate.portfolioId);
+    return portfolio
+      ? { ...mandate, role: portfolio.role, currency: portfolio.baseCurrency }
+      : mandate;
+  });
+}
+
+function sourceCurrencyLimitations(request: z.infer<typeof DiscoveryRunRequest>): string[] {
+  const thesisCurrencyByRole = new Map(
+    request.thesis.criteria.portfolios.map((mandate) => [mandate.role, mandate.currency])
+  );
+  return request.portfolios.flatMap((portfolio) => {
+    const sourceCurrency = thesisCurrencyByRole.get(portfolio.role)?.trim();
+    if (!sourceCurrency || !UNSPECIFIED_CURRENCY_VALUES.has(sourceCurrency.toUpperCase())) return [];
+    return [
+      `Confirmed ${portfolio.role} thesis source lists currency as "${sourceCurrency}"; ` +
+      `trusted portfolio currency ${portfolio.baseCurrency} is used for mandate identity.`,
+    ];
+  });
+}
+
 const extractionInstructions = `You extract a human-authored investment thesis into structured data for human review.
 
 Rules:
@@ -196,8 +233,9 @@ Absolute rules:
 6. Preserve hard thesis exclusions. A candidate with an evidenced hard exclusion must not be shortlisted.
 7. thesisAlignmentScore measures fit to the confirmed thesis, not general popularity or business quality.
 8. Produce exactly one market mandate for every supplied portfolio and no unknown portfolio.
-9. Return at most maxCandidatesPerPortfolio candidates for each portfolio. Zero candidates is valid when evidence is insufficient. The intended combined shortlist is 5–15, not a broad universe.
-10. Do not value securities, calculate volatility, recommend trades, or alter holdings. Human approval is required before financial analysis.
+9. Copy portfolioId, role and currency for every market mandate exactly from PORTFOLIOS. A source placeholder such as "Unspecified" is an information gap, not portfolio identity.
+10. Return at most maxCandidatesPerPortfolio candidates for each portfolio. Zero candidates is valid when evidence is insufficient. The intended combined shortlist is 5–15, not a broad universe.
+11. Do not value securities, calculate volatility, recommend trades, or alter holdings. Human approval is required before financial analysis.
 
 Prefer decision-useful gaps over generic caveats. A concise, evidence-bound shortlist is better than a long speculative list.`;
 
@@ -632,6 +670,13 @@ export class OpenAIAgenticPipeline {
       }
       const output = MarketDiscoveryOutput.parse({
         ...response.output_parsed,
+        marketMandates: pinMarketMandateIdentity(response.output_parsed.marketMandates, request),
+        limitations: [
+          ...new Set([
+            ...response.output_parsed.limitations,
+            ...sourceCurrencyLimitations(request),
+          ]),
+        ],
         thesisVersion: request.thesis.criteria.version,
         verifiedWebSources,
       });

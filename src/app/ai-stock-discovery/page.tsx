@@ -96,7 +96,7 @@ function runIssue(run: DiscoveryRun): string {
 export default function AIStockDiscoveryPage() {
   const [runs, setRuns] = useState<DiscoveryRun[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [candidateLimit, setCandidateLimit] = useState('8');
+  const [candidateLimit, setCandidateLimit] = useState('6');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [valuationCandidateId, setValuationCandidateId] = useState<string | null>(null);
