@@ -12,7 +12,7 @@ import OpenAI, {
   UnprocessableEntityError,
 } from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
-import { z } from 'zod';
+import { z, ZodError } from 'zod';
 import {
   AGENT_REASONING_PROMPTS,
   AnalysisOutput,
@@ -88,9 +88,56 @@ const ExtractionModelOutput = z.object({
 
 // Tool evidence is injected by the service after parsing. The model cannot
 // self-declare a URL as verified.
-const MarketDiscoveryModelOutput = MarketDiscoveryOutput.omit({
-  verifiedWebSources: true,
-});
+//
+// thesisVersion is omitted for a related but distinct reason: the service
+// already knows it, so asking the model to echo it back adds a way to be wrong
+// and no way to be right. Structured outputs constrain shape, not refinements
+// — z.number().int().positive() and z.string().uuid() are not enforced by the
+// JSON schema the provider validates against, so a garbled version or a
+// malformed portfolio UUID passes the provider and fails our parse afterwards,
+// as an opaque schema error. Injecting the value the system owns removes the
+// class entirely; validateDiscoveryOutput's version check then passes by
+// construction, which is the correct outcome for a field the model was never
+// entitled to author.
+/**
+ * The candidate shape as the MODEL is asked to produce it.
+ *
+ * It exists because DiscoveryCandidate declares ticker, exchange, companyName,
+ * currency and rationale as z.string().trim().min(1), and .trim() is a
+ * value-changing transform. The OpenAI SDK refuses to represent those in strict
+ * Structured Outputs — zodTextFormat throws "value-changing string checks are
+ * not represented in JSON Schema" — and it throws while BUILDING the request,
+ * before any call is made. Discovery therefore failed 100% of the time with a
+ * message about a response that never existed.
+ *
+ * Dropping .trim() here loses nothing: MarketDiscoveryOutput.parse() runs on
+ * the result immediately afterwards and applies the trim as normalisation,
+ * which is where it belonged anyway. Every other constraint the contract makes
+ * — .min(1), .uuid(), .url(), the score bounds — is still enforced there.
+ *
+ * discovery-model-schema.test.ts fails if this drifts from the contract's key
+ * set, which is the risk a hand-written derived schema carries.
+ */
+const DiscoveryCandidateModelOutput = z.object({
+  portfolioId: z.string(),
+  ticker: z.string().min(1),
+  exchange: z.string().min(1),
+  companyName: z.string().min(1),
+  currency: z.string().min(1),
+  country: z.string().nullable(),
+  sector: z.string().nullable(),
+  thesisAlignmentScore: z.number().int().min(0).max(100),
+  rationale: z.string().min(1),
+  matchedCriteria: z.array(z.string()),
+  violatedCriteria: z.array(z.string()),
+  groundedIn: z.array(z.string()),
+  sourceUrls: z.array(z.string()),
+  informationGaps: z.array(z.string()),
+}).strict();
+
+export const MarketDiscoveryModelOutput = MarketDiscoveryOutput
+  .omit({ verifiedWebSources: true, thesisVersion: true, candidates: true })
+  .extend({ candidates: z.array(DiscoveryCandidateModelOutput) });
 
 const extractionInstructions = `You extract a human-authored investment thesis into structured data for human review.
 
@@ -187,6 +234,32 @@ export class AgenticPipelineError extends Error {
  * Only the class and the HTTP status — neither of which can carry a secret —
  * cross the boundary.
  */
+/**
+ * A schema failure names the exact fields that were wrong, and that detail was
+ * being thrown away: ZodError fell through to classifyProviderError's catch-all
+ * and became "the response could not be parsed or validated", which is true and
+ * useless. A live discovery run failed with precisely that message and there
+ * was no way to tell which field the model had missed without adding logging
+ * and reproducing it.
+ *
+ * Field paths and zod's own messages are safe to surface — they describe the
+ * contract, not the data. Received values are deliberately not included: they
+ * are model output about securities and can be long.
+ */
+function describeSchemaFailure(stage: PipelineStage, error: ZodError): AgenticPipelineError {
+  const issues = error.issues
+    .slice(0, 6)
+    .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+    .join('; ');
+  const more = error.issues.length > 6 ? ` (+${error.issues.length - 6} more)` : '';
+  return new AgenticPipelineError(
+    stage,
+    `${stage} output did not match the required schema — ${issues}${more}. ` +
+      `This is model output missing the contract; a retry may produce valid output.`,
+    true
+  );
+}
+
 function classifyProviderError(stage: PipelineStage, error: unknown): AgenticPipelineError {
   const fail = (message: string, retriable: boolean) =>
     new AgenticPipelineError(stage, `OpenAI ${stage} request failed: ${message}`, retriable);
@@ -238,6 +311,19 @@ function classifyProviderError(stage: PipelineStage, error: unknown): AgenticPip
   // Not a provider error at all — most often the response failing its schema.
   // Model output varies between runs, so a retry is worth one attempt, but
   // this is not asserted as safe the way a 429 is.
+  // Thrown by zodTextFormat while building the request, so no call was made.
+  // Saying "the response could not be parsed" here sent a live investigation
+  // looking for a model output that never existed.
+  if (error instanceof Error && /cannot be represented by strict Structured Outputs/.test(error.message)) {
+    return new AgenticPipelineError(
+      stage,
+      `${stage} request could not be built: the output schema uses a construct strict ` +
+        `Structured Outputs cannot express — ${error.message}. No request was sent, so ` +
+        `retrying will not help; the schema itself must change.`,
+      false
+    );
+  }
+
   return fail(
     'the response could not be parsed or validated. This is usually model output that missed the schema; a retry may produce valid output.',
     true
@@ -439,6 +525,7 @@ export class OpenAIAgenticPipeline {
       return ThesisExtractionResult.parse(normalized);
     } catch (error) {
       if (error instanceof AgenticPipelineError) throw error;
+      if (error instanceof ZodError) throw describeSchemaFailure('extraction', error);
       throw classifyProviderError('extraction', error);
     }
   }
@@ -469,6 +556,7 @@ export class OpenAIAgenticPipeline {
       return output;
     } catch (error) {
       if (error instanceof AgenticPipelineError) throw error;
+      if (error instanceof ZodError) throw describeSchemaFailure('analysis', error);
       if (error instanceof Error && error.name === 'ContractValidationError') {
         throw new AgenticPipelineError('analysis', `${bundle.ticker}: ${error.message}`, true);
       }
@@ -503,6 +591,7 @@ export class OpenAIAgenticPipeline {
       return output;
     } catch (error) {
       if (error instanceof AgenticPipelineError) throw error;
+      if (error instanceof ZodError) throw describeSchemaFailure('synthesis', error);
       if (error instanceof Error && error.name === 'ContractValidationError') {
         throw new AgenticPipelineError('synthesis', `${portfolio.name}: ${error.message}`, true);
       }
@@ -536,12 +625,14 @@ export class OpenAIAgenticPipeline {
       }
       const output = MarketDiscoveryOutput.parse({
         ...response.output_parsed,
+        thesisVersion: request.thesis.criteria.version,
         verifiedWebSources: retrievedSourceUrls(response).urls,
       });
       validateDiscoveryOutput(output, request);
       return output;
     } catch (error) {
       if (error instanceof AgenticPipelineError) throw error;
+      if (error instanceof ZodError) throw describeSchemaFailure('discovery', error);
       if (error instanceof Error && error.name === 'ContractValidationError') {
         throw new AgenticPipelineError('discovery', `Market discovery: ${error.message}`, true);
       }

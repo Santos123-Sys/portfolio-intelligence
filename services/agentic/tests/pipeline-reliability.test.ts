@@ -257,3 +257,73 @@ describe('failed-stage reporting', () => {
     expect(callbackPayload(job)).toMatchObject({ failedStage: 'synthesis' });
   });
 });
+
+describe('schema failures name the field that failed', () => {
+  // A live discovery run failed with "the response could not be parsed or
+  // validated", which is true and useless: the ZodError naming the exact field
+  // was discarded by the provider-error catch-all. These pin that it is not.
+  const discoveryRequest = {
+    thesis: { versionId: thesisVersionId, criteria: thesis },
+    portfolios: [{
+      id: portfolioId,
+      name: 'Swiss quality',
+      role: 'swiss_quality' as const,
+      baseCurrency: 'CHF',
+      investmentObjective: 'Capital preservation',
+    }],
+    universe: [{
+      ticker: 'NESN', exchange: 'XSWX', companyName: 'Nestle S.A.', currency: 'CHF',
+      country: 'CH', sector: null, industry: null,
+      assetType: 'Common Stock', observedAt: '2026-08-25T00:00:00.000Z',
+      provider: 'eodhd', sourceUrl: 'https://example.test/universe/nesn',
+      attributes: {},
+    }],
+    maxCandidatesPerPortfolio: 3,
+  };
+
+  function clientReturning(parsed: unknown): OpenAI {
+    return { responses: { parse: async () => ({ output_parsed: parsed, output: [] }) } } as unknown as OpenAI;
+  }
+
+  it('names the offending field instead of a generic parse message', async () => {
+    // A non-UUID portfolioId: shape-valid, so structured outputs accept it,
+    // and only our own .uuid() refinement rejects it afterwards.
+    const pipeline = new OpenAIAgenticPipeline('k', 'gpt-5.6', 'medium', clientReturning({
+      marketMandates: [{
+        portfolioId: 'not-a-uuid',
+        role: 'swiss_quality',
+        exchanges: ['XSWX'],
+        currency: 'CHF',
+        rationale: 'because',
+      }],
+      candidates: [],
+      limitations: [],
+    }));
+
+    const failure = await pipeline.discoverSecurities(discoveryRequest as never).catch((e) => e);
+    expect(failure).toBeInstanceOf(AgenticPipelineError);
+    expect(failure.stage).toBe('discovery');
+    expect(failure.retriable).toBe(true);
+    expect(failure.message).toMatch(/portfolioId/);
+    expect(failure.message).not.toMatch(/could not be parsed or validated/);
+  });
+
+  it('does not ask the model for thesisVersion, and supplies it itself', async () => {
+    // The model omits thesisVersion entirely; the service injects the value it
+    // already owns, so this must not be a schema failure.
+    const pipeline = new OpenAIAgenticPipeline('k', 'gpt-5.6', 'medium', clientReturning({
+      marketMandates: [{
+        portfolioId,
+        role: 'swiss_quality',
+        exchanges: ['XSWX'],
+        currency: 'CHF',
+        rationale: 'Matches the confirmed mandate.',
+      }],
+      candidates: [],
+      limitations: ['Universe is unranked.'],
+    }));
+
+    const output = await pipeline.discoverSecurities(discoveryRequest as never);
+    expect(output.thesisVersion).toBe(thesis.version);
+  });
+});
