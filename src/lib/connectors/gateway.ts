@@ -26,6 +26,13 @@ export interface RequestGateway {
     provider: string;
     /** A stable route template — no API key, no per-symbol path segment. See endpointTemplate(). */
     endpoint: string;
+    /**
+     * A deliberate human retry may recheck an endpoint after the provider plan
+     * has changed. It bypasses only remembered plan-limit outcomes; minute and
+     * daily budgets, network accounting, and response classification remain in
+     * force.
+     */
+    bypassPlanLimitMemory?: boolean;
     perform: () => Promise<T>;
     /** Reads the outcome off a successfully-returned result. Not called if perform() throws. */
     classify: (result: T) => CallResult;

@@ -33,13 +33,18 @@ export interface Fundamentals {
   [key: string]: number | string | null;
 }
 
+export interface FundamentalsRequestOptions {
+  /** Recheck provider entitlement once after an explicit human retry. */
+  bypassPlanLimitMemory?: boolean;
+}
+
 export interface PriceProvider {
   readonly name: string;
   /** MIC codes this provider is confirmed to cover. */
   readonly supportedExchanges: string[];
   getDailyBars(ticker: string, exchange: string, fromDate: string, toDate: string): Promise<DailyBar[]>;
   getLatestPrice(ticker: string, exchange: string): Promise<DailyBar | null>;
-  getFundamentals?(ticker: string, exchange: string): Promise<Fundamentals>;
+  getFundamentals?(ticker: string, exchange: string, options?: FundamentalsRequestOptions): Promise<Fundamentals>;
   /** Provider-backed security universe used by the discovery agent. */
   getSecurityUniverse?(exchange: string, limit: number): Promise<import('@portfolio-intelligence/agentic-contract').SecurityUniverseRecord[]>;
 }

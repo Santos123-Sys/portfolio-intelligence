@@ -282,11 +282,15 @@ export async function approveCandidateForAnalysis(ownerId: string, candidateId: 
     isNull(discoveryCandidates.externalAnalysisRunId)
   )).returning();
   if (!candidate) throw new Error('Candidate approval changed concurrently; refresh before trying again');
-  return candidate;
+  return { candidate, recheckingProviderAccess: retryingPreparation };
 }
 
 /** Complete the slow provider and agentic handoff after approval is visible. */
-export async function startApprovedCandidateAnalysis(ownerId: string, candidateId: string) {
+export async function startApprovedCandidateAnalysis(
+  ownerId: string,
+  candidateId: string,
+  options: { recheckProviderAccess?: boolean } = {}
+) {
   const row = await ownedCandidate(ownerId, candidateId);
   if (!row) throw new Error('Discovery candidate not found');
   if (row.candidate.externalAnalysisRunId) throw new Error('This candidate already has an analysis run');
@@ -301,7 +305,9 @@ export async function startApprovedCandidateAnalysis(ownerId: string, candidateI
   const from = new Date(Date.now() - 550 * 86_400_000).toISOString().slice(0, 10);
   const [bars, fundamentals] = await Promise.all([
     provider.getDailyBars(row.candidate.ticker, row.candidate.exchange, from, to),
-    provider.getFundamentals(row.candidate.ticker, row.candidate.exchange),
+    provider.getFundamentals(row.candidate.ticker, row.candidate.exchange, {
+      bypassPlanLimitMemory: options.recheckProviderAccess,
+    }),
   ]);
   if (bars.length < 31) throw new Error(`Provider supplied only ${bars.length} price observations; at least 31 are required for risk analysis`);
 
