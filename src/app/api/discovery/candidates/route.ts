@@ -104,14 +104,16 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   try {
     if (parsed.data.decision === 'approved') {
-      const candidate = await approveCandidateForAnalysis(
+      const approval = await approveCandidateForAnalysis(
         session.auth.userId,
         parsed.data.candidateId,
         session.auth.email
       );
       after(async () => {
         try {
-          await startApprovedCandidateAnalysis(session.auth.userId, parsed.data.candidateId);
+          await startApprovedCandidateAnalysis(session.auth.userId, parsed.data.candidateId, {
+            recheckProviderAccess: approval.recheckingProviderAccess,
+          });
         } catch (error) {
           console.error('[candidate-analysis] Preparation failed', {
             candidateId: parsed.data.candidateId,
@@ -128,7 +130,7 @@ export async function POST(req: Request) {
           }
         }
       });
-      return NextResponse.json({ candidate }, { status: 202 });
+      return NextResponse.json({ candidate: approval.candidate }, { status: 202 });
     }
     const candidate = await rejectOrWatchCandidate(
       session.auth.userId,

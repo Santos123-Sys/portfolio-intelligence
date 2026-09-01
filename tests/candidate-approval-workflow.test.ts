@@ -21,6 +21,12 @@ describe('candidate approval to analysis workflow', () => {
     expect(page).toContain('Retry analysis preparation');
   });
 
+  it('uses a human retry to recheck provider access instead of trusting a cached 403', () => {
+    expect(workflow).toContain('recheckingProviderAccess: retryingPreparation');
+    expect(workflow).toContain('bypassPlanLimitMemory: options.recheckProviderAccess');
+    expect(route).toContain('recheckProviderAccess: approval.recheckingProviderAccess');
+  });
+
   it('keeps the candidate card updated while preparation is active', () => {
     expect(page).toContain("candidate.workflowStatus === 'analysis_preparing'");
     expect(page).toContain('Approval saved. Retrieving EODHD prices and fundamentals');

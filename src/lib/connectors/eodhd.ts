@@ -1,5 +1,5 @@
 import type { SecurityUniverseRecord } from '@portfolio-intelligence/agentic-contract';
-import type { DailyBar, Fundamentals, PriceProvider } from './base';
+import type { DailyBar, Fundamentals, FundamentalsRequestOptions, PriceProvider } from './base';
 import {
   KnownPlanLimitError,
   endpointTemplate,
@@ -171,7 +171,11 @@ export class EodhdProvider implements PriceProvider {
     if (!apiKey.trim()) throw new Error('MARKET_DATA_API_KEY is required for EODHD');
   }
 
-  private async request(path: string, params: Record<string, string>): Promise<unknown> {
+  private async request(
+    path: string,
+    params: Record<string, string>,
+    options: FundamentalsRequestOptions = {}
+  ): Promise<unknown> {
     const url = new URL(path, 'https://eodhd.com');
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
     url.searchParams.set('api_token', this.apiKey);
@@ -179,6 +183,7 @@ export class EodhdProvider implements PriceProvider {
     const response = await this.gateway.run({
       provider: this.name,
       endpoint: endpointTemplate(path),
+      bypassPlanLimitMemory: options.bypassPlanLimitMemory,
       perform: () =>
         fetch(url, {
           cache: 'no-store',
@@ -406,10 +411,14 @@ export class EodhdProvider implements PriceProvider {
     return bars.at(-1) ?? null;
   }
 
-  async getFundamentals(ticker: string, exchange: string): Promise<Fundamentals> {
+  async getFundamentals(
+    ticker: string,
+    exchange: string,
+    options: FundamentalsRequestOptions = {}
+  ): Promise<Fundamentals> {
     const info = exchangeInfo(exchange);
     const symbol = `${normalizedTicker(ticker)}.${info.code}`;
-    const payload = object(await this.request(`/api/fundamentals/${encodeURIComponent(symbol)}`, {}));
+    const payload = object(await this.request(`/api/fundamentals/${encodeURIComponent(symbol)}`, {}, options));
     const general = object(payload.General);
     const highlights = object(payload.Highlights);
     const valuation = object(payload.Valuation);

@@ -92,12 +92,12 @@ describe('gateway error messages', () => {
 
 // --- EodhdProvider routes through an injected gateway ------------------------
 
-function fakeGateway(): RequestGateway & { calls: Array<{ provider: string; endpoint: string }> } {
-  const calls: Array<{ provider: string; endpoint: string }> = [];
+function fakeGateway(): RequestGateway & { calls: Array<{ provider: string; endpoint: string; bypassPlanLimitMemory?: boolean }> } {
+  const calls: Array<{ provider: string; endpoint: string; bypassPlanLimitMemory?: boolean }> = [];
   return {
     calls,
-    run: async ({ provider, endpoint, perform }) => {
-      calls.push({ provider, endpoint });
+    run: async ({ provider, endpoint, bypassPlanLimitMemory, perform }) => {
+      calls.push({ provider, endpoint, bypassPlanLimitMemory });
       return perform();
     },
   };
@@ -128,6 +128,20 @@ describe('EodhdProvider with an injected gateway', () => {
     for (const call of gateway.calls) expect(call.provider).toBe('eodhd');
     // screener attempted first, then falls back to the symbol list + bulk turnover — both templated.
     expect(gateway.calls.map((c) => c.endpoint)).toContain('/api/screener');
+  });
+
+  it('carries an explicit fundamentals entitlement recheck through the connector boundary', async () => {
+    const gateway = fakeGateway();
+    const provider = new EodhdProvider('test-token', gateway);
+    await withFetch(
+      () => ({ status: 200, body: '{}' }),
+      () => provider.getFundamentals!('NESN', 'XSWX', { bypassPlanLimitMemory: true })
+    );
+    expect(gateway.calls).toContainEqual({
+      provider: 'eodhd',
+      endpoint: '/api/fundamentals/:param',
+      bypassPlanLimitMemory: true,
+    });
   });
 
   it('falls back to the symbol list when the gateway already knows the screener is plan-limited', async () => {

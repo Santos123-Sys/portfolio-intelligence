@@ -108,12 +108,13 @@ export class DatabaseProviderGateway implements RequestGateway {
   async run<T>(params: {
     provider: string;
     endpoint: string;
+    bypassPlanLimitMemory?: boolean;
     perform: () => Promise<T>;
     classify: (result: T) => CallResult;
   }): Promise<T> {
-    const { provider, endpoint, perform, classify } = params;
+    const { provider, endpoint, bypassPlanLimitMemory = false, perform, classify } = params;
 
-    await this.checkPlanLimitMemory(provider, endpoint);
+    if (!bypassPlanLimitMemory) await this.checkPlanLimitMemory(provider, endpoint);
     if (this.minuteBudget.wouldExceed(provider, this.budget.callsPerMinute)) {
       throw new CallBudgetExceededError(provider, 'minute', this.budget.callsPerMinute);
     }
