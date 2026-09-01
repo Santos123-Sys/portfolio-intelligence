@@ -163,6 +163,38 @@ function pinMarketMandateIdentity(
   });
 }
 
+/**
+ * Candidate selection and candidate identity have different authorities. The
+ * model selects an exact exchange/ticker pair and explains its thesis fit; the
+ * structured provider universe owns the security's descriptive identity.
+ * Re-hydrating those fields here prevents harmless model restyling (for
+ * example "ABB Ltd" versus "ABB Ltd.") from invalidating a legitimate
+ * selection. Unknown exchange/ticker pairs remain untouched so the contract
+ * still rejects invented securities instead of silently mapping them.
+ */
+function pinCandidateIdentity(
+  candidates: z.infer<typeof MarketDiscoveryModelOutput>['candidates'],
+  request: z.infer<typeof DiscoveryRunRequest>
+) {
+  const universeBySecurity = new Map(
+    request.universe.map((record) => [`${record.exchange}:${record.ticker}`, record])
+  );
+  return candidates.map((candidate) => {
+    const record = universeBySecurity.get(`${candidate.exchange.trim()}:${candidate.ticker.trim()}`);
+    return record
+      ? {
+          ...candidate,
+          ticker: record.ticker,
+          exchange: record.exchange,
+          companyName: record.companyName,
+          currency: record.currency,
+          country: record.country,
+          sector: record.sector,
+        }
+      : candidate;
+  });
+}
+
 function sourceCurrencyLimitations(request: z.infer<typeof DiscoveryRunRequest>): string[] {
   const thesisCurrencyByRole = new Map(
     request.thesis.criteria.portfolios.map((mandate) => [mandate.role, mandate.currency])
@@ -671,6 +703,7 @@ export class OpenAIAgenticPipeline {
       const output = MarketDiscoveryOutput.parse({
         ...response.output_parsed,
         marketMandates: pinMarketMandateIdentity(response.output_parsed.marketMandates, request),
+        candidates: pinCandidateIdentity(response.output_parsed.candidates, request),
         limitations: [
           ...new Set([
             ...response.output_parsed.limitations,

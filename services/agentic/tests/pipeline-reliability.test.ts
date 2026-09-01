@@ -363,4 +363,55 @@ describe('schema failures name the field that failed', () => {
       'Confirmed swiss_quality thesis source lists currency as "Unspecified"; trusted portfolio currency CHF is used for mandate identity.'
     );
   });
+
+  it('pins a selected candidate to the trusted provider-universe identity', async () => {
+    const abbRequest = {
+      ...discoveryRequest,
+      universe: [{
+        ...discoveryRequest.universe[0],
+        ticker: 'ABBN',
+        companyName: 'ABB Ltd.',
+        country: 'CH',
+        sector: null,
+        sourceUrl: 'https://example.test/universe/abbn',
+      }],
+    };
+    const pipeline = new OpenAIAgenticPipeline('k', 'gpt-5.6', 'medium', clientReturning({
+      marketMandates: [{
+        portfolioId,
+        role: 'swiss_quality',
+        exchanges: ['XSWX'],
+        currency: 'CHF',
+        rationale: 'Matches the confirmed mandate.',
+      }],
+      candidates: [{
+        portfolioId,
+        ticker: 'ABBN',
+        exchange: 'XSWX',
+        companyName: 'ABB Limited',
+        currency: 'Swiss franc',
+        country: 'Switzerland',
+        sector: 'Industrials',
+        thesisAlignmentScore: 80,
+        rationale: 'The supplied evidence supports the quality mandate.',
+        matchedCriteria: ['Established competitive position'],
+        violatedCriteria: [],
+        groundedIn: ['identity:ticker'],
+        sourceUrls: ['https://example.test/universe/abbn'],
+        informationGaps: ['Sector is absent from the structured universe.'],
+      }],
+      limitations: [],
+    }));
+
+    const output = await pipeline.discoverSecurities(abbRequest as never);
+
+    expect(output.candidates[0]).toMatchObject({
+      ticker: 'ABBN',
+      exchange: 'XSWX',
+      companyName: 'ABB Ltd.',
+      currency: 'CHF',
+      country: 'CH',
+      sector: null,
+    });
+  });
 });
