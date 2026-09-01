@@ -70,6 +70,7 @@ export async function POST(req: Request) {
     if (failedRequest.success && failedRequest.data.origin?.kind === 'discovery_candidate') {
       await db.update(discoveryCandidates).set({
         workflowStatus: 'analysis_failed',
+        analysisErrorMessage: parsed.errorMessage,
         updatedAt: new Date(),
       }).where(and(
         eq(discoveryCandidates.id, failedRequest.data.origin.candidateId!),
@@ -237,6 +238,7 @@ export async function POST(req: Request) {
             await tx.update(discoveryCandidates).set({
               analysisId: analysis.id,
               workflowStatus: 'analysis_complete',
+              analysisErrorMessage: null,
               updatedAt: new Date(),
             }).where(and(
               eq(discoveryCandidates.id, request.data.origin.candidateId!),

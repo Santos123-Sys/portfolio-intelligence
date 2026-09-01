@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { externalAgenticRuns } from '@/lib/db/workflow-schema';
+import { discoveryCandidates, externalAgenticRuns } from '@/lib/db/workflow-schema';
 import { assertSameOrigin } from '@/lib/auth';
 import { authenticateRequest } from '@/lib/api-auth';
 import { AgenticRunSelection } from '@/lib/integrations/agentic-contract';
@@ -133,6 +133,14 @@ export async function PATCH(req: Request) {
       errorMessage: null,
       completedAt: null,
     }).where(eq(externalAgenticRuns.id, run.id)).returning();
+    await db.update(discoveryCandidates).set({
+      workflowStatus: 'analysis_queued',
+      analysisErrorMessage: null,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(discoveryCandidates.ownerId, session.auth.userId),
+      eq(discoveryCandidates.externalAnalysisRunId, externalRunId)
+    ));
     return NextResponse.json({ run: updated, remote }, { status: 202 });
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 502 });
