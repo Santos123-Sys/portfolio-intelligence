@@ -45,6 +45,8 @@ interface Candidate {
   workflowStatus: string;
   externalAnalysisRunId: string | null;
   analysisRunStatus: string | null;
+  analysisRunError: string | null;
+  analysisErrorMessage: string | null;
   discoveryJson: {
     thesisAlignmentScore: number;
     rationale: string;
@@ -99,6 +101,7 @@ export default function AIStockDiscoveryPage() {
   const [candidateLimit, setCandidateLimit] = useState('6');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [candidateErrors, setCandidateErrors] = useState<Record<string, string>>({});
   const [valuationCandidateId, setValuationCandidateId] = useState<string | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -126,7 +129,11 @@ export default function AIStockDiscoveryPage() {
 
   const hasActiveWork =
     runs.some((run) => run.status === 'queued' || run.status === 'running') ||
-    candidates.some((candidate) => candidate.analysisRunStatus === 'queued' || candidate.analysisRunStatus === 'running');
+    candidates.some((candidate) =>
+      candidate.workflowStatus === 'analysis_preparing' ||
+      candidate.analysisRunStatus === 'queued' ||
+      candidate.analysisRunStatus === 'running'
+    );
 
   useEffect(() => {
     if (!hasActiveWork) return;
@@ -162,17 +169,29 @@ export default function AIStockDiscoveryPage() {
   async function decide(candidateId: string, decision: 'approved' | 'rejected' | 'watchlist') {
     setBusy(candidateId);
     setError(null);
+    setCandidateErrors((current) => {
+      const next = { ...current };
+      delete next[candidateId];
+      return next;
+    });
     try {
       const response = await fetch('/api/discovery/candidates', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ candidateId, decision }),
       });
-      const body = await response.json().catch(() => ({})) as { error?: string };
+      const body = await response.json().catch(() => ({})) as { candidate?: Partial<Candidate> & { id: string }; error?: string };
       if (!response.ok) throw new Error(body.error ?? `Candidate decision failed (${response.status})`);
+      if (body.candidate) {
+        setCandidates((current) => current.map((candidate) =>
+          candidate.id === candidateId ? { ...candidate, ...body.candidate } : candidate
+        ));
+      }
       await load();
     } catch (cause) {
-      setError((cause as Error).message);
+      const message = (cause as Error).message;
+      setError(message);
+      setCandidateErrors((current) => ({ ...current, [candidateId]: message }));
     } finally {
       setBusy(null);
     }
@@ -306,18 +325,24 @@ export default function AIStockDiscoveryPage() {
               <div className="candidate-actions">
                 <span className={`badge ${candidate.decision === 'rejected' ? 'breach' : candidate.decision === 'approved' ? 'ok' : 'watch'}`}>{candidate.decision}</span>
                 {canDecide && <>
-                  <button type="button" onClick={() => void decide(candidate.id, 'approved')} disabled={isWorking}>Approve & analyze</button>
+                  <button type="button" onClick={() => void decide(candidate.id, 'approved')} disabled={isWorking}>{isWorking ? 'Approving…' : 'Approve & analyze'}</button>
                   <button type="button" onClick={() => void decide(candidate.id, 'watchlist')} disabled={isWorking}>Watchlist</button>
                   <button type="button" className="danger-outline" onClick={() => void decide(candidate.id, 'rejected')} disabled={isWorking}>Reject</button>
                 </>}
                 {isWorking && <span className="note">Retrieving audited evidence and price history…</span>}
+                {candidateErrors[candidate.id] && <p className="caveat" role="alert">{candidateErrors[candidate.id]}</p>}
               </div>
 
-              {candidate.externalAnalysisRunId && (
+              {candidate.decision === 'approved' && (
                 <div className="analysis-stage">
                   <h3>3. Financial analysis and deterministic risk</h3>
-                  <p className="note">Run: {candidate.externalAnalysisRunId} · Status: {candidate.analysisRunStatus ?? candidate.workflowStatus}</p>
-                  {candidate.analysisRunStatus === 'failed' && <button type="button" onClick={() => void retryAnalysis(candidate.externalAnalysisRunId!)} disabled={busy !== null}>
+                  <p className="note">{candidate.externalAnalysisRunId ? `Run: ${candidate.externalAnalysisRunId} · ` : ''}Status: {candidate.analysisRunStatus ?? candidate.workflowStatus}</p>
+                  {candidate.workflowStatus === 'analysis_preparing' && <p className="note">Approval saved. Retrieving EODHD prices and fundamentals before the agentic analysis begins…</p>}
+                  {candidate.workflowStatus === 'analysis_failed' && <p className="caveat" role="alert">{candidate.analysisErrorMessage ?? candidate.analysisRunError ?? 'Analysis failed. Retry from this candidate card.'}</p>}
+                  {candidate.workflowStatus === 'analysis_failed' && !candidate.externalAnalysisRunId && <button type="button" onClick={() => void decide(candidate.id, 'approved')} disabled={busy !== null}>
+                    {busy === candidate.id ? 'Retrying preparation…' : 'Retry analysis preparation'}
+                  </button>}
+                  {candidate.analysisRunStatus === 'failed' && candidate.externalAnalysisRunId && <button type="button" onClick={() => void retryAnalysis(candidate.externalAnalysisRunId!)} disabled={busy !== null}>
                     {busy === `analysis:${candidate.externalAnalysisRunId}` ? 'Retrying analysis…' : 'Retry analysis'}
                   </button>}
                   {candidate.risk && <div className="risk-strip">{candidate.risk.map((metric) => <div key={metric.metricName}>

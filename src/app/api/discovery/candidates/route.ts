@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { assertSameOrigin } from '@/lib/auth';
@@ -12,7 +12,12 @@ import {
   securityRiskSnapshots,
   valuationScenarios,
 } from '@/lib/db/workflow-schema';
-import { approveCandidateAndStartAnalysis, rejectOrWatchCandidate } from '@/lib/discovery-workflow';
+import {
+  approveCandidateForAnalysis,
+  failCandidateAnalysisPreparation,
+  rejectOrWatchCandidate,
+  startApprovedCandidateAnalysis,
+} from '@/lib/discovery-workflow';
 
 export const runtime = 'nodejs';
 
@@ -78,6 +83,7 @@ export async function GET(req: Request) {
       portfolioName: row.portfolioName,
       discoveryRequestedAt: row.discoveryRequestedAt,
       analysisRunStatus: run?.status ?? null,
+      analysisRunError: run?.errorMessage ?? null,
       analysis: analysis ?? null,
       risk: risk?.metricsJson ?? null,
       valuation,
@@ -98,12 +104,31 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   try {
     if (parsed.data.decision === 'approved') {
-      const result = await approveCandidateAndStartAnalysis(
+      const candidate = await approveCandidateForAnalysis(
         session.auth.userId,
         parsed.data.candidateId,
         session.auth.email
       );
-      return NextResponse.json(result, { status: 202 });
+      after(async () => {
+        try {
+          await startApprovedCandidateAnalysis(session.auth.userId, parsed.data.candidateId);
+        } catch (error) {
+          console.error('[candidate-analysis] Preparation failed', {
+            candidateId: parsed.data.candidateId,
+            ownerId: session.auth.userId,
+            error: error instanceof Error ? error.message : 'Unknown failure',
+          });
+          try {
+            await failCandidateAnalysisPreparation(session.auth.userId, parsed.data.candidateId, error);
+          } catch (stateError) {
+            console.error('[candidate-analysis] Could not persist preparation failure', {
+              candidateId: parsed.data.candidateId,
+              error: stateError instanceof Error ? stateError.message : 'Unknown state failure',
+            });
+          }
+        }
+      });
+      return NextResponse.json({ candidate }, { status: 202 });
     }
     const candidate = await rejectOrWatchCandidate(
       session.auth.userId,

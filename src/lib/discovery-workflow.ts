@@ -251,12 +251,47 @@ export async function rejectOrWatchCandidate(
   return updated;
 }
 
-export async function approveCandidateAndStartAnalysis(ownerId: string, candidateId: string, decidedBy: string) {
+/**
+ * Persist the human decision before any market-data or agentic call. Approval
+ * is a durable workflow transition; it must not disappear merely because an
+ * external provider is slow or unavailable after the user clicks the button.
+ * An approved candidate whose preparation failed can re-enter this state, but
+ * a candidate with an external run must use the external-run retry path.
+ */
+export async function approveCandidateForAnalysis(ownerId: string, candidateId: string, decidedBy: string) {
+  const row = await ownedCandidate(ownerId, candidateId);
+  if (!row) throw new Error('Discovery candidate not found');
+  if (row.candidate.externalAnalysisRunId) throw new Error('This candidate already has an analysis run; use Retry analysis if it failed');
+  const retryingPreparation = row.candidate.decision === 'approved' && row.candidate.workflowStatus === 'analysis_failed';
+  if (row.candidate.decision !== 'pending' && row.candidate.decision !== 'watchlist' && !retryingPreparation) {
+    throw new Error('Only pending or watchlist candidates can be approved');
+  }
+
+  const [candidate] = await db.update(discoveryCandidates).set({
+    decision: 'approved',
+    rationale: `Approved by ${decidedBy}`,
+    decidedAt: row.candidate.decidedAt ?? new Date(),
+    workflowStatus: 'analysis_preparing',
+    analysisErrorMessage: null,
+    updatedAt: new Date(),
+  }).where(and(
+    eq(discoveryCandidates.id, candidateId),
+    eq(discoveryCandidates.ownerId, ownerId),
+    eq(discoveryCandidates.decision, row.candidate.decision),
+    eq(discoveryCandidates.workflowStatus, row.candidate.workflowStatus),
+    isNull(discoveryCandidates.externalAnalysisRunId)
+  )).returning();
+  if (!candidate) throw new Error('Candidate approval changed concurrently; refresh before trying again');
+  return candidate;
+}
+
+/** Complete the slow provider and agentic handoff after approval is visible. */
+export async function startApprovedCandidateAnalysis(ownerId: string, candidateId: string) {
   const row = await ownedCandidate(ownerId, candidateId);
   if (!row) throw new Error('Discovery candidate not found');
   if (row.candidate.externalAnalysisRunId) throw new Error('This candidate already has an analysis run');
-  if (row.candidate.decision !== 'pending' && row.candidate.decision !== 'watchlist') {
-    throw new Error('Only pending or watchlist candidates can be approved');
+  if (row.candidate.decision !== 'approved' || row.candidate.workflowStatus !== 'analysis_preparing') {
+    throw new Error('Candidate analysis can start only from the analysis_preparing state');
   }
 
   const provider = getPriceProvider();
@@ -301,6 +336,12 @@ export async function approveCandidateAndStartAnalysis(ownerId: string, candidat
 
   const risk = computeStandaloneSecurityRisk(bars);
   const dataAsOf = new Date(risk[0].dataAsOf);
+  // Preparation can be retried after a provider or agentic-service failure.
+  // Replace the deterministic snapshot instead of accumulating duplicates.
+  await db.delete(securityRiskSnapshots).where(and(
+    eq(securityRiskSnapshots.ownerId, ownerId),
+    eq(securityRiskSnapshots.candidateId, candidateId)
+  ));
   await db.insert(securityRiskSnapshots).values({
     ownerId,
     candidateId,
@@ -384,14 +425,33 @@ export async function approveCandidateAndStartAnalysis(ownerId: string, candidat
   }).returning();
   const [candidate] = await db.update(discoveryCandidates).set({
     securityId: security.id,
-    decision: 'approved',
-    rationale: `Approved by ${decidedBy}`,
-    decidedAt: new Date(),
     workflowStatus: 'analysis_queued',
     externalAnalysisRunId: remote.externalRunId,
+    analysisErrorMessage: null,
     updatedAt: new Date(),
-  }).where(eq(discoveryCandidates.id, candidateId)).returning();
+  }).where(and(
+    eq(discoveryCandidates.id, candidateId),
+    eq(discoveryCandidates.ownerId, ownerId),
+    eq(discoveryCandidates.workflowStatus, 'analysis_preparing'),
+    isNull(discoveryCandidates.externalAnalysisRunId)
+  )).returning();
+  if (!candidate) throw new Error('Candidate analysis state changed before the run could be attached');
   return { candidate, run, remote, risk };
+}
+
+export async function failCandidateAnalysisPreparation(ownerId: string, candidateId: string, error: unknown) {
+  const message = (error instanceof Error ? error.message : 'Unknown analysis preparation failure').slice(0, 2_000);
+  const [candidate] = await db.update(discoveryCandidates).set({
+    workflowStatus: 'analysis_failed',
+    analysisErrorMessage: message,
+    updatedAt: new Date(),
+  }).where(and(
+    eq(discoveryCandidates.id, candidateId),
+    eq(discoveryCandidates.ownerId, ownerId),
+    eq(discoveryCandidates.workflowStatus, 'analysis_preparing'),
+    isNull(discoveryCandidates.externalAnalysisRunId)
+  )).returning();
+  return candidate ?? null;
 }
 
 export async function candidateAnalysisIds(runIds: string[]) {

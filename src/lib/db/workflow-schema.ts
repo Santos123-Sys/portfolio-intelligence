@@ -115,6 +115,7 @@ export const discoveryCandidates = pgTable(
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     workflowStatus: text('workflow_status').notNull().default('awaiting_review'),
     externalAnalysisRunId: text('external_analysis_run_id'),
+    analysisErrorMessage: text('analysis_error_message'),
     analysisId: uuid('analysis_id').references(() => aiAnalyses.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
