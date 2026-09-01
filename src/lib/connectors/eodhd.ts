@@ -77,9 +77,7 @@ export function describeEodhdFailure(path: string, status: number): string {
   if (status === 403) {
     return (
       `EODHD returned 403 for ${endpoint}. A 403 means the token was accepted but ` +
-      `your plan does not include this endpoint or exchange — it is not a broken key. ` +
-      `Confirm what the key can reach with: npm run verify:provider eodhd. If that ` +
-      `passes, the key is fine and this endpoint needs adding to your EODHD subscription.`
+      `your plan does not include this endpoint or exchange — it is not a broken key.`
     );
   }
   if (status === 401) {
@@ -92,8 +90,7 @@ export function describeEodhdFailure(path: string, status: number): string {
   if (status === 423 || status === 402) {
     return (
       `EODHD returned ${status} for ${endpoint}, which this API uses to mean the endpoint ` +
-      `is not included in your plan. The token itself is fine — confirm with: ` +
-      `npm run verify:provider eodhd.`
+      `is not included in your plan. The token itself is fine.`
     );
   }
   if (status === 429) {
@@ -151,9 +148,9 @@ const PLAN_LIMIT_STATUSES = new Set([402, 403, 423]);
  * any request was made. Both mean the same thing to a caller deciding whether
  * to fall back: this route is not available, try the next one.
  */
-function isPlanLimit(error: unknown): boolean {
+export function isEodhdPlanLimitError(error: unknown): boolean {
   return (error instanceof EodhdRequestError && PLAN_LIMIT_STATUSES.has(error.status))
-    || error instanceof KnownPlanLimitError;
+    || (error instanceof KnownPlanLimitError && error.provider === 'eodhd');
 }
 
 function classifyEodhdResponse(response: Response): CallResult {
@@ -223,7 +220,7 @@ export class EodhdProvider implements PriceProvider {
     try {
       return await this.screenerUniverse(exchange, limit);
     } catch (error) {
-      if (!isPlanLimit(error)) throw error;
+      if (!isEodhdPlanLimitError(error)) throw error;
     }
     return this.symbolListUniverse(exchange, limit);
   }

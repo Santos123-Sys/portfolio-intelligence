@@ -14,7 +14,7 @@ describe('describeEodhdFailure', () => {
     expect(message).toMatch(/stock discovery needs/);
     expect(message).toMatch(/token was accepted/);
     expect(message).toMatch(/not a broken key/);
-    expect(message).toMatch(/verify:provider eodhd/);
+    expect(message).not.toMatch(/npm run/);
   });
 
   it('names end-of-day prices when that endpoint 403s', () => {

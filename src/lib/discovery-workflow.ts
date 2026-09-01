@@ -12,7 +12,7 @@ import {
   type GroundingBundle,
 } from '@portfolio-intelligence/agentic-contract';
 import { getActiveAgentCustomization } from './agent-config';
-import { getPriceProvider } from './connectors';
+import { getFundamentalsFallbackProvider, getPriceProvider } from './connectors';
 import { loadDiscoveryUniverse } from './discovery-provider';
 import { db } from './db';
 import { aiAnalyses, portfolios, priceHistory, securities, thesisVersions } from './db/schema';
@@ -26,6 +26,7 @@ import {
 import { startExternalAgenticRun, startExternalDiscoveryRun } from './integrations/agentic-client';
 import { computeStandaloneSecurityRisk } from './quant/security-risk';
 import { recordFundamentalObservations, recordPriceObservation } from './services/provenance';
+import { loadFundamentalsWithFallback } from './services/fundamentals-fallback';
 
 const ROLE_EXCHANGE: Partial<Record<PortfolioRole, string>> = {
   swiss_quality: 'XSWX',
@@ -300,15 +301,19 @@ export async function startApprovedCandidateAnalysis(
 
   const provider = getPriceProvider();
   if (provider.name === 'stub') throw new Error('Candidate analysis refuses stub market data; configure EODHD first');
-  if (!provider.getFundamentals) throw new Error('The configured provider does not supply fundamentals');
   const to = new Date().toISOString().slice(0, 10);
   const from = new Date(Date.now() - 550 * 86_400_000).toISOString().slice(0, 10);
-  const [bars, fundamentals] = await Promise.all([
+  const [bars, fundamentalResult] = await Promise.all([
     provider.getDailyBars(row.candidate.ticker, row.candidate.exchange, from, to),
-    provider.getFundamentals(row.candidate.ticker, row.candidate.exchange, {
-      bypassPlanLimitMemory: options.recheckProviderAccess,
+    loadFundamentalsWithFallback({
+      primary: provider,
+      fallback: getFundamentalsFallbackProvider(),
+      ticker: row.candidate.ticker,
+      exchange: row.candidate.exchange,
+      primaryOptions: { bypassPlanLimitMemory: options.recheckProviderAccess },
     }),
   ]);
+  const { fundamentals, provider: fundamentalsProvider } = fundamentalResult;
   if (bars.length < 31) throw new Error(`Provider supplied only ${bars.length} price observations; at least 31 are required for risk analysis`);
 
   const [security] = await db.insert(securities).values({
@@ -337,7 +342,7 @@ export async function startApprovedCandidateAnalysis(
   }))).onConflictDoNothing();
   await Promise.all([
     recordPriceObservation(security.id, bars.at(-1)!, provider.name),
-    recordFundamentalObservations(security.id, fundamentals, provider.name),
+    recordFundamentalObservations(security.id, fundamentals, fundamentalsProvider),
   ]);
 
   const risk = computeStandaloneSecurityRisk(bars);
