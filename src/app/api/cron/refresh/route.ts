@@ -2,18 +2,17 @@ import { NextResponse } from 'next/server';
 import { assertCronAuthorized } from '@/lib/env';
 import { withLock } from '@/lib/services/lock';
 import { recomputeAll } from '@/lib/services/recompute';
-import { getFundamentalsFallbackProvider, getPriceProvider } from '@/lib/connectors';
+import { getPriceProvider } from '@/lib/connectors';
 import { db } from '@/lib/db';
 import { securities, priceHistory, fxRates } from '@/lib/db/schema';
 import { fetchEcbRates } from '@/lib/fx';
-import { recordFundamentalObservations, recordPriceObservation, recordUnavailableObservation } from '@/lib/services/provenance';
+import { recordPriceObservation, recordUnavailableObservation } from '@/lib/services/provenance';
 import { pruneAuthenticationSecurityData } from '@/lib/auth-security';
-import { loadFundamentalsWithFallback } from '@/lib/services/fundamentals-fallback';
 
 export const runtime = 'nodejs';
 
 /**
- * Daily refresh: prices -> fundamentals/provenance -> FX -> recompute.
+ * Daily refresh: prices/provenance -> FX -> recompute.
  *
  * Runs under a lock because scheduled jobs can overlap or be retried. Two
  * refreshes writing the same observations concurrently would corrupt lineage.
@@ -27,14 +26,11 @@ export async function GET(req: Request) {
 
   const outcome = await withLock('daily_refresh', async () => {
     const provider = getPriceProvider();
-    const fundamentalsFallback = getFundamentalsFallbackProvider();
     const authenticationDataPruned = await pruneAuthenticationSecurityData();
     const allSecurities = await db.select().from(securities);
 
     let pricesWritten = 0;
-    let fundamentalsWritten = 0;
     const priceErrors: string[] = [];
-    const fundamentalErrors: string[] = [];
 
     for (const s of allSecurities) {
       try {
@@ -59,20 +55,6 @@ export async function GET(req: Request) {
         priceErrors.push(`${s.ticker}: ${(e as Error).message}`);
         await recordUnavailableObservation(s.id, 'price', 'close', provider.name, 'ERROR', undefined, (e as Error).message);
       }
-
-      try {
-        const result = await loadFundamentalsWithFallback({
-          primary: provider,
-          fallback: fundamentalsFallback,
-          ticker: s.ticker,
-          exchange: s.exchange,
-        });
-        await recordFundamentalObservations(s.id, result.fundamentals, result.provider);
-        fundamentalsWritten++;
-      } catch (e) {
-        fundamentalErrors.push(`${s.ticker}: ${(e as Error).message}`);
-        await recordUnavailableObservation(s.id, 'fundamental', 'fundamentals', provider.name, 'ERROR', undefined, (e as Error).message);
-      }
     }
 
     let fxWritten = 0;
@@ -93,9 +75,7 @@ export async function GET(req: Request) {
     const recomputed = await recomputeAll();
     return {
       pricesWritten,
-      fundamentalsWritten,
       priceErrors,
-      fundamentalErrors,
       fxWritten,
       fxError,
       authenticationDataPruned,

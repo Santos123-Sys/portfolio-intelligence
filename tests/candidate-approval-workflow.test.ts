@@ -21,21 +21,18 @@ describe('candidate approval to analysis workflow', () => {
     expect(page).toContain('Retry analysis preparation');
   });
 
-  it('uses a human retry to recheck provider access instead of trusting a cached 403', () => {
-    expect(workflow).toContain('recheckingProviderAccess: retryingPreparation');
-    expect(workflow).toContain('bypassPlanLimitMemory: options.recheckProviderAccess');
-    expect(route).toContain('recheckProviderAccess: approval.recheckingProviderAccess');
-  });
-
-  it('records fundamentals under the provider that actually supplied them', () => {
-    expect(workflow).toContain('loadFundamentalsWithFallback({');
-    expect(workflow).toContain('provider: fundamentalsProvider');
-    expect(workflow).toContain('recordFundamentalObservations(security.id, fundamentals, fundamentalsProvider)');
+  it('uses only approved-candidate price history and explicit research evidence', () => {
+    expect(workflow).toContain('provider.getDailyBars(');
+    expect(workflow).toContain("analysisMode: 'limited_research_risk'");
+    expect(workflow).toContain('researchEvidence,');
+    expect(workflow).toContain('fundamentals: {},');
+    expect(workflow).not.toContain('getFundamentals(');
+    expect(workflow).not.toContain('loadFundamentalsWithFallback');
   });
 
   it('keeps the candidate card updated while preparation is active', () => {
     expect(page).toContain("candidate.workflowStatus === 'analysis_preparing'");
-    expect(page).toContain('Approval saved. Retrieving validated prices and fundamentals');
+    expect(page).toContain('Approval saved. Retrieving validated price history');
     expect(page).toContain('candidateErrors[candidate.id]');
   });
 });

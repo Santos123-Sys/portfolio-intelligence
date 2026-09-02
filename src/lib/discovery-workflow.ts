@@ -12,7 +12,7 @@ import {
   type GroundingBundle,
 } from '@portfolio-intelligence/agentic-contract';
 import { getActiveAgentCustomization } from './agent-config';
-import { getFundamentalsFallbackProvider, getPriceProvider } from './connectors';
+import { getPriceProvider } from './connectors';
 import { loadDiscoveryUniverse } from './discovery-provider';
 import { db } from './db';
 import { aiAnalyses, portfolios, priceHistory, securities, thesisVersions } from './db/schema';
@@ -20,13 +20,11 @@ import {
   discoveryCandidates,
   externalAgenticRuns,
   externalDiscoveryRuns,
-  marketDataObservations,
   securityRiskSnapshots,
 } from './db/workflow-schema';
 import { startExternalAgenticRun, startExternalDiscoveryRun } from './integrations/agentic-client';
 import { computeStandaloneSecurityRisk } from './quant/security-risk';
-import { recordFundamentalObservations, recordPriceObservation } from './services/provenance';
-import { loadFundamentalsWithFallback } from './services/fundamentals-fallback';
+import { recordPriceObservation } from './services/provenance';
 
 const ROLE_EXCHANGE: Partial<Record<PortfolioRole, string>> = {
   swiss_quality: 'XSWX',
@@ -283,14 +281,13 @@ export async function approveCandidateForAnalysis(ownerId: string, candidateId: 
     isNull(discoveryCandidates.externalAnalysisRunId)
   )).returning();
   if (!candidate) throw new Error('Candidate approval changed concurrently; refresh before trying again');
-  return { candidate, recheckingProviderAccess: retryingPreparation };
+  return { candidate };
 }
 
 /** Complete the slow provider and agentic handoff after approval is visible. */
 export async function startApprovedCandidateAnalysis(
   ownerId: string,
-  candidateId: string,
-  options: { recheckProviderAccess?: boolean } = {}
+  candidateId: string
 ) {
   const row = await ownedCandidate(ownerId, candidateId);
   if (!row) throw new Error('Discovery candidate not found');
@@ -303,17 +300,7 @@ export async function startApprovedCandidateAnalysis(
   if (provider.name === 'stub') throw new Error('Candidate analysis refuses stub market data; configure EODHD first');
   const to = new Date().toISOString().slice(0, 10);
   const from = new Date(Date.now() - 550 * 86_400_000).toISOString().slice(0, 10);
-  const [bars, fundamentalResult] = await Promise.all([
-    provider.getDailyBars(row.candidate.ticker, row.candidate.exchange, from, to),
-    loadFundamentalsWithFallback({
-      primary: provider,
-      fallback: getFundamentalsFallbackProvider(),
-      ticker: row.candidate.ticker,
-      exchange: row.candidate.exchange,
-      primaryOptions: { bypassPlanLimitMemory: options.recheckProviderAccess },
-    }),
-  ]);
-  const { fundamentals, provider: fundamentalsProvider } = fundamentalResult;
+  const bars = await provider.getDailyBars(row.candidate.ticker, row.candidate.exchange, from, to);
   if (bars.length < 31) throw new Error(`Provider supplied only ${bars.length} price observations; at least 31 are required for risk analysis`);
 
   const [security] = await db.insert(securities).values({
@@ -340,10 +327,7 @@ export async function startApprovedCandidateAnalysis(
     currency: bar.currency,
     source: provider.name,
   }))).onConflictDoNothing();
-  await Promise.all([
-    recordPriceObservation(security.id, bars.at(-1)!, provider.name),
-    recordFundamentalObservations(security.id, fundamentals, fundamentalsProvider),
-  ]);
+  await recordPriceObservation(security.id, bars.at(-1)!, provider.name);
 
   const risk = computeStandaloneSecurityRisk(bars);
   const dataAsOf = new Date(risk[0].dataAsOf);
@@ -362,24 +346,14 @@ export async function startApprovedCandidateAnalysis(
     dataAsOf,
   });
 
-  const observations = await db.select().from(marketDataObservations).where(and(
-    eq(marketDataObservations.securityId, security.id),
-    eq(marketDataObservations.observationType, 'fundamental'),
-    eq(marketDataObservations.status, 'OK')
-  )).orderBy(desc(marketDataObservations.retrievedAt));
-  const fundamentalGrounding: GroundingBundle['fundamentals'] = {};
-  const seen = new Set<string>();
-  for (const observation of observations) {
-    if (seen.has(observation.metricName)) continue;
-    seen.add(observation.metricName);
-    fundamentalGrounding[`fundamental:${observation.metricName}:${observation.id}`] =
-      observation.valueNumeric == null ? observation.valueText : Number(observation.valueNumeric);
-  }
   const discoveryEvidence = DiscoveryCandidate.parse(row.candidate.discoveryJson);
-  fundamentalGrounding[`discovery:rationale:${candidateId}`] = discoveryEvidence.rationale;
-  fundamentalGrounding[`discovery:matched_criteria:${candidateId}`] = discoveryEvidence.matchedCriteria.join(' | ');
-  fundamentalGrounding[`discovery:information_gaps:${candidateId}`] = discoveryEvidence.informationGaps.join(' | ') || 'None recorded';
-  fundamentalGrounding[`discovery:source_urls:${candidateId}`] = discoveryEvidence.sourceUrls.join(' | ');
+  const researchEvidence: NonNullable<GroundingBundle['researchEvidence']> = {
+    [`research:rationale:${candidateId}`]: discoveryEvidence.rationale,
+    [`research:matched_criteria:${candidateId}`]: discoveryEvidence.matchedCriteria.join(' | ') || 'None evidenced',
+    [`research:violated_criteria:${candidateId}`]: discoveryEvidence.violatedCriteria.join(' | ') || 'None evidenced',
+    [`research:information_gaps:${candidateId}`]: discoveryEvidence.informationGaps.join(' | ') || 'None recorded',
+    [`research:source_urls:${candidateId}`]: discoveryEvidence.sourceUrls.join(' | '),
+  };
   const computedMetrics: GroundingBundle['computedMetrics'] = {};
   for (const metric of risk) computedMetrics[`securityRiskMetric:${metric.metricName}:${metric.computedAt}`] = metric.value;
   computedMetrics[`marketPrice:close:${bars.at(-1)!.date}`] = bars.at(-1)!.close;
@@ -391,12 +365,11 @@ export async function startApprovedCandidateAnalysis(
     sector: security.sector,
     country: security.country,
     computedMetrics,
-    fundamentals: fundamentalGrounding,
+    fundamentals: {},
+    analysisMode: 'limited_research_risk',
+    researchEvidence,
     dataAsOf: new Date(Math.max(dataAsOf.getTime(), Date.parse(`${bars.at(-1)!.date}T00:00:00.000Z`))).toISOString(),
   };
-  if (Object.keys(bundle.fundamentals).length === 0) {
-    throw new Error('No provider fundamentals were available; the financial analysis was not started');
-  }
 
   const [thesisVersion] = await db.select().from(thesisVersions)
     .where(and(

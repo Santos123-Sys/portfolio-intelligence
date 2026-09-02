@@ -47,6 +47,9 @@ interface Candidate {
   analysisRunStatus: string | null;
   analysisRunError: string | null;
   analysisErrorMessage: string | null;
+  analysisMode: 'full_fundamentals' | 'limited_research_risk' | null;
+  dcfLocked: boolean;
+  dcfLockReason: string | null;
   discoveryJson: {
     thesisAlignmentScore: number;
     rationale: string;
@@ -233,7 +236,7 @@ export default function AIStockDiscoveryPage() {
   return (
     <main>
       <h1>Thesis-Driven Stock Discovery</h1>
-      <p className="sub">Confirmed thesis → provider-backed market universe → AI shortlist → human approval → one-security-at-a-time analysis → deterministic risk and valuation.</p>
+      <p className="sub">Confirmed thesis → provider-backed market universe → AI shortlist → human approval → source-backed research analysis and deterministic price risk.</p>
 
       {error && <p className="login-error workflow-error" role="alert">{error}</p>}
 
@@ -261,8 +264,8 @@ export default function AIStockDiscoveryPage() {
           <li>
             <strong>Configure live research providers.</strong> Discovery needs
             <code>DISCOVERY_PROVIDER=finnhub</code> with <code>FINNHUB_API_KEY</code>; web research
-            uses Tavily or Brave. After approval, EODHD supplies price history and Finnhub
-            supplies basic fundamentals whenever the EODHD plan does not include them.
+            uses Tavily or Brave. Finnhub is discovery-only. After approval, EODHD supplies
+            price history for deterministic risk; structured fundamentals are not requested.
           </li>
         </ol>
         <p className="note">
@@ -330,15 +333,16 @@ export default function AIStockDiscoveryPage() {
                   <button type="button" onClick={() => void decide(candidate.id, 'watchlist')} disabled={isWorking}>Watchlist</button>
                   <button type="button" className="danger-outline" onClick={() => void decide(candidate.id, 'rejected')} disabled={isWorking}>Reject</button>
                 </>}
-                {isWorking && <span className="note">Retrieving audited evidence and price history…</span>}
+                {isWorking && <span className="note">Preparing source-backed research and validated price history…</span>}
                 {candidateErrors[candidate.id] && <p className="caveat" role="alert">{candidateErrors[candidate.id]}</p>}
               </div>
 
               {candidate.decision === 'approved' && (
                 <div className="analysis-stage">
-                  <h3>3. Financial analysis and deterministic risk</h3>
+                  <h3>3. Research analysis and deterministic risk</h3>
                   <p className="note">{candidate.externalAnalysisRunId ? `Run: ${candidate.externalAnalysisRunId} · ` : ''}Status: {candidate.analysisRunStatus ?? candidate.workflowStatus}</p>
-                  {candidate.workflowStatus === 'analysis_preparing' && <p className="note">Approval saved. Retrieving validated prices and fundamentals before the agentic analysis begins…</p>}
+                  {candidate.analysisMode === 'limited_research_risk' && <p className="caveat"><strong>Limited-data mode.</strong> This analysis uses source-backed research and EODHD price-risk metrics. It does not use structured financial statements.</p>}
+                  {candidate.workflowStatus === 'analysis_preparing' && <p className="note">Approval saved. Retrieving validated price history and preparing the source-backed research bundle…</p>}
                   {candidate.workflowStatus === 'analysis_failed' && <p className="caveat" role="alert">{candidate.analysisErrorMessage ?? candidate.analysisRunError ?? 'Analysis failed. Retry from this candidate card.'}</p>}
                   {candidate.workflowStatus === 'analysis_failed' && !candidate.externalAnalysisRunId && <button className="action-button" type="button" onClick={() => void decide(candidate.id, 'approved')} disabled={busy !== null}>
                     {busy === candidate.id ? 'Retrying preparation…' : 'Retry analysis preparation'}
@@ -352,20 +356,26 @@ export default function AIStockDiscoveryPage() {
                   </div>)}</div>}
                   {candidate.analysis ? <>
                     <p><strong>{candidate.analysis.investmentScore}/100</strong> investment score · {candidate.analysis.thesisAlignmentScore}/100 thesis alignment · {(candidate.analysis.confidenceScore * 100).toFixed(0)}% data confidence</p>
-                    <p className="note">Quality {candidate.analysis.qualityScore ?? '—'} · Growth {candidate.analysis.growthScore ?? '—'} · Risk severity {candidate.analysis.riskScore ?? '—'} · Dividend {candidate.analysis.dividendScore ?? '—'}</p>
-                    <p><strong>Fundamentals:</strong> {candidate.analysis.fundamentalSummary}</p>
+                    {candidate.analysisMode === 'limited_research_risk'
+                      ? <p className="note">Risk severity {candidate.analysis.riskScore ?? '—'} · Financial characteristic scores are withheld in limited-data mode.</p>
+                      : <p className="note">Quality {candidate.analysis.qualityScore ?? '—'} · Growth {candidate.analysis.growthScore ?? '—'} · Risk severity {candidate.analysis.riskScore ?? '—'} · Dividend {candidate.analysis.dividendScore ?? '—'}</p>}
+                    <p><strong>Data coverage:</strong> {candidate.analysis.fundamentalSummary}</p>
                     <p>{candidate.analysis.investmentThesis}</p>
                     <p className="note"><strong>Catalysts:</strong> {(candidate.analysis.keyCatalysts ?? []).join(' · ')}</p>
                     <p className="caveat">Risks: {(candidate.analysis.keyRisks ?? []).join(' · ')}</p>
                     <p className="caveat"><strong>Thesis breakers:</strong> {(candidate.analysis.thesisBreakers ?? []).join(' · ')}</p>
                     <p className="note">Information gaps: {(candidate.analysis.informationGaps ?? []).join(' · ') || 'None recorded'}</p>
                     <details className="analysis-evidence"><summary>Grounding references</summary><ul>{(candidate.analysis.groundedIn ?? []).map((reference) => <li key={reference}><code>{reference}</code></li>)}</ul></details>
-                    <button className="action-button" type="button" onClick={() => setValuationCandidateId((current) => current === candidate.id ? null : candidate.id)}>
-                      {valuationCandidateId === candidate.id ? 'Close valuation' : candidate.valuation ? 'Review valuation' : 'Prepare DCF valuation'}
-                    </button>
-                    {candidate.valuation && <p className="security-state">Latest fair-value scenario: {candidate.valuation.resultJson.currency} {candidate.valuation.resultJson.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })} per share.</p>}
-                    {valuationCandidateId === candidate.id && <ValuationWorkbench candidateId={candidate.id} onSaved={() => void load()} />}
-                  </> : <p className="note">The approved security is processed independently. Valuation unlocks only after its validated analysis returns.</p>}
+                    {candidate.dcfLocked ? (
+                      <p className="caveat"><strong>DCF locked.</strong> {candidate.dcfLockReason}</p>
+                    ) : <>
+                      <button className="action-button" type="button" onClick={() => setValuationCandidateId((current) => current === candidate.id ? null : candidate.id)}>
+                        {valuationCandidateId === candidate.id ? 'Close valuation' : candidate.valuation ? 'Review valuation' : 'Prepare DCF valuation'}
+                      </button>
+                      {candidate.valuation && <p className="security-state">Latest fair-value scenario: {candidate.valuation.resultJson.currency} {candidate.valuation.resultJson.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })} per share.</p>}
+                      {valuationCandidateId === candidate.id && <ValuationWorkbench candidateId={candidate.id} onSaved={() => void load()} />}
+                    </>}
+                  </> : <p className="note">The approved security is processed independently. Limited-data analysis uses research evidence and price risk; DCF remains locked without structured statements.</p>}
                 </div>
               )}
             </article>;

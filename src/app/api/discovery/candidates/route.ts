@@ -18,6 +18,12 @@ import {
   rejectOrWatchCandidate,
   startApprovedCandidateAnalysis,
 } from '@/lib/discovery-workflow';
+import {
+  analysisModeFromRequest,
+  isDcfLocked,
+  LIMITED_DATA_DCF_LOCK_REASON,
+  LIMITED_RESEARCH_RISK_MODE,
+} from '@/lib/integrations/analysis-mode';
 
 export const runtime = 'nodejs';
 
@@ -78,6 +84,12 @@ export async function GET(req: Request) {
     const analysis = run ? analysisByRunId.get(run.id) : null;
     const risk = riskRows.find((snapshot) => snapshot.candidateId === row.candidate.id) ?? null;
     const valuation = valuationRows.find((scenario) => scenario.candidateId === row.candidate.id) ?? null;
+    const analysisMode = run
+      ? analysisModeFromRequest(run.requestJson, row.candidate.ticker, row.candidate.exchange)
+      : row.candidate.decision === 'approved'
+        ? LIMITED_RESEARCH_RISK_MODE
+        : null;
+    const dcfLocked = isDcfLocked(analysisMode);
     return {
       ...row.candidate,
       portfolioName: row.portfolioName,
@@ -87,6 +99,9 @@ export async function GET(req: Request) {
       analysis: analysis ?? null,
       risk: risk?.metricsJson ?? null,
       valuation,
+      analysisMode,
+      dcfLocked,
+      dcfLockReason: dcfLocked ? LIMITED_DATA_DCF_LOCK_REASON : null,
     };
   });
   return NextResponse.json({ candidates });
@@ -111,9 +126,7 @@ export async function POST(req: Request) {
       );
       after(async () => {
         try {
-          await startApprovedCandidateAnalysis(session.auth.userId, parsed.data.candidateId, {
-            recheckProviderAccess: approval.recheckingProviderAccess,
-          });
+          await startApprovedCandidateAnalysis(session.auth.userId, parsed.data.candidateId);
         } catch (error) {
           console.error('[candidate-analysis] Preparation failed', {
             candidateId: parsed.data.candidateId,

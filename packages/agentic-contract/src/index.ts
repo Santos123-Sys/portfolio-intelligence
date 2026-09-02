@@ -101,6 +101,12 @@ export const AnalysisOutput = z.object({
 }).strict();
 export type AnalysisOutput = z.infer<typeof AnalysisOutput>;
 
+export const AnalysisDataMode = z.enum([
+  'full_fundamentals',
+  'limited_research_risk',
+]);
+export type AnalysisDataMode = z.infer<typeof AnalysisDataMode>;
+
 export const GroundingBundle = z.object({
   ticker: z.string().min(1),
   companyName: z.string().min(1),
@@ -111,7 +117,25 @@ export const GroundingBundle = z.object({
   computedMetrics: z.record(z.string(), z.number()),
   dataAsOf: z.string().datetime(),
   fundamentals: z.record(z.string(), z.union([z.number(), z.string(), z.null()])),
-}).strict();
+  analysisMode: AnalysisDataMode.optional(),
+  researchEvidence: z.record(z.string(), z.string()).optional(),
+}).strict().superRefine((bundle, context) => {
+  if (bundle.analysisMode !== 'limited_research_risk') return;
+  if (Object.keys(bundle.fundamentals).length > 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['fundamentals'],
+      message: 'Limited research-and-risk analysis cannot contain structured fundamentals',
+    });
+  }
+  if (Object.keys(bundle.researchEvidence ?? {}).length === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['researchEvidence'],
+      message: 'Limited research-and-risk analysis requires source-backed research evidence',
+    });
+  }
+});
 export type GroundingBundle = z.infer<typeof GroundingBundle>;
 
 export const ReportSynthesisOutput = z.object({
@@ -400,6 +424,7 @@ export function validateGrounding(output: AnalysisOutput, bundle: GroundingBundl
   const available = new Set([
     ...Object.keys(bundle.computedMetrics),
     ...Object.keys(bundle.fundamentals),
+    ...Object.keys(bundle.researchEvidence ?? {}),
   ]);
   if (available.size === 0) {
     throw new ContractValidationError(`No grounding was supplied for ${bundle.ticker}`);

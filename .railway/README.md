@@ -8,7 +8,7 @@ Before any live apply:
 1. Read `docs/RAILWAY-DEPLOYMENT.md`.
 2. Add the shared `OPENAI_API_KEY` and `MARKET_DATA_API_KEY` in Railway without
    committing either value. `MARKET_DATA_API_KEY` must be an EODHD API token
-   with access to the exchanges and fundamentals used by validation. Add
+   with historical-price access for the exchanges used by risk analysis. Add
    `DISCOVERY_PROVIDER=finnhub` and `FINNHUB_API_KEY` directly to the dashboard
    only when the Finnhub key is ready. Add `WEB_SEARCH_PROVIDER=tavily` and
    `WEB_SEARCH_API_KEY` directly to `agentic-worker` only when the Tavily key

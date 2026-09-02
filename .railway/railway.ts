@@ -70,10 +70,9 @@ export default defineRailway((context) => {
       INITIAL_ADMIN_PASSWORD: preserve(),
       MARKET_DATA_PROVIDER: 'eodhd',
       MARKET_DATA_API_KEY: context.shared.MARKET_DATA_API_KEY,
-      // These two preserve manually managed Finnhub values. Setting
-      // DISCOVERY_PROVIDER=finnhub switches broad-universe discovery and also
-      // enables basic-financial fallback when the EODHD plan denies its
-      // fundamentals route. The key remains server-only.
+      // These two preserve manually managed Finnhub values. Finnhub is used
+      // only for broad-universe discovery; the key remains server-only and is
+      // never used by approved-candidate analysis.
       DISCOVERY_PROVIDER: preserve(),
       FINNHUB_API_KEY: preserve(),
       DISCOVERY_FALLBACK_PROVIDER: 'eodhd',
