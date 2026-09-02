@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { AnalysisOutput, type GroundingBundle } from '../src/lib/integrations/analysis-contract';
+import {
+  AnalysisOutput,
+  GroundingBundle as GroundingBundleSchema,
+  type GroundingBundle,
+} from '../src/lib/integrations/analysis-contract';
 import { validateGrounding, diffAnalyses } from '../src/lib/integrations/analysis-validation';
 
 const bundle: GroundingBundle = {
@@ -66,6 +70,28 @@ describe('grounding validation — the anti-hallucination guard', () => {
   it('rejects an analysis when no grounding was supplied', () => {
     const empty = { ...bundle, computedMetrics: {}, fundamentals: {} };
     expect(() => validateGrounding(valid, empty)).toThrow(/No grounding was supplied/);
+  });
+
+  it('accepts source-backed research keys in limited-data mode', () => {
+    const limited = GroundingBundleSchema.parse({
+      ...bundle,
+      analysisMode: 'limited_research_risk',
+      fundamentals: {},
+      researchEvidence: { 'research:rationale:candidate-1': 'Source-backed thesis fit.' },
+    });
+    expect(() => validateGrounding({
+      ...valid,
+      groundedIn: ['research:rationale:candidate-1', 'MaxDrawdown'],
+      informationGaps: ['Structured financial statements unavailable; DCF locked'],
+    }, limited)).not.toThrow();
+  });
+
+  it('rejects structured fundamentals inside limited-data mode', () => {
+    expect(() => GroundingBundleSchema.parse({
+      ...bundle,
+      analysisMode: 'limited_research_risk',
+      researchEvidence: { 'research:rationale:candidate-1': 'Source-backed thesis fit.' },
+    })).toThrow(/cannot contain structured fundamentals/);
   });
 });
 

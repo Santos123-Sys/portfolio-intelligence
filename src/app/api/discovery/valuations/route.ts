@@ -4,7 +4,17 @@ import { z } from 'zod';
 import { assertSameOrigin } from '@/lib/auth';
 import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
-import { discoveryCandidates, marketDataObservations, valuationScenarios } from '@/lib/db/workflow-schema';
+import {
+  discoveryCandidates,
+  externalAgenticRuns,
+  marketDataObservations,
+  valuationScenarios,
+} from '@/lib/db/workflow-schema';
+import {
+  analysisModeFromRequest,
+  isDcfLocked,
+  LIMITED_DATA_DCF_LOCK_REASON,
+} from '@/lib/integrations/analysis-mode';
 import { assessDcfSuitability, discountedCashFlow } from '@/lib/quant/dcf';
 
 export const runtime = 'nodejs';
@@ -35,7 +45,16 @@ async function context(ownerId: string, candidateId: string) {
   )).orderBy(desc(marketDataObservations.retrievedAt));
   const latest = new Map<string, typeof observations[number]>();
   for (const observation of observations) if (!latest.has(observation.metricName)) latest.set(observation.metricName, observation);
-  return { candidate, observations, latest };
+  const [run] = candidate.externalAnalysisRunId
+    ? await db.select().from(externalAgenticRuns).where(and(
+      eq(externalAgenticRuns.ownerId, ownerId),
+      eq(externalAgenticRuns.externalRunId, candidate.externalAnalysisRunId)
+    )).limit(1)
+    : [];
+  const analysisMode = run
+    ? analysisModeFromRequest(run.requestJson, candidate.ticker, candidate.exchange)
+    : null;
+  return { candidate, observations, latest, analysisMode };
 }
 
 function numeric(row: { valueNumeric: string | null } | undefined): number | null {
@@ -51,6 +70,9 @@ export async function GET(req: Request) {
   if (!candidateId) return NextResponse.json({ error: 'candidateId is required' }, { status: 400 });
   const data = await context(session.auth.userId, candidateId);
   if (!data) return NextResponse.json({ error: 'Analyzed discovery candidate not found' }, { status: 404 });
+  if (isDcfLocked(data.analysisMode)) {
+    return NextResponse.json({ error: LIMITED_DATA_DCF_LOCK_REASON }, { status: 409 });
+  }
   const suitability = assessDcfSuitability(data.candidate.sector, data.latest.keys());
   const debt = numeric(data.latest.get('total_debt'));
   const cash = numeric(data.latest.get('cash_and_equivalents'));
@@ -88,6 +110,9 @@ export async function POST(req: Request) {
   const parsed = valuationSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const data = await context(session.auth.userId, parsed.data.candidateId);
+  if (data && isDcfLocked(data.analysisMode)) {
+    return NextResponse.json({ error: LIMITED_DATA_DCF_LOCK_REASON }, { status: 409 });
+  }
   if (!data || !data.candidate.analysisId) {
     return NextResponse.json({ error: 'Complete the approved security analysis before valuation' }, { status: 409 });
   }

@@ -5,7 +5,6 @@ import { StubProvider } from './stub';
 import { YahooSearchProvider } from './yahoo-search';
 import { StooqProvider } from './stooq';
 import { EodhdProvider } from './eodhd';
-import { FinnhubFundamentalsProvider } from './finnhub';
 
 /**
  * Provider selection. Adding a real vendor means implementing PriceProvider and
@@ -33,15 +32,8 @@ export function getPriceProvider(): PriceProvider {
   }
 }
 
-/** Reuses the configured breadth provider only when its server-side key exists. */
-export function getFundamentalsFallbackProvider() {
-  const env = getEnv();
-  if (env.DISCOVERY_PROVIDER !== 'finnhub' || !env.FINNHUB_API_KEY) return null;
-  return new FinnhubFundamentalsProvider(env.FINNHUB_API_KEY, getProviderGateway());
-}
 export * from './base';
 export { StubProvider } from './stub';
 export { YahooSearchProvider } from './yahoo-search';
 export { StooqProvider } from './stooq';
 export { EodhdProvider } from './eodhd';
-export { FinnhubFundamentalsProvider } from './finnhub';
