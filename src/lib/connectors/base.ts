@@ -38,6 +38,12 @@ export interface FundamentalsRequestOptions {
   bypassPlanLimitMemory?: boolean;
 }
 
+export interface FundamentalsProvider {
+  readonly name: string;
+  readonly supportedExchanges: string[];
+  getFundamentals(ticker: string, exchange: string, options?: FundamentalsRequestOptions): Promise<Fundamentals>;
+}
+
 export interface PriceProvider {
   readonly name: string;
   /** MIC codes this provider is confirmed to cover. */

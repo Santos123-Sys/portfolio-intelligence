@@ -27,9 +27,15 @@ describe('candidate approval to analysis workflow', () => {
     expect(route).toContain('recheckProviderAccess: approval.recheckingProviderAccess');
   });
 
+  it('records fundamentals under the provider that actually supplied them', () => {
+    expect(workflow).toContain('loadFundamentalsWithFallback({');
+    expect(workflow).toContain('provider: fundamentalsProvider');
+    expect(workflow).toContain('recordFundamentalObservations(security.id, fundamentals, fundamentalsProvider)');
+  });
+
   it('keeps the candidate card updated while preparation is active', () => {
     expect(page).toContain("candidate.workflowStatus === 'analysis_preparing'");
-    expect(page).toContain('Approval saved. Retrieving EODHD prices and fundamentals');
+    expect(page).toContain('Approval saved. Retrieving validated prices and fundamentals');
     expect(page).toContain('candidateErrors[candidate.id]');
   });
 });

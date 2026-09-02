@@ -261,7 +261,8 @@ export default function AIStockDiscoveryPage() {
           <li>
             <strong>Configure live research providers.</strong> Discovery needs
             <code>DISCOVERY_PROVIDER=finnhub</code> with <code>FINNHUB_API_KEY</code>; web research
-            uses Tavily or Brave. EODHD remains the validation source after your approval.
+            uses Tavily or Brave. After approval, EODHD supplies price history and Finnhub
+            supplies basic fundamentals whenever the EODHD plan does not include them.
           </li>
         </ol>
         <p className="note">
@@ -337,7 +338,7 @@ export default function AIStockDiscoveryPage() {
                 <div className="analysis-stage">
                   <h3>3. Financial analysis and deterministic risk</h3>
                   <p className="note">{candidate.externalAnalysisRunId ? `Run: ${candidate.externalAnalysisRunId} · ` : ''}Status: {candidate.analysisRunStatus ?? candidate.workflowStatus}</p>
-                  {candidate.workflowStatus === 'analysis_preparing' && <p className="note">Approval saved. Retrieving EODHD prices and fundamentals before the agentic analysis begins…</p>}
+                  {candidate.workflowStatus === 'analysis_preparing' && <p className="note">Approval saved. Retrieving validated prices and fundamentals before the agentic analysis begins…</p>}
                   {candidate.workflowStatus === 'analysis_failed' && <p className="caveat" role="alert">{candidate.analysisErrorMessage ?? candidate.analysisRunError ?? 'Analysis failed. Retry from this candidate card.'}</p>}
                   {candidate.workflowStatus === 'analysis_failed' && !candidate.externalAnalysisRunId && <button className="action-button" type="button" onClick={() => void decide(candidate.id, 'approved')} disabled={busy !== null}>
                     {busy === candidate.id ? 'Retrying preparation…' : 'Retry analysis preparation'}

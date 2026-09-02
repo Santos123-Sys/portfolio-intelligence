@@ -42,6 +42,7 @@ export async function recordUnavailableObservation(
 }
 
 export async function recordFundamentalObservations(securityId: string, fundamentals: Fundamentals, provider: string) {
+  const sourceName = typeof fundamentals._source === 'string' ? fundamentals._source : undefined;
   const sourceUrl = typeof fundamentals._sourceUrl === 'string' ? fundamentals._sourceUrl : undefined;
   const query = typeof fundamentals._query === 'string' ? fundamentals._query : undefined;
   const status = typeof fundamentals._status === 'string' ? fundamentals._status : 'OK';
@@ -56,6 +57,7 @@ export async function recordFundamentalObservations(securityId: string, fundamen
       valueNumeric: typeof value === 'number' ? String(value) : null,
       valueText: typeof value === 'string' ? value : null,
       provider,
+      sourceName,
       sourceUrl,
       query,
       status,
