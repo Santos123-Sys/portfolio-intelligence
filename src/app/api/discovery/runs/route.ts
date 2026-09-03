@@ -6,6 +6,7 @@ import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 import { thesisVersions } from '@/lib/db/schema';
 import { discoveryCandidates, externalDiscoveryRuns } from '@/lib/db/workflow-schema';
+import { summarizeDiscoveryCandidateCounts } from '@/lib/discovery-run-summary';
 import { startDiscoveryRunForOwner, synchronizeDiscoveryRun } from '@/lib/discovery-workflow';
 import {
   fetchExternalDiscoveryRun,
@@ -30,12 +31,22 @@ async function list(ownerId: string) {
   const runs = rows.map(({ run }) => run);
   const ids = runs.map((run) => run.id);
   const candidates = ids.length
-    ? await db.select({ runId: discoveryCandidates.runId }).from(discoveryCandidates)
+    ? await db.select({
+      runId: discoveryCandidates.runId,
+      portfolioId: discoveryCandidates.portfolioId,
+    }).from(discoveryCandidates)
       .where(inArray(discoveryCandidates.runId, ids))
     : [];
-  const counts = new Map<string, number>();
-  for (const candidate of candidates) counts.set(candidate.runId, (counts.get(candidate.runId) ?? 0) + 1);
-  return runs.map((run) => ({ ...run, candidateCount: counts.get(run.id) ?? 0 }));
+  const portfoliosByRun = new Map<string, string[]>();
+  for (const candidate of candidates) {
+    const portfolioIds = portfoliosByRun.get(candidate.runId) ?? [];
+    portfolioIds.push(candidate.portfolioId);
+    portfoliosByRun.set(candidate.runId, portfolioIds);
+  }
+  return runs.map((run) => ({
+    ...run,
+    ...summarizeDiscoveryCandidateCounts(run.requestJson, portfoliosByRun.get(run.id) ?? []),
+  }));
 }
 
 export async function GET(req: Request) {

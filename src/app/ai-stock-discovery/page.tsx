@@ -12,6 +12,12 @@ interface DiscoveryRun {
   completedAt: string | null;
   errorMessage: string | null;
   candidateCount: number;
+  maxCandidatesPerPortfolio: number | null;
+  portfolioCandidateCounts: Array<{
+    portfolioId: string;
+    portfolioName: string;
+    count: number;
+  }>;
   /**
    * The full agent output. It was already being returned by the runs API and
    * simply never read: a run that completed with zero candidates showed
@@ -279,8 +285,9 @@ export default function AIStockDiscoveryPage() {
           <h2>1. Start market research</h2>
           <p className="note">The workflow builds a 20–50-company universe, applies the available structural filters, adds source-backed web research, and returns a 5–15 candidate shortlist. It never adds a security to a portfolio. EODHD is used only after you approve a candidate.</p>
         </div>
-        <label className="compact-field">Maximum candidates per portfolio
+        <label className="compact-field">Maximum candidates in each portfolio
           <input type="number" min="1" max="7" value={candidateLimit} onChange={(event) => setCandidateLimit(event.target.value)} />
+          <span>Applied separately to every eligible portfolio, not to the combined run.</span>
         </label>
         <button className="action-button" type="button" onClick={() => void startDiscovery()} disabled={busy !== null}>
           {busy === 'start' ? 'Starting research…' : 'Find thesis-matched stocks'}
@@ -291,12 +298,21 @@ export default function AIStockDiscoveryPage() {
         <h2>Discovery runs</h2>
         {runs.length === 0 ? <p className="note">No market-research run has been started.</p> : (
           <div className="table-scroll"><table>
-            <thead><tr><th>Requested</th><th>Provider</th><th>Status</th><th>Candidates</th><th>Issue</th><th>Action</th></tr></thead>
+            <thead><tr><th>Requested</th><th>Provider</th><th>Status</th><th>Candidates by portfolio</th><th>Issue</th><th>Action</th></tr></thead>
             <tbody>{runs.map((run) => <tr key={run.id}>
               <td>{new Date(run.requestedAt).toLocaleString()}</td>
               <td>{run.provider}</td>
               <td><span className={`badge ${run.status === 'failed' ? 'breach' : run.status === 'completed' ? 'ok' : 'watch'}`}>{run.status}</span></td>
-              <td>{run.candidateCount}</td>
+              <td>
+                <strong>{run.candidateCount} total</strong>
+                {run.portfolioCandidateCounts.length > 0 && (
+                  <ul className="run-candidate-breakdown">
+                    {run.portfolioCandidateCounts.map((portfolio) => <li key={portfolio.portfolioId}>
+                      {portfolio.portfolioName}: {portfolio.count}/{run.maxCandidatesPerPortfolio ?? '—'}
+                    </li>)}
+                  </ul>
+                )}
+              </td>
               <td className="note">{runIssue(run)}</td>
               <td>{run.status === 'failed' ? <button type="button" onClick={() => void retryDiscovery(run.id)} disabled={busy !== null}>
                 {busy === `discovery:${run.id}` ? 'Retrying…' : 'Retry'}
