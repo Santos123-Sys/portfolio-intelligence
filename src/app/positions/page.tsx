@@ -110,6 +110,13 @@ export default function PositionsPage() {
     }
   }
 
+  function resetFilters() {
+    setSearch('');
+    setSectorFilter('');
+    setCountryFilter('');
+    setPortfolioFilter('');
+  }
+
   function headerProps(key: SortKey) {
     return {
       className: `num sortable${sortKey === key ? ' active' : ''}`,
@@ -171,8 +178,17 @@ export default function PositionsPage() {
         <p className="note">Fetching...</p>
       ) : sorted.length === 0 ? (
         <div className="card">
-          <p className="note">No positions match these filters.</p>
-          {rows.length === 0 && <Link className="action-button inline-action" href="/portfolio-setup">Add a position</Link>}
+          {rows.length === 0 ? (
+            <>
+              <p className="note">No positions have been recorded. Approving a research candidate does not add a holding automatically.</p>
+              <Link className="action-button inline-action" href="/portfolio-setup#add-position">Add a position</Link>
+            </>
+          ) : (
+            <>
+              <p className="note">No positions match the current filters.</p>
+              <button className="action-button" type="button" onClick={resetFilters}>Reset filters</button>
+            </>
+          )}
         </div>
       ) : (
         <div className="table-scroll">

@@ -33,9 +33,15 @@ const decisionSchema = z.object({
   rationale: z.string().trim().max(2_000).optional(),
 }).strict();
 
+const runIdSchema = z.string().uuid();
+
 export async function GET(req: Request) {
   const session = await authenticateRequest(req);
   if (!session.ok) return session.response;
+  const parsedRunId = runIdSchema.safeParse(new URL(req.url).searchParams.get('runId'));
+  if (!parsedRunId.success) {
+    return NextResponse.json({ error: 'A valid discovery runId is required' }, { status: 400 });
+  }
   const rows = await db.select({
     candidate: discoveryCandidates,
     portfolioName: portfolios.name,
@@ -46,6 +52,7 @@ export async function GET(req: Request) {
     .innerJoin(thesisVersions, eq(externalDiscoveryRuns.thesisVersionId, thesisVersions.id))
     .where(and(
       eq(discoveryCandidates.ownerId, session.auth.userId),
+      eq(discoveryCandidates.runId, parsedRunId.data),
       isNull(thesisVersions.excludedAt)
     ))
     .orderBy(desc(discoveryCandidates.createdAt));

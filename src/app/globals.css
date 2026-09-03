@@ -111,8 +111,16 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
 .workflow-stage .action-button { margin-top: 0; }
 .compact-field { display: grid; gap: 0.35rem; color: var(--muted); font-size: 0.75rem; }
 .compact-field input { width: 110px; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 0.55rem; }
+.section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.section-heading h2, .section-heading p { margin-top: 0; }
+.section-heading .action-button { flex: 0 0 auto; margin-top: 0; }
+.latest-run-summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.latest-run-summary p { margin: 0; }
+.latest-run-summary .action-button { flex: 0 0 auto; margin-top: 0; }
 .run-candidate-breakdown { margin: 0.35rem 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
 .section-title { margin: 2rem 0 1rem; font-size: 1rem; }
+.candidate-review-heading { margin-top: 2rem; }
+.candidate-review-heading .section-title { margin: 0 0 0.35rem; }
 .candidate-list, .agent-config-list { display: grid; gap: 1rem; }
 .candidate-card h3 { margin: 0; font-size: 1rem; }
 .candidate-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
@@ -238,6 +246,8 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
   .setup-form-row { grid-template-columns: 1fr; }
   .workflow-stage { grid-template-columns: 1fr; align-items: stretch; }
   .compact-field input { width: 100%; }
+  .section-heading, .latest-run-summary { align-items: stretch; flex-direction: column; }
+  .section-heading .action-button, .latest-run-summary .action-button { width: 100%; }
   .candidate-heading { align-items: center; }
 }
 

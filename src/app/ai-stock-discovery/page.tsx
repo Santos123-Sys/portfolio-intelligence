@@ -40,6 +40,7 @@ interface RiskMetric {
 
 interface Candidate {
   id: string;
+  runId: string;
   ticker: string;
   exchange: string;
   companyName: string;
@@ -107,34 +108,55 @@ function runIssue(run: DiscoveryRun): string {
 export default function AIStockDiscoveryPage() {
   const [runs, setRuns] = useState<DiscoveryRun[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [showRunHistory, setShowRunHistory] = useState(false);
+  const [candidateListLoading, setCandidateListLoading] = useState(false);
   const [candidateLimit, setCandidateLimit] = useState('6');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [candidateErrors, setCandidateErrors] = useState<Record<string, string>>({});
   const [valuationCandidateId, setValuationCandidateId] = useState<string | null>(null);
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    const [runResponse, candidateResponse] = await Promise.all([
-      fetch('/api/discovery/runs', { signal }),
-      fetch('/api/discovery/candidates', { signal }),
-    ]);
+  const loadRuns = useCallback(async (signal?: AbortSignal) => {
+    const runResponse = await fetch('/api/discovery/runs', { signal });
     const runBody = await runResponse.json().catch(() => ({})) as { runs?: DiscoveryRun[]; error?: string };
-    const candidateBody = await candidateResponse.json().catch(() => ({})) as { candidates?: Candidate[]; error?: string };
     if (!runResponse.ok) throw new Error(runBody.error ?? `Discovery runs failed (${runResponse.status})`);
-    if (!candidateResponse.ok) throw new Error(candidateBody.error ?? `Candidates failed (${candidateResponse.status})`);
-    if (!signal?.aborted) {
-      setRuns(runBody.runs ?? []);
-      setCandidates(candidateBody.candidates ?? []);
-    }
+    if (!signal?.aborted) setRuns(runBody.runs ?? []);
+  }, []);
+
+  const loadCandidates = useCallback(async (runId: string, signal?: AbortSignal) => {
+    const response = await fetch(`/api/discovery/candidates?runId=${encodeURIComponent(runId)}`, { signal });
+    const body = await response.json().catch(() => ({})) as { candidates?: Candidate[]; error?: string };
+    if (!response.ok) throw new Error(body.error ?? `Candidates failed (${response.status})`);
+    if (!signal?.aborted) setCandidates(body.candidates ?? []);
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
-    void load(controller.signal).catch((cause) => {
+    void loadRuns(controller.signal).catch((cause) => {
       if (!controller.signal.aborted) setError((cause as Error).message);
     });
     return () => controller.abort();
-  }, [load]);
+  }, [loadRuns]);
+
+  useEffect(() => {
+    if (!selectedRunId) {
+      setCandidates([]);
+      setCandidateListLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setCandidateListLoading(true);
+    setCandidates([]);
+    void loadCandidates(selectedRunId, controller.signal)
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError((cause as Error).message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCandidateListLoading(false);
+      });
+    return () => controller.abort();
+  }, [loadCandidates, selectedRunId]);
 
   const hasActiveWork =
     runs.some((run) => run.status === 'queued' || run.status === 'running') ||
@@ -148,17 +170,23 @@ export default function AIStockDiscoveryPage() {
     if (!hasActiveWork) return;
     const controller = new AbortController();
     const interval = window.setInterval(() => {
-      void load(controller.signal).catch(() => undefined);
+      void Promise.all([
+        loadRuns(controller.signal),
+        selectedRunId ? loadCandidates(selectedRunId, controller.signal) : Promise.resolve(),
+      ]).catch(() => undefined);
     }, 4_000);
     return () => {
       controller.abort();
       window.clearInterval(interval);
     };
-  }, [hasActiveWork, load]);
+  }, [hasActiveWork, loadCandidates, loadRuns, selectedRunId]);
 
   async function startDiscovery() {
     setBusy('start');
     setError(null);
+    setSelectedRunId(null);
+    setCandidates([]);
+    setShowRunHistory(false);
     try {
       const response = await fetch('/api/discovery/runs', {
         method: 'POST',
@@ -167,7 +195,7 @@ export default function AIStockDiscoveryPage() {
       });
       const body = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? `Discovery start failed (${response.status})`);
-      await load();
+      await loadRuns();
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
@@ -196,7 +224,7 @@ export default function AIStockDiscoveryPage() {
           candidate.id === candidateId ? { ...candidate, ...body.candidate } : candidate
         ));
       }
-      await load();
+      if (selectedRunId) await loadCandidates(selectedRunId);
     } catch (cause) {
       const message = (cause as Error).message;
       setError(message);
@@ -209,11 +237,14 @@ export default function AIStockDiscoveryPage() {
   async function retryDiscovery(runId: string) {
     setBusy(`discovery:${runId}`);
     setError(null);
+    setSelectedRunId(null);
+    setCandidates([]);
+    setShowRunHistory(false);
     try {
       const response = await fetch(`/api/discovery/runs?id=${encodeURIComponent(runId)}`, { method: 'PATCH' });
       const body = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? `Discovery retry failed (${response.status})`);
-      await load();
+      await loadRuns();
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
@@ -231,13 +262,23 @@ export default function AIStockDiscoveryPage() {
       );
       const body = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? `Analysis retry failed (${response.status})`);
-      await load();
+      if (selectedRunId) await loadCandidates(selectedRunId);
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
       setBusy(null);
     }
   }
+
+  function toggleCandidateReview(runId: string) {
+    setError(null);
+    setCandidateErrors({});
+    setValuationCandidateId(null);
+    setSelectedRunId((current) => current === runId ? null : runId);
+  }
+
+  const latestRun = runs[0] ?? null;
+  const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
 
   return (
     <main>
@@ -295,9 +336,38 @@ export default function AIStockDiscoveryPage() {
       </section>
 
       <section className="card">
-        <h2>Discovery runs</h2>
-        {runs.length === 0 ? <p className="note">No market-research run has been started.</p> : (
-          <div className="table-scroll"><table>
+        <div className="section-heading">
+          <div>
+            <h2>Discovery runs</h2>
+            <p className="note">Run history stays collapsed. Open it only when you want to review or retry a specific run.</p>
+          </div>
+          {runs.length > 0 && <button
+            className="action-button"
+            type="button"
+            aria-expanded={showRunHistory}
+            aria-controls="discovery-run-history"
+            onClick={() => setShowRunHistory((current) => !current)}
+          >
+            {showRunHistory ? 'Hide run history' : `Show run history (${runs.length})`}
+          </button>}
+        </div>
+        {runs.length === 0 ? <p className="note">No market-research run has been started.</p> : !showRunHistory ? (
+          <div className="latest-run-summary" aria-live="polite">
+            <p>
+              <strong>Latest run:</strong> {new Date(latestRun!.requestedAt).toLocaleString()} ·{' '}
+              <span className={`badge ${latestRun!.status === 'failed' ? 'breach' : latestRun!.status === 'completed' ? 'ok' : 'watch'}`}>{latestRun!.status}</span>{' '}
+              · {latestRun!.candidateCount} candidates
+            </p>
+            {latestRun!.status === 'completed' && latestRun!.candidateCount > 0 && <button
+              className="action-button"
+              type="button"
+              onClick={() => toggleCandidateReview(latestRun!.id)}
+            >
+              {selectedRunId === latestRun!.id ? 'Hide candidates' : 'Review latest candidates'}
+            </button>}
+          </div>
+        ) : (
+          <div className="table-scroll" id="discovery-run-history"><table>
             <thead><tr><th>Requested</th><th>Provider</th><th>Status</th><th>Candidates by portfolio</th><th>Issue</th><th>Action</th></tr></thead>
             <tbody>{runs.map((run) => <tr key={run.id}>
               <td>{new Date(run.requestedAt).toLocaleString()}</td>
@@ -316,6 +386,8 @@ export default function AIStockDiscoveryPage() {
               <td className="note">{runIssue(run)}</td>
               <td>{run.status === 'failed' ? <button type="button" onClick={() => void retryDiscovery(run.id)} disabled={busy !== null}>
                 {busy === `discovery:${run.id}` ? 'Retrying…' : 'Retry'}
+              </button> : run.status === 'completed' && run.candidateCount > 0 ? <button type="button" onClick={() => toggleCandidateReview(run.id)}>
+                {selectedRunId === run.id ? 'Hide candidates' : 'Review candidates'}
               </button> : '—'}</td>
             </tr>)}</tbody>
           </table></div>
@@ -323,8 +395,16 @@ export default function AIStockDiscoveryPage() {
       </section>
 
       <section>
-        <h2 className="section-title">2. Human candidate review</h2>
-        {candidates.length === 0 ? <div className="card"><p className="note">Completed discovery candidates will appear here for approval.</p></div> : (
+        <div className="section-heading candidate-review-heading">
+          <div>
+            <h2 className="section-title">2. Human candidate review</h2>
+            {selectedRun && <p className="note">Showing only the {selectedRun.candidateCount} candidates found by the run requested {new Date(selectedRun.requestedAt).toLocaleString()}.</p>}
+          </div>
+          {selectedRunId && <button className="action-button" type="button" onClick={() => setSelectedRunId(null)}>Hide candidates</button>}
+        </div>
+        {!selectedRunId ? <div className="card"><p className="note">Candidate results are hidden. Review the latest run above, or open run history to choose an earlier run.</p></div>
+          : candidateListLoading ? <div className="card"><p className="note">Loading this run&apos;s candidates…</p></div>
+          : candidates.length === 0 ? <div className="card"><p className="note">This market-research run returned no candidates.</p></div> : (
           <div className="candidate-list">{candidates.map((candidate) => {
             const discovery = candidate.discoveryJson;
             const canDecide = candidate.decision === 'pending' || candidate.decision === 'watchlist';
@@ -389,7 +469,9 @@ export default function AIStockDiscoveryPage() {
                         {valuationCandidateId === candidate.id ? 'Close valuation' : candidate.valuation ? 'Review valuation' : 'Prepare DCF valuation'}
                       </button>
                       {candidate.valuation && <p className="security-state">Latest fair-value scenario: {candidate.valuation.resultJson.currency} {candidate.valuation.resultJson.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })} per share.</p>}
-                      {valuationCandidateId === candidate.id && <ValuationWorkbench candidateId={candidate.id} onSaved={() => void load()} />}
+                      {valuationCandidateId === candidate.id && <ValuationWorkbench candidateId={candidate.id} onSaved={() => {
+                        if (selectedRunId) void loadCandidates(selectedRunId);
+                      }} />}
                     </>}
                   </> : <p className="note">The approved security is processed independently. Limited-data analysis uses research evidence and price risk; DCF remains locked without structured statements.</p>}
                 </div>
