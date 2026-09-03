@@ -111,6 +111,7 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
 .workflow-stage .action-button { margin-top: 0; }
 .compact-field { display: grid; gap: 0.35rem; color: var(--muted); font-size: 0.75rem; }
 .compact-field input { width: 110px; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 0.55rem; }
+.run-candidate-breakdown { margin: 0.35rem 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
 .section-title { margin: 2rem 0 1rem; font-size: 1rem; }
 .candidate-list, .agent-config-list { display: grid; gap: 1rem; }
 .candidate-card h3 { margin: 0; font-size: 1rem; }
