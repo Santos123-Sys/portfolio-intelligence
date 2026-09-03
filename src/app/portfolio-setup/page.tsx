@@ -210,7 +210,7 @@ export default function PortfolioSetupPage() {
           </form>
         </section>
 
-        <section className="card">
+        <section className="card" id="add-position">
           <h2>Add position</h2>
           <p className="note">Use this only after a candidate has been reviewed and you have decided to invest, or when recording an existing holding.</p>
           <form className="setup-form" onSubmit={createPosition}>
