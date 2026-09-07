@@ -32,7 +32,14 @@ describe('candidate approval to analysis workflow', () => {
 
   it('keeps the candidate card updated while preparation is active', () => {
     expect(page).toContain("candidate.workflowStatus === 'analysis_preparing'");
-    expect(page).toContain('Approval saved. Retrieving validated price history');
+    expect(page).toContain('Approval is saved. Validated price history');
     expect(page).toContain('candidateErrors[candidate.id]');
+  });
+
+  it('keeps technical run identifiers out of the primary decision surface', () => {
+    expect(page).toContain('Audit and processing details');
+    expect(page).toContain('Professional investment report');
+    expect(page).not.toContain('`Run: ${candidate.externalAnalysisRunId}');
+    expect(route).toContain('/api/integrations/agentic/reports?externalRunId=');
   });
 });
