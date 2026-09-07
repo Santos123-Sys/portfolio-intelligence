@@ -54,6 +54,7 @@ interface Candidate {
   analysisRunStatus: string | null;
   analysisRunError: string | null;
   analysisErrorMessage: string | null;
+  reportUrl: string | null;
   analysisMode: 'full_fundamentals' | 'limited_research_risk' | null;
   dcfLocked: boolean;
   dcfLockReason: string | null;
@@ -84,6 +85,56 @@ interface Candidate {
     informationGaps: string[] | null;
   } | null;
   valuation: { resultJson: { currency: string; fairValuePerShare: number } } | null;
+}
+
+function friendlyAnalysisStatus(candidate: Candidate): {
+  label: string;
+  badgeClass: 'ok' | 'watch' | 'breach';
+  description: string;
+} {
+  if (candidate.workflowStatus === 'analysis_failed' || candidate.analysisRunStatus === 'failed') {
+    return {
+      label: 'Needs attention',
+      badgeClass: 'breach',
+      description: 'The analysis stopped before a validated result was produced. Review the message below and retry.',
+    };
+  }
+  if (candidate.reportUrl || (candidate.analysis && (candidate.analysisRunStatus === 'completed' || candidate.analysisRunStatus === 'imported'))) {
+    return {
+      label: 'Report ready',
+      badgeClass: 'ok',
+      description: 'The research evidence and deterministic price-risk checks are ready for your review.',
+    };
+  }
+  if (candidate.analysisRunStatus === 'running') {
+    return {
+      label: 'Analysis in progress',
+      badgeClass: 'watch',
+      description: 'The research agent is assessing thesis fit, evidence quality, catalysts, and downside risks.',
+    };
+  }
+  if (candidate.workflowStatus === 'analysis_preparing') {
+    return {
+      label: 'Preparing evidence',
+      badgeClass: 'watch',
+      description: 'Approval is saved. Validated price history and source-backed research are being prepared.',
+    };
+  }
+  return {
+    label: 'Waiting to begin',
+    badgeClass: 'watch',
+    description: 'The analysis request is queued and will start automatically. You can leave this page while it runs.',
+  };
+}
+
+function friendlyRiskMetric(metricName: string): string {
+  const labels: Record<string, string> = {
+    Volatility: 'Annualized volatility',
+    MaxDrawdown: 'Maximum drawdown',
+    VaR_95_1d_Historical: '1-day VaR (historical, 95%)',
+    VaR_95_1d_Parametric: '1-day VaR (parametric, 95%)',
+  };
+  return labels[metricName] ?? metricName.replaceAll('_', ' ');
 }
 
 /**
@@ -409,6 +460,7 @@ export default function AIStockDiscoveryPage() {
             const discovery = candidate.discoveryJson;
             const canDecide = candidate.decision === 'pending' || candidate.decision === 'watchlist';
             const isWorking = busy === candidate.id;
+            const analysisStatus = friendlyAnalysisStatus(candidate);
             return <article className="card candidate-card" key={candidate.id}>
               <div className="candidate-heading">
                 <div>
@@ -435,10 +487,18 @@ export default function AIStockDiscoveryPage() {
 
               {candidate.decision === 'approved' && (
                 <div className="analysis-stage">
-                  <h3>3. Research analysis and deterministic risk</h3>
-                  <p className="note">{candidate.externalAnalysisRunId ? `Run: ${candidate.externalAnalysisRunId} · ` : ''}Status: {candidate.analysisRunStatus ?? candidate.workflowStatus}</p>
-                  {candidate.analysisMode === 'limited_research_risk' && <p className="caveat"><strong>Limited-data mode.</strong> This analysis uses source-backed research and EODHD price-risk metrics. It does not use structured financial statements.</p>}
-                  {candidate.workflowStatus === 'analysis_preparing' && <p className="note">Approval saved. Retrieving validated price history and preparing the source-backed research bundle…</p>}
+                  <div className="analysis-stage-heading">
+                    <div>
+                      <p className="analysis-eyebrow">Approved investment research</p>
+                      <h3>3. Research and risk assessment</h3>
+                    </div>
+                    <span className={`badge ${analysisStatus.badgeClass}`}>{analysisStatus.label}</span>
+                  </div>
+                  <p className="analysis-status-copy" aria-live="polite">{analysisStatus.description}</p>
+                  {candidate.analysisMode === 'limited_research_risk' && <div className="analysis-scope">
+                    <strong>Evidence scope</strong>
+                    <p>This assessment combines source-backed company research with EODHD price-risk metrics. Structured financial statements are not included, so DCF valuation remains locked.</p>
+                  </div>}
                   {candidate.workflowStatus === 'analysis_failed' && <p className="caveat" role="alert">{candidate.analysisErrorMessage ?? candidate.analysisRunError ?? 'Analysis failed. Retry from this candidate card.'}</p>}
                   {candidate.workflowStatus === 'analysis_failed' && !candidate.externalAnalysisRunId && <button className="action-button" type="button" onClick={() => void decide(candidate.id, 'approved')} disabled={busy !== null}>
                     {busy === candidate.id ? 'Retrying preparation…' : 'Retry analysis preparation'}
@@ -447,21 +507,34 @@ export default function AIStockDiscoveryPage() {
                     {busy === `analysis:${candidate.externalAnalysisRunId}` ? 'Retrying analysis…' : 'Retry analysis'}
                   </button>}
                   {candidate.risk && <div className="risk-strip">{candidate.risk.map((metric) => <div key={metric.metricName}>
-                    <span>{metric.metricName}</span><strong>{(metric.value * 100).toFixed(2)}%</strong>
-                    <details><summary>Method</summary><p>{metric.methodology}</p>{metric.caveat && <p className="caveat">{metric.caveat}</p>}</details>
+                    <span>{friendlyRiskMetric(metric.metricName)}</span><strong>{(metric.value * 100).toFixed(2)}%</strong>
+                    <details><summary>How it is calculated</summary><p>{metric.methodology}</p>{metric.caveat && <p className="caveat">{metric.caveat}</p>}</details>
                   </div>)}</div>}
                   {candidate.analysis ? <>
-                    <p><strong>{candidate.analysis.investmentScore}/100</strong> investment score · {candidate.analysis.thesisAlignmentScore}/100 thesis alignment · {(candidate.analysis.confidenceScore * 100).toFixed(0)}% data confidence</p>
+                    <div className="analysis-score-summary">
+                      <div><strong>{candidate.analysis.investmentScore}</strong><span>Investment score</span></div>
+                      <div><strong>{candidate.analysis.thesisAlignmentScore}</strong><span>Thesis alignment</span></div>
+                      <div><strong>{(candidate.analysis.confidenceScore * 100).toFixed(0)}%</strong><span>Evidence confidence</span></div>
+                    </div>
                     {candidate.analysisMode === 'limited_research_risk'
                       ? <p className="note">Risk severity {candidate.analysis.riskScore ?? '—'} · Financial characteristic scores are withheld in limited-data mode.</p>
                       : <p className="note">Quality {candidate.analysis.qualityScore ?? '—'} · Growth {candidate.analysis.growthScore ?? '—'} · Risk severity {candidate.analysis.riskScore ?? '—'} · Dividend {candidate.analysis.dividendScore ?? '—'}</p>}
-                    <p><strong>Data coverage:</strong> {candidate.analysis.fundamentalSummary}</p>
-                    <p>{candidate.analysis.investmentThesis}</p>
+                    <div className="analysis-decision">
+                      <h4>Decision view</h4>
+                      <p>{candidate.analysis.investmentThesis}</p>
+                    </div>
+                    <p><strong>Evidence coverage:</strong> {candidate.analysis.fundamentalSummary}</p>
                     <p className="note"><strong>Catalysts:</strong> {(candidate.analysis.keyCatalysts ?? []).join(' · ')}</p>
-                    <p className="caveat">Risks: {(candidate.analysis.keyRisks ?? []).join(' · ')}</p>
+                    <p className="caveat"><strong>Principal risks:</strong> {(candidate.analysis.keyRisks ?? []).join(' · ')}</p>
                     <p className="caveat"><strong>Thesis breakers:</strong> {(candidate.analysis.thesisBreakers ?? []).join(' · ')}</p>
-                    <p className="note">Information gaps: {(candidate.analysis.informationGaps ?? []).join(' · ') || 'None recorded'}</p>
-                    <details className="analysis-evidence"><summary>Grounding references</summary><ul>{(candidate.analysis.groundedIn ?? []).map((reference) => <li key={reference}><code>{reference}</code></li>)}</ul></details>
+                    <p className="note"><strong>Information gaps:</strong> {(candidate.analysis.informationGaps ?? []).join(' · ') || 'None recorded'}</p>
+                    {candidate.reportUrl && <div className="analysis-report-cta">
+                      <div>
+                        <strong>Professional investment report</strong>
+                        <p>Open the complete decision summary, scorecards, catalysts, risks, limitations, and disclosure in a presentation-ready PDF.</p>
+                      </div>
+                      <a className="action-button inline-action" href={candidate.reportUrl} target="_blank" rel="noreferrer">Open PDF report</a>
+                    </div>}
                     {candidate.dcfLocked ? (
                       <p className="caveat"><strong>DCF locked.</strong> {candidate.dcfLockReason}</p>
                     ) : <>
@@ -473,7 +546,22 @@ export default function AIStockDiscoveryPage() {
                         if (selectedRunId) void loadCandidates(selectedRunId);
                       }} />}
                     </>}
-                  </> : <p className="note">The approved security is processed independently. Limited-data analysis uses research evidence and price risk; DCF remains locked without structured statements.</p>}
+                    <details className="analysis-evidence"><summary>Audit and processing details</summary>
+                      <p>Status: {candidate.analysisRunStatus ?? candidate.workflowStatus}</p>
+                      {candidate.externalAnalysisRunId && <p>Internal reference: <code>{candidate.externalAnalysisRunId}</code></p>}
+                      <p>{(candidate.analysis.groundedIn ?? []).length} evidence references retained.</p>
+                      <ul>{(candidate.analysis.groundedIn ?? []).map((reference) => <li key={reference}><code>{reference}</code></li>)}</ul>
+                    </details>
+                  </> : <>
+                    {candidate.reportUrl && <div className="analysis-report-cta">
+                      <div>
+                        <strong>Professional investment report</strong>
+                        <p>The report is ready. It can be reviewed while the dashboard finishes importing its structured analysis.</p>
+                      </div>
+                      <a className="action-button inline-action" href={candidate.reportUrl} target="_blank" rel="noreferrer">Open PDF report</a>
+                    </div>}
+                    <p className="note">The approved security is processed independently. Limited-data analysis uses research evidence and price risk; DCF remains locked without structured statements.</p>
+                  </>}
                 </div>
               )}
             </article>;

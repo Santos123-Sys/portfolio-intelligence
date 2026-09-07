@@ -3,27 +3,37 @@ import { createRequire } from 'node:module';
 import type { AnalysisOutput, PortfolioAnalysisManifest } from '@portfolio-intelligence/agentic-contract';
 
 const palette = {
-  navy: '#13263D',
-  blue: '#285A78',
-  teal: '#2D7C7B',
-  gold: '#C69A45',
-  ink: '#17202A',
-  muted: '#5D6B78',
-  line: '#D9E1E8',
-  panel: '#F4F7F9',
-  white: '#FFFFFF',
-  red: '#9B3B3B',
+  navy: '#102A43', blue: '#246B8E', teal: '#147D73', gold: '#B88932', ink: '#17212B',
+  muted: '#607080', line: '#D9E2E8', panel: '#F4F7F9', white: '#FFFFFF', red: '#A33E3E',
+  paleTeal: '#EAF5F2', paleGold: '#FBF5E8',
 };
 
 const margin = 54;
-const contentWidth = 612 - margin * 2;
+const pageWidth = 612;
+const pageHeight = 792;
+const contentWidth = pageWidth - margin * 2;
 const pageBottom = 660;
 const require = createRequire(import.meta.url);
 const regularFont = require.resolve('@fontsource/inter/files/inter-latin-400-normal.woff');
 const boldFont = require.resolve('@fontsource/inter/files/inter-latin-700-normal.woff');
 
-function asText(items: string[]): string {
-  return items.length ? items.join('  |  ') : 'None reported.';
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC',
+  }).format(new Date(value));
+}
+
+function cleanNarrative(value: string): string {
+  const auditMarker = 'Grounding references preserved from the validated analysis:';
+  return value.split(auditMarker)[0]?.trim() || value.trim();
+}
+
+function roleLabel(value: string): string {
+  return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function average(values: number[]): number {
+  return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : 0;
 }
 
 export async function renderReportPdf(
@@ -36,10 +46,10 @@ export async function renderReportPdf(
     autoFirstPage: false,
     bufferPages: true,
     info: {
-      Title: `Portfolio intelligence report ${externalRunId}`,
-      Author: 'Portfolio Intelligence Agentic System',
-      Subject: `Thesis version ${manifest.thesisVersion}`,
-      Keywords: 'portfolio analysis, grounded analysis, investment thesis',
+      Title: 'Investment Research and Risk Report',
+      Author: 'Portfolio Intelligence',
+      Subject: `Decision support for thesis version ${manifest.thesisVersion}`,
+      Keywords: 'investment research, thesis alignment, risk assessment, decision support',
       CreationDate: new Date(manifest.generatedAt),
     },
   });
@@ -50,13 +60,13 @@ export async function renderReportPdf(
 
   const addContentPage = (eyebrow: string) => {
     doc.addPage();
-    doc.rect(0, 0, 612, 30).fill(palette.navy);
+    doc.rect(0, 0, pageWidth, 32).fill(palette.navy);
     doc.font('ReportBold').fontSize(8).fillColor(palette.white)
-      .text('PORTFOLIO INTELLIGENCE', margin, 11);
+      .text('PORTFOLIO INTELLIGENCE', margin, 12);
     doc.font('ReportRegular').fontSize(8).fillColor('#D7E3EC')
-      .text(eyebrow.toUpperCase(), margin, 11, { width: contentWidth, align: 'right' });
+      .text(eyebrow.toUpperCase(), margin, 12, { width: contentWidth, align: 'right' });
     doc.x = margin;
-    doc.y = 54;
+    doc.y = 55;
   };
 
   const ensureSpace = (height: number, eyebrow: string) => {
@@ -64,163 +74,225 @@ export async function renderReportPdf(
   };
 
   const sectionTitle = (title: string, eyebrow: string) => {
-    ensureSpace(34, eyebrow);
+    ensureSpace(38, eyebrow);
     doc.moveDown(0.35);
-    doc.font('ReportBold').fontSize(12).fillColor(palette.navy)
-      .text(title.toUpperCase(), margin, doc.y, { width: contentWidth });
-    doc.moveTo(margin, doc.y + 4).lineTo(margin + 44, doc.y + 4).lineWidth(2).strokeColor(palette.gold).stroke();
-    doc.moveDown(0.8);
+    doc.font('ReportBold').fontSize(11).fillColor(palette.navy)
+      .text(title.toUpperCase(), margin, doc.y, { width: contentWidth, characterSpacing: 0.3 });
+    const lineY = doc.y + 4;
+    doc.moveTo(margin, lineY).lineTo(margin + 42, lineY).lineWidth(2).strokeColor(palette.gold).stroke();
+    doc.moveDown(0.75);
   };
 
-  const paragraph = (text: string, eyebrow: string, options: { muted?: boolean; size?: number } = {}) => {
-    doc.font('ReportRegular').fontSize(options.size ?? 9.5);
+  const paragraph = (
+    value: string,
+    eyebrow: string,
+    options: { muted?: boolean; size?: number; bold?: boolean } = {}
+  ) => {
+    const text = cleanNarrative(value);
+    doc.font(options.bold ? 'ReportBold' : 'ReportRegular').fontSize(options.size ?? 9.3);
     const height = doc.heightOfString(text, { width: contentWidth, lineGap: 3 });
-    ensureSpace(height + 10, eyebrow);
+    ensureSpace(height + 9, eyebrow);
     doc.fillColor(options.muted ? palette.muted : palette.ink)
       .text(text, margin, doc.y, { width: contentWidth, lineGap: 3 });
-    doc.moveDown(0.55);
+    doc.moveDown(0.5);
   };
 
   const bullets = (items: string[], eyebrow: string, emptyLabel = 'None reported.') => {
     const values = items.length ? items : [emptyLabel];
     for (const item of values) {
-      doc.font('ReportRegular').fontSize(9.2);
-      const height = doc.heightOfString(item, { width: contentWidth - 18, lineGap: 2 });
+      const text = cleanNarrative(item);
+      doc.font('ReportRegular').fontSize(9.1);
+      const height = doc.heightOfString(text, { width: contentWidth - 18, lineGap: 2 });
       ensureSpace(height + 8, eyebrow);
       const y = doc.y + 3;
       doc.circle(margin + 3, y + 2, 2).fill(palette.teal);
       doc.fillColor(palette.ink)
-        .text(item, margin + 14, doc.y, { width: contentWidth - 14, lineGap: 2 });
-      doc.moveDown(0.35);
+        .text(text, margin + 14, doc.y, { width: contentWidth - 14, lineGap: 2 });
+      doc.moveDown(0.32);
     }
   };
 
+  const labelValue = (label: string, value: string, x: number, y: number, width: number, light = false) => {
+    doc.font('ReportBold').fontSize(7.5).fillColor(light ? '#AFC4D3' : palette.muted)
+      .text(label.toUpperCase(), x, y, { width });
+    doc.font('ReportRegular').fontSize(10).fillColor(light ? palette.white : palette.ink)
+      .text(value, x, y + 16, { width });
+  };
+
   const scorePanel = (analysis: AnalysisOutput, eyebrow: string) => {
-    ensureSpace(116, eyebrow);
+    ensureSpace(130, eyebrow);
     const y = doc.y;
-    doc.roundedRect(margin, y, contentWidth, 104, 7).fillAndStroke(palette.panel, palette.line);
-    doc.font('ReportBold').fontSize(10).fillColor(palette.navy)
-      .text(`${analysis.ticker}  |  ${analysis.companyName}`, margin + 14, y + 12, { width: 290 });
-    doc.font('ReportBold').fontSize(9).fillColor(analysis.portfolioCandidate ? palette.teal : palette.red)
-      .text(analysis.portfolioCandidate ? 'PORTFOLIO CANDIDATE' : 'NOT A CANDIDATE', margin + 330, y + 13, {
-        width: 160,
-        align: 'right',
-      });
+    doc.roundedRect(margin, y, contentWidth, 116, 7).fillAndStroke(palette.panel, palette.line);
+    doc.font('ReportBold').fontSize(11).fillColor(palette.navy)
+      .text(`${analysis.ticker}  |  ${analysis.companyName}`, margin + 14, y + 13, { width: 300 });
+    doc.font('ReportBold').fontSize(8.5)
+      .fillColor(analysis.portfolioCandidate ? palette.teal : palette.red)
+      .text(
+        analysis.portfolioCandidate ? 'SUPPORTED FOR FURTHER REVIEW' : 'NOT SUPPORTED BY CURRENT EVIDENCE',
+        margin + 314, y + 14, { width: 176, align: 'right' }
+      );
     const scores = [
-      ['Investment', analysis.investmentScore],
-      ['Alignment', analysis.thesisAlignmentScore],
-      ['Quality', analysis.qualityScore],
-      ['Growth', analysis.growthScore],
-      ['Risk', analysis.riskScore],
-      ['Dividend', analysis.dividendScore],
+      ['Investment', analysis.investmentScore], ['Thesis fit', analysis.thesisAlignmentScore],
+      ['Quality', analysis.qualityScore], ['Growth', analysis.growthScore],
+      ['Risk severity', analysis.riskScore], ['Dividend', analysis.dividendScore],
     ] as const;
     scores.forEach(([label, value], index) => {
       const column = index % 3;
       const row = Math.floor(index / 3);
       const x = margin + 14 + column * 163;
-      const scoreY = y + 42 + row * 28;
-      doc.font('ReportRegular').fontSize(7.5).fillColor(palette.muted).text(label.toUpperCase(), x, scoreY);
-      doc.font('ReportBold').fontSize(12).fillColor(palette.navy).text(String(value), x + 82, scoreY - 2, {
-        width: 40,
-        align: 'right',
+      const scoreY = y + 48 + row * 29;
+      doc.font('ReportRegular').fontSize(7.2).fillColor(palette.muted).text(label.toUpperCase(), x, scoreY);
+      doc.font('ReportBold').fontSize(11).fillColor(palette.navy).text(String(value), x + 82, scoreY - 2, {
+        width: 36, align: 'right',
       });
-      doc.rect(x, scoreY + 13, 118, 3).fill(palette.line);
-      doc.rect(x, scoreY + 13, Math.max(1, 118 * value / 100), 3).fill(label === 'Risk' ? palette.gold : palette.teal);
+      doc.rect(x, scoreY + 14, 118, 3).fill(palette.line);
+      doc.rect(x, scoreY + 14, Math.max(1, 118 * value / 100), 3)
+        .fill(label === 'Risk severity' ? palette.gold : palette.teal);
     });
-    doc.y = y + 116;
+    doc.y = y + 130;
     doc.x = margin;
   };
 
+  const analyses = manifest.portfolios.flatMap((portfolio) => portfolio.analyses);
+  const supportedCount = analyses.filter((analysis) => analysis.portfolioCandidate).length;
+
+  // Cover: decision context first. The internal job identifier is deliberately
+  // excluded and appears only once in the final audit note.
   doc.addPage();
-  doc.rect(0, 0, 612, 792).fill(palette.navy);
-  doc.rect(0, 0, 14, 792).fill(palette.gold);
+  doc.rect(0, 0, pageWidth, pageHeight).fill(palette.navy);
+  doc.rect(0, 0, 14, pageHeight).fill(palette.gold);
   doc.font('ReportBold').fontSize(10).fillColor('#BFD0DD')
-    .text('PORTFOLIO INTELLIGENCE', 64, 78);
-  doc.font('ReportBold').fontSize(31).fillColor(palette.white)
-    .text('Grounded portfolio\nanalysis report', 64, 148, { width: 450, lineGap: 4 });
-  doc.moveTo(64, 270).lineTo(170, 270).lineWidth(4).strokeColor(palette.gold).stroke();
-  doc.font('ReportRegular').fontSize(13).fillColor('#D7E3EC')
-    .text(`${manifest.portfolios.length} portfolio${manifest.portfolios.length === 1 ? '' : 's'}  |  ` +
-      `${manifest.portfolios.reduce((sum, portfolio) => sum + portfolio.analyses.length, 0)} security analyses`, 64, 300);
-  doc.roundedRect(64, 390, 484, 142, 10).fill('#1D344C');
-  doc.font('ReportBold').fontSize(9).fillColor('#AFC1CF').text('RUN ID', 86, 418);
-  doc.font('ReportRegular').fontSize(10).fillColor(palette.white).text(externalRunId, 86, 436, { width: 430 });
-  doc.font('ReportBold').fontSize(9).fillColor('#AFC1CF').text('THESIS VERSION', 86, 476);
-  doc.font('ReportRegular').fontSize(10).fillColor(palette.white).text(String(manifest.thesisVersion), 210, 476);
-  doc.font('ReportBold').fontSize(9).fillColor('#AFC1CF').text('GENERATED', 300, 476);
-  doc.font('ReportRegular').fontSize(10).fillColor(palette.white)
-    .text(new Date(manifest.generatedAt).toISOString(), 386, 476, { width: 140 });
-  doc.font('ReportRegular').fontSize(8.5).fillColor('#AFC1CF')
-    .text('Analytical output based exclusively on dashboard-supplied evidence. See the disclaimer and grounding appendix.', 64, 690, {
-      width: 470,
-      lineGap: 3,
-    });
+    .text('PORTFOLIO INTELLIGENCE', 64, 74, { characterSpacing: 0.6 });
+  doc.font('ReportBold').fontSize(30).fillColor(palette.white)
+    .text('Investment Research\n& Risk Report', 64, 145, { width: 470, lineGap: 4 });
+  doc.moveTo(64, 257).lineTo(170, 257).lineWidth(4).strokeColor(palette.gold).stroke();
+  doc.font('ReportRegular').fontSize(12).fillColor('#D7E3EC')
+    .text('Decision-ready analysis for human review', 64, 283, { width: 470 });
+
+  doc.roundedRect(64, 362, 484, 150, 10).fill('#183852');
+  labelValue('Coverage', `${manifest.portfolios.length} portfolio${manifest.portfolios.length === 1 ? '' : 's'}`, 86, 389, 120, true);
+  labelValue('Securities reviewed', String(analyses.length), 226, 389, 130, true);
+  labelValue('Supported for review', String(supportedCount), 386, 389, 130, true);
+  labelValue('Thesis version', String(manifest.thesisVersion), 86, 452, 120, true);
+  labelValue('Prepared', formatDate(manifest.generatedAt), 226, 452, 140, true);
+  labelValue('Average confidence', `${average(analyses.map((analysis) => analysis.confidenceScore * 100))}%`, 386, 452, 140, true);
+
+  doc.font('ReportRegular').fontSize(8.7).fillColor('#BFD0DD')
+    .text(
+      'This report summarizes thesis alignment, evidence quality, catalysts, and downside risks. It supports—rather than replaces—human investment judgment.',
+      64, 676, { width: 470, lineGap: 3 }
+    );
 
   for (const portfolio of manifest.portfolios) {
     const eyebrow = portfolio.name;
+    const portfolioSupported = portfolio.analyses.filter((analysis) => analysis.portfolioCandidate).length;
     addContentPage(eyebrow);
-    doc.font('ReportBold').fontSize(23).fillColor(palette.navy).text(portfolio.name, margin, doc.y, { width: contentWidth });
+    doc.font('ReportBold').fontSize(22).fillColor(palette.navy).text(portfolio.name, margin, doc.y, { width: contentWidth });
     doc.font('ReportRegular').fontSize(9).fillColor(palette.muted)
-      .text(`${portfolio.baseCurrency} base currency  |  Thesis version ${manifest.thesisVersion}  |  ${portfolio.analyses.length} securities`, margin, doc.y, { width: contentWidth });
-    doc.moveDown(1.2);
+      .text(`${portfolio.baseCurrency} mandate  |  ${portfolio.analyses.length} securities reviewed  |  ${portfolioSupported} supported for further review`, margin, doc.y, { width: contentWidth });
+    doc.moveDown(1.1);
 
-    sectionTitle('Executive summary', eyebrow);
+    ensureSpace(86, eyebrow);
+    const overviewY = doc.y;
+    doc.roundedRect(margin, overviewY, contentWidth, 72, 7).fillAndStroke(palette.paleTeal, '#CDE4DE');
+    doc.font('ReportBold').fontSize(8).fillColor(palette.teal).text('PORTFOLIO DECISION SNAPSHOT', margin + 14, overviewY + 12);
+    labelValue('Average investment score', String(average(portfolio.analyses.map((analysis) => analysis.investmentScore))), margin + 14, overviewY + 32, 150);
+    labelValue('Average thesis alignment', String(average(portfolio.analyses.map((analysis) => analysis.thesisAlignmentScore))), margin + 180, overviewY + 32, 150);
+    labelValue('Average evidence confidence', `${average(portfolio.analyses.map((analysis) => analysis.confidenceScore * 100))}%`, margin + 346, overviewY + 32, 150);
+    doc.y = overviewY + 86;
+
+    sectionTitle('Executive decision summary', eyebrow);
     paragraph(portfolio.synthesis.executiveSummary, eyebrow);
-    sectionTitle('Thematic highlights', eyebrow);
+    sectionTitle('Key themes', eyebrow);
     bullets(portfolio.synthesis.thematicHighlights, eyebrow);
-    sectionTitle('Concentration flags', eyebrow);
-    bullets(portfolio.synthesis.concentrationFlags, eyebrow, 'No concentration flag was produced from the supplied weights.');
-    sectionTitle('Watchlist and violations', eyebrow);
-    bullets(portfolio.synthesis.watchlistAndViolations, eyebrow, 'No watchlist item or thesis violation was reported.');
+    sectionTitle('Portfolio-level risks', eyebrow);
+    bullets(portfolio.synthesis.concentrationFlags, eyebrow, 'No concentration flag was produced from the available position data.');
+    sectionTitle('Watchlist and mandate checks', eyebrow);
+    bullets(portfolio.synthesis.watchlistAndViolations, eyebrow, 'No watchlist item or mandate violation was reported.');
 
     sectionTitle('Security scorecards', eyebrow);
     for (const analysis of portfolio.analyses) scorePanel(analysis, eyebrow);
 
-    ensureSpace(284, eyebrow);
-    sectionTitle('Per-security narratives', eyebrow);
-    for (const narrative of portfolio.synthesis.perSecurityNarratives) {
-      const analysis = portfolio.analyses.find((item) => item.ticker === narrative.ticker)!;
-      ensureSpace(250, eyebrow);
-      doc.font('ReportBold').fontSize(11).fillColor(palette.blue)
+    sectionTitle('Security research', eyebrow);
+    for (const analysis of portfolio.analyses) {
+      const narrative = portfolio.synthesis.perSecurityNarratives.find((item) => item.ticker === analysis.ticker);
+      ensureSpace(116, eyebrow);
+      doc.font('ReportBold').fontSize(13).fillColor(palette.blue)
         .text(`${analysis.ticker}  |  ${analysis.companyName}`, margin, doc.y, { width: contentWidth });
       doc.font('ReportRegular').fontSize(8).fillColor(palette.muted)
-        .text(`Confidence ${(analysis.confidenceScore * 100).toFixed(0)}%  |  Role ${analysis.portfolioRole.replaceAll('_', ' ')}`, margin, doc.y, { width: contentWidth });
-      doc.moveDown(0.35);
-      paragraph(narrative.narrative, eyebrow);
-      doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('FUNDAMENTAL SUMMARY', margin, doc.y);
+        .text(
+          `${roleLabel(analysis.portfolioRole)}  |  Evidence confidence ${(analysis.confidenceScore * 100).toFixed(0)}%  |  ${analysis.groundedIn.length} validated references`,
+          margin, doc.y, { width: contentWidth }
+        );
+      doc.moveDown(0.45);
+
+      ensureSpace(56, eyebrow);
+      const decisionY = doc.y;
+      doc.roundedRect(margin, decisionY, contentWidth, 42, 6)
+        .fill(analysis.portfolioCandidate ? palette.paleTeal : palette.paleGold);
+      doc.font('ReportBold').fontSize(8).fillColor(analysis.portfolioCandidate ? palette.teal : palette.gold)
+        .text('DECISION VIEW', margin + 12, decisionY + 8);
+      doc.font('ReportRegular').fontSize(9).fillColor(palette.ink)
+        .text(
+          analysis.portfolioCandidate
+            ? 'Current evidence supports further due diligence; this is not an instruction to trade.'
+            : 'Current evidence does not support advancing this security without resolving the stated gaps.',
+          margin + 12, decisionY + 21, { width: contentWidth - 24 }
+        );
+      doc.y = decisionY + 54;
+
+      if (narrative) paragraph(narrative.narrative, eyebrow);
+      doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('EVIDENCE COVERAGE', margin, doc.y);
       paragraph(analysis.fundamentalSummary, eyebrow, { size: 9 });
-      doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('INVESTMENT THESIS', margin, doc.y);
+      doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('INVESTMENT CASE AND COUNTER-CASE', margin, doc.y);
       paragraph(analysis.investmentThesis, eyebrow, { size: 9 });
       doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('CATALYSTS', margin, doc.y);
       bullets(analysis.keyCatalysts, eyebrow);
-      doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('RISKS', margin, doc.y);
+      doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('PRINCIPAL RISKS', margin, doc.y);
       bullets(analysis.keyRisks, eyebrow);
       doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('THESIS BREAKERS', margin, doc.y);
       bullets(analysis.thesisBreakers, eyebrow);
       doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('INFORMATION GAPS', margin, doc.y);
       bullets(analysis.informationGaps, eyebrow, 'No information gap was reported.');
-      doc.moveDown(0.8);
+      doc.moveDown(0.9);
     }
 
-    sectionTitle('Grounding appendix', eyebrow);
-    paragraph('The exact dashboard-supplied keys cited by each analysis are listed below. The agentic system did not calculate or enrich these values.', eyebrow, { muted: true });
-    for (const analysis of portfolio.analyses) {
-      ensureSpace(34, eyebrow);
-      doc.font('ReportBold').fontSize(9).fillColor(palette.navy).text(analysis.ticker, margin, doc.y);
-      paragraph(asText(analysis.groundedIn), eyebrow, { muted: true, size: 8 });
-    }
-
-    sectionTitle('Disclaimer', eyebrow);
+    sectionTitle('Method and limitations', eyebrow);
+    paragraph(
+      `The analysis used ${portfolio.analyses.reduce((sum, analysis) => sum + analysis.groundedIn.length, 0)} validated evidence references across this portfolio. Internal evidence keys are retained in the audit system and are intentionally omitted from this reader-facing report.`,
+      eyebrow, { muted: true, size: 8.7 }
+    );
     paragraph(portfolio.synthesis.disclaimer, eyebrow, { muted: true, size: 8.5 });
   }
+
+  addContentPage('Report governance');
+  sectionTitle('Report governance', 'Report governance');
+  paragraph(
+    'This document is a decision-support artifact. It does not place trades, alter portfolio holdings, or substitute for suitability, tax, legal, or regulated investment advice.',
+    'Report governance'
+  );
+  sectionTitle('Evidence handling', 'Report governance');
+  bullets([
+    'Scores and narratives are generated from the validated evidence supplied to the research workflow.',
+    'Missing information is identified explicitly; it is not silently estimated or invented.',
+    'Detailed evidence keys and processing logs remain available in the authenticated audit system.',
+  ], 'Report governance');
+  sectionTitle('Audit reference', 'Report governance');
+  paragraph('Use this reference only when investigating the report with an administrator or support specialist.', 'Report governance', { muted: true });
+  ensureSpace(52, 'Report governance');
+  const auditY = doc.y;
+  doc.roundedRect(margin, auditY, contentWidth, 38, 6).fillAndStroke(palette.panel, palette.line);
+  doc.font('ReportRegular').fontSize(8).fillColor(palette.muted)
+    .text(externalRunId, margin + 12, auditY + 13, { width: contentWidth - 24 });
+  doc.y = auditY + 52;
 
   const range = doc.bufferedPageRange();
   for (let pageIndex = 0; pageIndex < range.count; pageIndex += 1) {
     doc.switchToPage(range.start + pageIndex);
     if (pageIndex === 0) continue;
-    doc.moveTo(margin, 685).lineTo(612 - margin, 685).lineWidth(0.5).strokeColor(palette.line).stroke();
+    doc.moveTo(margin, 685).lineTo(pageWidth - margin, 685).lineWidth(0.5).strokeColor(palette.line).stroke();
     doc.font('ReportRegular').fontSize(7.5).fillColor(palette.muted)
-      .text(externalRunId, margin, 693, { width: 360, lineBreak: false });
+      .text('Portfolio Intelligence  |  Confidential decision support', margin, 693, { width: 360, lineBreak: false });
     doc.text(`${pageIndex + 1} / ${range.count}`, 450, 693, { width: 108, align: 'right', lineBreak: false });
   }
 

@@ -67,7 +67,7 @@ export async function GET(req: Request) {
       status: 200,
       headers: {
         'content-type': 'application/pdf',
-        'content-disposition': `inline; filename="analysis-${externalRunId}.pdf"`,
+        'content-disposition': 'inline; filename="investment-research-report.pdf"',
         'cache-control': 'private, no-store',
         'x-content-type-options': 'nosniff',
       },
