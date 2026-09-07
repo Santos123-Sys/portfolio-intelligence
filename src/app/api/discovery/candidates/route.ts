@@ -103,6 +103,9 @@ export async function GET(req: Request) {
       discoveryRequestedAt: row.discoveryRequestedAt,
       analysisRunStatus: run?.status ?? null,
       analysisRunError: run?.errorMessage ?? null,
+      reportUrl: run && (run.reportPdfUrl || run.status === 'completed' || run.status === 'imported')
+        ? `/api/integrations/agentic/reports?externalRunId=${encodeURIComponent(run.externalRunId)}`
+        : null,
       analysis: analysis ?? null,
       risk: risk?.metricsJson ?? null,
       valuation,
