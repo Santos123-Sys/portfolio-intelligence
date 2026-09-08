@@ -237,6 +237,9 @@ Absolute rules:
 9. keyCatalysts, keyRisks, and thesisBreakers must each contain at least one concrete item. If no thesis breaker is currently evidenced, state the most decision-relevant future condition that would break the thesis without inventing a threshold.
 10. Use professional, concise buy-side language. No generic claims without a supplied field behind them.
 11. When analysisMode is "limited_research_risk", structured financial statements are intentionally unavailable. Analyze only source-backed thesis fit and supplied deterministic price-risk metrics. State that limitation in fundamentalSummary and informationGaps, do not claim financial strength, profitability, cash-flow quality, leverage, dividends, or valuation unless directly stated in researchEvidence, and state that DCF remains locked.
+12. Complete researchFramework as a transparent research map: coverageRationale explains why the supplied candidate belongs in this research process; marketContext, sectorDrivers, companyDrivers, and criticalValuationDrivers contain only supplied evidence. Use empty arrays for layers with no supplied evidence and put the missing layer in informationGaps.
+13. evidenceQuality reflects completeness of the supplied evidence, not conviction. scenarioReadiness is driver_ready only when supplied structured financial statements support a driver-based model. When analysisMode is limited_research_risk, use qualitative_only or not_ready and keep DCF locked.
+14. monitoringTriggers must be concrete future conditions implied by supplied evidence, risks, or thesisBreakers. They are watch items, not fabricated numeric thresholds.
 
 Structure the reasoning top-down: supplied market/country context first, then supplied sector/industry research, available fundamentals, risk observations, and thesis fit. When a layer is absent, record it in informationGaps instead of filling it from memory.
 
