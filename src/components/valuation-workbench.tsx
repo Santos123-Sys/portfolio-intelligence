@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface ValuationSetup {
   suitability: {
@@ -54,7 +54,7 @@ interface ComparableSetup {
 
 interface ComparableResult {
   currency: string;
-  peers: Array<{ companyName: string; ticker: string; enterpriseValue: number; evRevenue: number | null; evEbitda: number | null; pe: number | null; evNtmRevenue: number | null; evNtmEbitda: number | null; ntmPe: number | null; ebitdaMargin: number | null; netMargin: number | null; ntmRevenueGrowth: number | null; ntmEbitdaGrowth: number | null; netDebtEbitda: number | null; grossMargin: number | null; operatingMargin: number | null; returnOnEquity: number | null; priceToBook: number | null; interestCoverage: number | null; debtToEquity: number | null; outlierMultiples: string[] }>;
+  peers: Array<{ companyName: string; ticker: string; enterpriseValue: number; evRevenue: number | null; evEbitda: number | null; pe: number | null; evNtmRevenue: number | null; evNtmEbitda: number | null; ntmPe: number | null; ebitdaMargin: number | null; netMargin: number | null; ntmRevenueGrowth: number | null; ntmEbitdaGrowth: number | null; netDebtEbitda: number | null; grossMargin: number | null; operatingMargin: number | null; returnOnEquity: number | null; priceToBook: number | null; interestCoverage: number | null; debtToEquity: number | null; roic: number | null; outlierMultiples: string[] }>;
   statistics: Record<'evRevenue' | 'evEbitda' | 'pe' | 'evNtmRevenue' | 'evNtmEbitda' | 'ntmPe', { count: number; mean: number | null; median: number | null; percentile25: number | null; percentile75: number | null }>;
   impliedValuations: Array<{ multiple: string; statistic: string; multipleValue: number; impliedEnterpriseValue: number | null; impliedEquityValue: number | null; impliedValuePerShare: number | null }>;
   methodology: string;
@@ -76,6 +76,9 @@ interface PeerForm {
   operatingIncome: string;
   totalEquity: string;
   interestExpense: string;
+  cashAndEquivalents: string;
+  incomeTaxExpense: string;
+  preTaxIncome: string;
   ntmRevenue: string;
   ntmEbitda: string;
   ntmNetIncome: string;
@@ -99,6 +102,9 @@ interface PeerResearchResponse {
   operatingIncome?: number;
   totalEquity?: number;
   interestExpense?: number;
+  cashAndEquivalents?: number;
+  incomeTaxExpense?: number;
+  preTaxIncome?: number;
   ntmRevenue?: number;
   ntmEbitda?: number;
   ntmNetIncome?: number;
@@ -109,7 +115,7 @@ interface PeerResearchResponse {
 }
 
 function emptyPeer(): PeerForm {
-  return { companyName: '', ticker: '', exchange: '', currency: '', marketCapitalization: '', netDebt: '', totalDebt: '', revenue: '', ebitda: '', netIncome: '', grossProfit: '', operatingIncome: '', totalEquity: '', interestExpense: '', ntmRevenue: '', ntmEbitda: '', ntmNetIncome: '', sourceUrl: '', forecastSourceUrl: '', researchNote: '' };
+  return { companyName: '', ticker: '', exchange: '', currency: '', marketCapitalization: '', netDebt: '', totalDebt: '', revenue: '', ebitda: '', netIncome: '', grossProfit: '', operatingIncome: '', totalEquity: '', interestExpense: '', cashAndEquivalents: '', incomeTaxExpense: '', preTaxIncome: '', ntmRevenue: '', ntmEbitda: '', ntmNetIncome: '', sourceUrl: '', forecastSourceUrl: '', researchNote: '' };
 }
 
 function initial(value: number | null): string {
@@ -132,6 +138,7 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
   const [primarySourceNotice, setPrimarySourceNotice] = useState<string | null>(null);
   const [peerSuggestionNotice, setPeerSuggestionNotice] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const automaticPeerResearchKey = useRef<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -247,6 +254,9 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
             operatingIncome: peer.operatingIncome === '' ? undefined : Number(peer.operatingIncome),
             totalEquity: peer.totalEquity === '' ? undefined : Number(peer.totalEquity),
             interestExpense: peer.interestExpense === '' ? undefined : Number(peer.interestExpense),
+            cashAndEquivalents: peer.cashAndEquivalents === '' ? undefined : Number(peer.cashAndEquivalents),
+            incomeTaxExpense: peer.incomeTaxExpense === '' ? undefined : Number(peer.incomeTaxExpense),
+            preTaxIncome: peer.preTaxIncome === '' ? undefined : Number(peer.preTaxIncome),
             ntmRevenue: peer.ntmRevenue === '' ? undefined : Number(peer.ntmRevenue),
             ntmEbitda: peer.ntmEbitda === '' ? undefined : Number(peer.ntmEbitda),
             ntmNetIncome: peer.ntmNetIncome === '' ? undefined : Number(peer.ntmNetIncome),
@@ -294,6 +304,9 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
           operatingIncome: found.operatingIncome == null ? peer.operatingIncome : String(found.operatingIncome),
           totalEquity: found.totalEquity == null ? peer.totalEquity : String(found.totalEquity),
           interestExpense: found.interestExpense == null ? peer.interestExpense : String(found.interestExpense),
+          cashAndEquivalents: found.cashAndEquivalents == null ? peer.cashAndEquivalents : String(found.cashAndEquivalents),
+          incomeTaxExpense: found.incomeTaxExpense == null ? peer.incomeTaxExpense : String(found.incomeTaxExpense),
+          preTaxIncome: found.preTaxIncome == null ? peer.preTaxIncome : String(found.preTaxIncome),
           ntmRevenue: found.ntmRevenue == null ? peer.ntmRevenue : String(found.ntmRevenue),
           ntmEbitda: found.ntmEbitda == null ? peer.ntmEbitda : String(found.ntmEbitda),
           ntmNetIncome: found.ntmNetIncome == null ? peer.ntmNetIncome : String(found.ntmNetIncome),
@@ -325,6 +338,53 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
     } catch (cause) { setCompsError((cause as Error).message); }
     finally { setCompsBusy(false); }
   }
+
+  useEffect(() => {
+    if (!compsSetup || compsResult || automaticPeerResearchKey.current === candidateId) return;
+    automaticPeerResearchKey.current = candidateId;
+    let cancelled = false;
+    async function discoverAndPrefillPeers() {
+      setCompsBusy(true);
+      setCompsError(null);
+      try {
+        const suggestionResponse = await fetch('/api/discovery/comparables/suggestions', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ candidateId }),
+        });
+        const suggested = await suggestionResponse.json().catch(() => ({})) as { error?: string; peers?: Array<{ companyName: string; ticker: string; exchange: string; currency: string; sourceUrl: string; rationale: string }> };
+        if (!suggestionResponse.ok || !suggested.peers) throw new Error(suggested.error ?? 'Peer discovery failed.');
+        if (suggested.peers.length < 6) {
+          setPeerSuggestionNotice(`Automatic peer research found ${suggested.peers.length} publicly identified peers. Six are required for a comparable valuation, so add the remaining reviewed peers and run the prefill action.`);
+          return;
+        }
+        const selected = suggested.peers.slice(0, 10);
+        const researchResponse = await fetch('/api/discovery/comparables/research', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ candidateId, peers: selected.map(({ companyName, ticker, exchange, currency }) => ({ companyName, ticker, exchange, currency })) }),
+        });
+        const researched = await researchResponse.json().catch(() => ({})) as { error?: string; peers?: PeerResearchResponse[] };
+        if (!researchResponse.ok || !researched.peers) throw new Error(researched.error ?? 'Peer financial research failed.');
+        if (cancelled) return;
+        setPeers(selected.map((peer, index) => {
+          const found = researched.peers?.[index] ?? {};
+          return {
+            ...emptyPeer(), ...peer,
+            marketCapitalization: found.marketCapitalization == null ? '' : String(found.marketCapitalization),
+            netDebt: found.netDebt == null ? '' : String(found.netDebt), totalDebt: found.totalDebt == null ? '' : String(found.totalDebt),
+            revenue: found.revenue == null ? '' : String(found.revenue), ebitda: found.ebitda == null ? '' : String(found.ebitda), netIncome: found.netIncome == null ? '' : String(found.netIncome),
+            grossProfit: found.grossProfit == null ? '' : String(found.grossProfit), operatingIncome: found.operatingIncome == null ? '' : String(found.operatingIncome), totalEquity: found.totalEquity == null ? '' : String(found.totalEquity), interestExpense: found.interestExpense == null ? '' : String(found.interestExpense),
+            cashAndEquivalents: found.cashAndEquivalents == null ? '' : String(found.cashAndEquivalents), incomeTaxExpense: found.incomeTaxExpense == null ? '' : String(found.incomeTaxExpense), preTaxIncome: found.preTaxIncome == null ? '' : String(found.preTaxIncome),
+            ntmRevenue: found.ntmRevenue == null ? '' : String(found.ntmRevenue), ntmEbitda: found.ntmEbitda == null ? '' : String(found.ntmEbitda), ntmNetIncome: found.ntmNetIncome == null ? '' : String(found.ntmNetIncome),
+            sourceUrl: found.sourceUrl ?? peer.sourceUrl, forecastSourceUrl: found.forecastSourceUrl ?? '',
+            researchNote: `${peer.rationale} ${(found.evidence ?? []).join(' ')} ${(found.gaps ?? []).join(' ')}`.trim(),
+          };
+        }));
+        setPeerSuggestionNotice(`${selected.length} peer candidates were found and researched automatically. Review their rationale and evidence before calculating the comparable valuation.`);
+      } catch (cause) {
+        if (!cancelled) setCompsError((cause as Error).message);
+      } finally { if (!cancelled) setCompsBusy(false); }
+    }
+    void discoverAndPrefillPeers();
+    return () => { cancelled = true; };
+  }, [candidateId, compsResult, compsSetup]);
 
   async function retrievePrimarySourceFinancials() {
     setPrimarySourceBusy(true);
@@ -476,7 +536,7 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
               <h4>How peer comparison is assessed</h4>
               <div className="research-framework-grid">
                 <div><strong>Valuation</strong><p>EV / EBITDA for operational comparability; P / E for mature profitable peers; EV / Revenue when earnings are not meaningful; P / Book for asset-heavy financial businesses.</p></div>
-                <div><strong>Profitability</strong><p>Gross, operating and net margins plus ROE are calculated when sourced. ROIC stays unavailable until tax and invested-capital definitions are source-confirmed; the system will not substitute a proxy.</p></div>
+                <div><strong>Profitability</strong><p>Gross, operating and net margins, ROE, and ROIC are calculated only when the filing supplies the required tax, debt, equity, cash, and operating-income inputs.</p></div>
                 <div><strong>Growth</strong><p>Revenue, EBITDA and EPS growth distinguish high-growth from mature peers. NTM figures are only shown when explicitly sourced.</p></div>
                 <div><strong>Financial health</strong><p>Net debt / EBITDA, debt-to-equity, and interest coverage test whether apparent valuation differences are actually leverage differences.</p></div>
               </div>
@@ -489,8 +549,8 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
             </div>
             <div className="table-scroll sensitivity-table">
               <h4>Peer operating and financial-health comparison</h4>
-              <table><thead><tr><th>Peer</th><th>P / Book</th><th>Gross margin</th><th>Operating margin</th><th>EBITDA margin</th><th>Net margin</th><th>ROE</th><th>NTM revenue growth</th><th>NTM EBITDA growth</th><th>Net debt / EBITDA</th><th>Debt / equity</th><th>Interest coverage</th></tr></thead>
-                <tbody>{compsResult.peers.map((peer) => <tr key={peer.ticker}><th>{peer.companyName} ({peer.ticker})</th><td>{peer.priceToBook == null ? 'N/A' : `${peer.priceToBook.toFixed(2)}x`}</td><td>{peer.grossMargin == null ? 'N/A' : `${(peer.grossMargin * 100).toFixed(1)}%`}</td><td>{peer.operatingMargin == null ? 'N/A' : `${(peer.operatingMargin * 100).toFixed(1)}%`}</td><td>{peer.ebitdaMargin == null ? 'N/A' : `${(peer.ebitdaMargin * 100).toFixed(1)}%`}</td><td>{peer.netMargin == null ? 'N/A' : `${(peer.netMargin * 100).toFixed(1)}%`}</td><td>{peer.returnOnEquity == null ? 'N/A' : `${(peer.returnOnEquity * 100).toFixed(1)}%`}</td><td>{peer.ntmRevenueGrowth == null ? 'N/A' : `${(peer.ntmRevenueGrowth * 100).toFixed(1)}%`}</td><td>{peer.ntmEbitdaGrowth == null ? 'N/A' : `${(peer.ntmEbitdaGrowth * 100).toFixed(1)}%`}</td><td>{peer.netDebtEbitda == null ? 'N/A' : `${peer.netDebtEbitda.toFixed(2)}x`}</td><td>{peer.debtToEquity == null ? 'N/A' : `${peer.debtToEquity.toFixed(2)}x`}</td><td>{peer.interestCoverage == null ? 'N/A' : `${peer.interestCoverage.toFixed(2)}x`}</td></tr>)}</tbody>
+              <table><thead><tr><th>Peer</th><th>P / Book</th><th>Gross margin</th><th>Operating margin</th><th>EBITDA margin</th><th>Net margin</th><th>ROIC</th><th>ROE</th><th>NTM revenue growth</th><th>NTM EBITDA growth</th><th>Net debt / EBITDA</th><th>Debt / equity</th><th>Interest coverage</th></tr></thead>
+                <tbody>{compsResult.peers.map((peer) => <tr key={peer.ticker}><th>{peer.companyName} ({peer.ticker})</th><td>{peer.priceToBook == null ? 'N/A' : `${peer.priceToBook.toFixed(2)}x`}</td><td>{peer.grossMargin == null ? 'N/A' : `${(peer.grossMargin * 100).toFixed(1)}%`}</td><td>{peer.operatingMargin == null ? 'N/A' : `${(peer.operatingMargin * 100).toFixed(1)}%`}</td><td>{peer.ebitdaMargin == null ? 'N/A' : `${(peer.ebitdaMargin * 100).toFixed(1)}%`}</td><td>{peer.netMargin == null ? 'N/A' : `${(peer.netMargin * 100).toFixed(1)}%`}</td><td>{peer.roic == null ? 'N/A' : `${(peer.roic * 100).toFixed(1)}%`}</td><td>{peer.returnOnEquity == null ? 'N/A' : `${(peer.returnOnEquity * 100).toFixed(1)}%`}</td><td>{peer.ntmRevenueGrowth == null ? 'N/A' : `${(peer.ntmRevenueGrowth * 100).toFixed(1)}%`}</td><td>{peer.ntmEbitdaGrowth == null ? 'N/A' : `${(peer.ntmEbitdaGrowth * 100).toFixed(1)}%`}</td><td>{peer.netDebtEbitda == null ? 'N/A' : `${peer.netDebtEbitda.toFixed(2)}x`}</td><td>{peer.debtToEquity == null ? 'N/A' : `${peer.debtToEquity.toFixed(2)}x`}</td><td>{peer.interestCoverage == null ? 'N/A' : `${peer.interestCoverage.toFixed(2)}x`}</td></tr>)}</tbody>
               </table>
             </div>
             {compsResult.peers.some((peer) => peer.outlierMultiples.length > 0) && <p className="caveat">Outlier review: {compsResult.peers.filter((peer) => peer.outlierMultiples.length > 0).map((peer) => `${peer.ticker} (${peer.outlierMultiples.join(', ')})`).join(' · ')}</p>}
