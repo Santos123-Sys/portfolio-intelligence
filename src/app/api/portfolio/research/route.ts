@@ -4,6 +4,8 @@ import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 import { getPriceProvider } from '@/lib/connectors';
 import { loadDiscoveryLatestPrices } from '@/lib/discovery-market-data';
+import { scoreDiscoveryEvidence } from '@/lib/discovery-evidence';
+import { DiscoveryCandidate } from '@portfolio-intelligence/agentic-contract';
 import { portfolios, thesisVersions } from '@/lib/db/schema';
 import { discoveryCandidates, externalDiscoveryRuns } from '@/lib/db/workflow-schema';
 
@@ -67,6 +69,10 @@ export async function GET(req: Request) {
       ...candidate,
       latestPrice: latestPrices.get(candidate.id) ?? null,
       thesisAlignmentScore: (candidate.discoveryJson as { thesisAlignmentScore?: number })?.thesisAlignmentScore ?? null,
+      evidenceScorecard: scoreDiscoveryEvidence(
+        DiscoveryCandidate.parse(candidate.discoveryJson),
+        latestPrices.get(candidate.id) ?? null
+      ),
     })),
   });
 }
