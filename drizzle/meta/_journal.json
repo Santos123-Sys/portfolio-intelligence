@@ -71,6 +71,13 @@
       "when": 1788812111531,
       "tag": "0009_glorious_namorita",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788897483318,
+      "tag": "0010_loud_satana",
+      "breakpoints": true
     }
   ]
 }
