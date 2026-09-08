@@ -20,6 +20,9 @@ const XBRL_METRICS: Record<string, string> = {
   'us-gaap:StockholdersEquity': 'total_equity',
   'us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest': 'total_equity',
   'us-gaap:InterestExpenseNonoperating': 'interest_expense',
+  'us-gaap:IncomeTaxExpenseBenefit': 'income_tax_expense',
+  'us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest': 'pre_tax_income',
+  'us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments': 'pre_tax_income',
   'us-gaap:NetIncomeLoss': 'net_income',
   'dei:EntityCommonStockSharesOutstanding': 'shares_outstanding',
 };
