@@ -2,6 +2,8 @@ import { and, desc, eq, isNull, ne } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
+import { getPriceProvider } from '@/lib/connectors';
+import { loadDiscoveryLatestPrices } from '@/lib/discovery-market-data';
 import { portfolios, thesisVersions } from '@/lib/db/schema';
 import { discoveryCandidates, externalDiscoveryRuns } from '@/lib/db/workflow-schema';
 
@@ -31,6 +33,7 @@ export async function GET(req: Request) {
   const candidates = await db.select({
     id: discoveryCandidates.id,
     ticker: discoveryCandidates.ticker,
+    exchange: discoveryCandidates.exchange,
     companyName: discoveryCandidates.companyName,
     country: discoveryCandidates.country,
     sector: discoveryCandidates.sector,
@@ -47,10 +50,22 @@ export async function GET(req: Request) {
     ))
     .orderBy(desc(discoveryCandidates.createdAt));
 
+  let latestPrices = new Map();
+  try {
+    latestPrices = await loadDiscoveryLatestPrices(candidates.map((candidate) => ({
+      id: candidate.id,
+      ticker: candidate.ticker,
+      exchange: candidate.exchange,
+    })), getPriceProvider());
+  } catch {
+    // The Positions overview is still useful if a live quote is unavailable.
+  }
+
   return NextResponse.json({
     latestRun,
     candidates: candidates.map((candidate) => ({
       ...candidate,
+      latestPrice: latestPrices.get(candidate.id) ?? null,
       thesisAlignmentScore: (candidate.discoveryJson as { thesisAlignmentScore?: number })?.thesisAlignmentScore ?? null,
     })),
   });
