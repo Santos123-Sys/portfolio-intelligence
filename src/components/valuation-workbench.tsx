@@ -54,8 +54,8 @@ interface ComparableSetup {
 
 interface ComparableResult {
   currency: string;
-  peers: Array<{ companyName: string; ticker: string; enterpriseValue: number; evRevenue: number | null; evEbitda: number | null; pe: number | null; outlierMultiples: string[] }>;
-  statistics: Record<'evRevenue' | 'evEbitda' | 'pe', { count: number; mean: number | null; median: number | null; percentile25: number | null; percentile75: number | null }>;
+  peers: Array<{ companyName: string; ticker: string; enterpriseValue: number; evRevenue: number | null; evEbitda: number | null; pe: number | null; evNtmRevenue: number | null; evNtmEbitda: number | null; ntmPe: number | null; ebitdaMargin: number | null; netMargin: number | null; ntmRevenueGrowth: number | null; ntmEbitdaGrowth: number | null; netDebtEbitda: number | null; grossMargin: number | null; operatingMargin: number | null; returnOnEquity: number | null; priceToBook: number | null; interestCoverage: number | null; debtToEquity: number | null; outlierMultiples: string[] }>;
+  statistics: Record<'evRevenue' | 'evEbitda' | 'pe' | 'evNtmRevenue' | 'evNtmEbitda' | 'ntmPe', { count: number; mean: number | null; median: number | null; percentile25: number | null; percentile75: number | null }>;
   impliedValuations: Array<{ multiple: string; statistic: string; multipleValue: number; impliedEnterpriseValue: number | null; impliedEquityValue: number | null; impliedValuePerShare: number | null }>;
   methodology: string;
   caveats: string[];
@@ -64,16 +64,52 @@ interface ComparableResult {
 interface PeerForm {
   companyName: string;
   ticker: string;
+  exchange: string;
+  currency: string;
   marketCapitalization: string;
   netDebt: string;
+  totalDebt: string;
   revenue: string;
   ebitda: string;
   netIncome: string;
+  grossProfit: string;
+  operatingIncome: string;
+  totalEquity: string;
+  interestExpense: string;
+  ntmRevenue: string;
+  ntmEbitda: string;
+  ntmNetIncome: string;
   sourceUrl: string;
+  forecastSourceUrl: string;
+  researchNote: string;
+}
+
+interface PeerResearchResponse {
+  companyName?: string;
+  ticker?: string;
+  exchange?: string;
+  currency?: string;
+  marketCapitalization?: number;
+  netDebt?: number;
+  totalDebt?: number;
+  revenue?: number;
+  ebitda?: number;
+  netIncome?: number;
+  grossProfit?: number;
+  operatingIncome?: number;
+  totalEquity?: number;
+  interestExpense?: number;
+  ntmRevenue?: number;
+  ntmEbitda?: number;
+  ntmNetIncome?: number;
+  sourceUrl?: string;
+  forecastSourceUrl?: string;
+  evidence?: string[];
+  gaps?: string[];
 }
 
 function emptyPeer(): PeerForm {
-  return { companyName: '', ticker: '', marketCapitalization: '', netDebt: '', revenue: '', ebitda: '', netIncome: '', sourceUrl: '' };
+  return { companyName: '', ticker: '', exchange: '', currency: '', marketCapitalization: '', netDebt: '', totalDebt: '', revenue: '', ebitda: '', netIncome: '', grossProfit: '', operatingIncome: '', totalEquity: '', interestExpense: '', ntmRevenue: '', ntmEbitda: '', ntmNetIncome: '', sourceUrl: '', forecastSourceUrl: '', researchNote: '' };
 }
 
 function initial(value: number | null): string {
@@ -94,6 +130,7 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
   const [compsError, setCompsError] = useState<string | null>(null);
   const [primarySourceBusy, setPrimarySourceBusy] = useState(false);
   const [primarySourceNotice, setPrimarySourceNotice] = useState<string | null>(null);
+  const [peerSuggestionNotice, setPeerSuggestionNotice] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
@@ -202,10 +239,19 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
             ticker: peer.ticker,
             marketCapitalization: Number(peer.marketCapitalization),
             netDebt: Number(peer.netDebt),
+            totalDebt: peer.totalDebt === '' ? undefined : Number(peer.totalDebt),
             revenue: peer.revenue === '' ? undefined : Number(peer.revenue),
             ebitda: peer.ebitda === '' ? undefined : Number(peer.ebitda),
             netIncome: peer.netIncome === '' ? undefined : Number(peer.netIncome),
+            grossProfit: peer.grossProfit === '' ? undefined : Number(peer.grossProfit),
+            operatingIncome: peer.operatingIncome === '' ? undefined : Number(peer.operatingIncome),
+            totalEquity: peer.totalEquity === '' ? undefined : Number(peer.totalEquity),
+            interestExpense: peer.interestExpense === '' ? undefined : Number(peer.interestExpense),
+            ntmRevenue: peer.ntmRevenue === '' ? undefined : Number(peer.ntmRevenue),
+            ntmEbitda: peer.ntmEbitda === '' ? undefined : Number(peer.ntmEbitda),
+            ntmNetIncome: peer.ntmNetIncome === '' ? undefined : Number(peer.ntmNetIncome),
             sourceUrl: peer.sourceUrl,
+            forecastSourceUrl: peer.forecastSourceUrl === '' ? undefined : peer.forecastSourceUrl,
           })),
         }),
       });
@@ -218,6 +264,66 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
     } finally {
       setCompsBusy(false);
     }
+  }
+
+  async function researchPeers() {
+    setCompsBusy(true);
+    setCompsError(null);
+    try {
+      const identities = peers.map((peer) => ({ companyName: peer.companyName, ticker: peer.ticker, exchange: peer.exchange, currency: peer.currency }));
+      if (identities.some((peer) => !peer.companyName || !peer.ticker || !peer.exchange || !peer.currency)) {
+        throw new Error('Enter company name, ticker, exchange, and currency for each of the 6–10 peers before researching them.');
+      }
+      const response = await fetch('/api/discovery/comparables/research', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ candidateId, peers: identities }),
+      });
+      const body = await response.json().catch(() => ({})) as { error?: string; peers?: PeerResearchResponse[] };
+      if (!response.ok || !body.peers) throw new Error(body.error ?? `Peer research failed (${response.status})`);
+      setPeers((current) => current.map((peer, index) => {
+        const found = body.peers?.[index];
+        if (!found) return peer;
+        return {
+          ...peer,
+          marketCapitalization: found.marketCapitalization == null ? peer.marketCapitalization : String(found.marketCapitalization),
+          netDebt: found.netDebt == null ? peer.netDebt : String(found.netDebt),
+          totalDebt: found.totalDebt == null ? peer.totalDebt : String(found.totalDebt),
+          revenue: found.revenue == null ? peer.revenue : String(found.revenue),
+          ebitda: found.ebitda == null ? peer.ebitda : String(found.ebitda),
+          netIncome: found.netIncome == null ? peer.netIncome : String(found.netIncome),
+          grossProfit: found.grossProfit == null ? peer.grossProfit : String(found.grossProfit),
+          operatingIncome: found.operatingIncome == null ? peer.operatingIncome : String(found.operatingIncome),
+          totalEquity: found.totalEquity == null ? peer.totalEquity : String(found.totalEquity),
+          interestExpense: found.interestExpense == null ? peer.interestExpense : String(found.interestExpense),
+          ntmRevenue: found.ntmRevenue == null ? peer.ntmRevenue : String(found.ntmRevenue),
+          ntmEbitda: found.ntmEbitda == null ? peer.ntmEbitda : String(found.ntmEbitda),
+          ntmNetIncome: found.ntmNetIncome == null ? peer.ntmNetIncome : String(found.ntmNetIncome),
+          sourceUrl: found.sourceUrl ?? peer.sourceUrl,
+          forecastSourceUrl: found.forecastSourceUrl ?? peer.forecastSourceUrl,
+          researchNote: [...(found.evidence ?? []), ...(found.gaps ?? [])].join(' '),
+        };
+      }));
+    } catch (cause) { setCompsError((cause as Error).message); }
+    finally { setCompsBusy(false); }
+  }
+
+  async function suggestPeers() {
+    setCompsBusy(true);
+    setCompsError(null);
+    setPeerSuggestionNotice(null);
+    try {
+      const response = await fetch('/api/discovery/comparables/suggestions', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ candidateId }),
+      });
+      const body = await response.json().catch(() => ({})) as { error?: string; peers?: Array<{ companyName: string; ticker: string; exchange: string; currency: string; sourceUrl: string; rationale: string }> };
+      if (!response.ok || !body.peers) throw new Error(body.error ?? `Peer discovery failed (${response.status})`);
+      if (body.peers.length === 0) {
+        setPeerSuggestionNotice('No sufficiently identified public peers were found. Add peer identities manually; the system can still research and prefill their data.');
+        return;
+      }
+      setPeers(body.peers.slice(0, 10).map((peer) => ({ ...emptyPeer(), ...peer, researchNote: peer.rationale })));
+      setPeerSuggestionNotice(`${body.peers.length} publicly identified peer suggestions were added. Review the selection rationale before researching their financial data.`);
+    } catch (cause) { setCompsError((cause as Error).message); }
+    finally { setCompsBusy(false); }
   }
 
   async function retrievePrimarySourceFinancials() {
@@ -326,19 +432,31 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
         {compsBusy && !compsSetup ? <p className="note">Checking target financial data…</p> : compsError && !compsSetup ? <p className="caveat">{compsError}</p> : compsSetup && <>
           <p className="note">Target: <strong>{compsSetup.target.companyName}</strong> · {compsSetup.target.currency} · data as of {compsSetup.dataAsOf ? new Date(compsSetup.dataAsOf).toLocaleDateString() : 'unknown'}.</p>
           {compsSetup.missing.length > 0 && <p className="caveat">Target metrics unavailable: {compsSetup.missing.join(', ')}. A comparable result can use only metrics that are sourced for the target.</p>}
-          <p className="note">Add 6–10 public peers. Enter each peer’s market capitalization, net debt, operating metrics, and a public source URL. The system computes EV, multiples, statistics, outlier flags, and implied values.</p>
+          <p className="note">Start with peer discovery, then review why each company was suggested. The system researches available public financial statements, market data, and explicitly labelled forward guidance/estimates. It never treats an incomplete search snippet as a fact.</p>
+          <div className="comps-actions">
+            <button className="secondary-button" type="button" onClick={() => void suggestPeers()} disabled={compsBusy}>Find peer candidates from web research</button>
+            <button className="secondary-button" type="button" onClick={() => void researchPeers()} disabled={compsBusy}>Research and prefill selected peers</button>
+          </div>
+          {peerSuggestionNotice && <p className="note">{peerSuggestionNotice}</p>}
           <div className="table-scroll comps-input-table">
             <table>
-              <thead><tr><th>Peer company</th><th>Ticker</th><th>Market cap</th><th>Net debt</th><th>LTM revenue</th><th>LTM EBITDA</th><th>LTM net income</th><th>Public source URL</th></tr></thead>
+              <thead><tr><th>Peer company</th><th>Ticker</th><th>Exchange</th><th>Currency</th><th>Market cap</th><th>Net debt</th><th>LTM revenue</th><th>LTM EBITDA</th><th>LTM net income</th><th>NTM revenue</th><th>NTM EBITDA</th><th>NTM net income</th><th>Sources / selection rationale</th></tr></thead>
               <tbody>{peers.map((peer, index) => <tr key={index}>
                 <td><input value={peer.companyName} onChange={(event) => updatePeer(index, 'companyName', event.target.value)} placeholder="Company" /></td>
                 <td><input value={peer.ticker} onChange={(event) => updatePeer(index, 'ticker', event.target.value)} placeholder="Ticker" /></td>
+                <td><input value={peer.exchange} onChange={(event) => updatePeer(index, 'exchange', event.target.value)} placeholder="XSWX" /></td>
+                <td><input value={peer.currency} onChange={(event) => updatePeer(index, 'currency', event.target.value.toUpperCase())} placeholder="CHF" /></td>
                 <td><input type="number" value={peer.marketCapitalization} onChange={(event) => updatePeer(index, 'marketCapitalization', event.target.value)} /></td>
                 <td><input type="number" value={peer.netDebt} onChange={(event) => updatePeer(index, 'netDebt', event.target.value)} /></td>
                 <td><input type="number" value={peer.revenue} onChange={(event) => updatePeer(index, 'revenue', event.target.value)} /></td>
                 <td><input type="number" value={peer.ebitda} onChange={(event) => updatePeer(index, 'ebitda', event.target.value)} /></td>
                 <td><input type="number" value={peer.netIncome} onChange={(event) => updatePeer(index, 'netIncome', event.target.value)} /></td>
-                <td><input value={peer.sourceUrl} onChange={(event) => updatePeer(index, 'sourceUrl', event.target.value)} placeholder="https://…" /></td>
+                <td><input type="number" value={peer.ntmRevenue} onChange={(event) => updatePeer(index, 'ntmRevenue', event.target.value)} /></td>
+                <td><input type="number" value={peer.ntmEbitda} onChange={(event) => updatePeer(index, 'ntmEbitda', event.target.value)} /></td>
+                <td><input type="number" value={peer.ntmNetIncome} onChange={(event) => updatePeer(index, 'ntmNetIncome', event.target.value)} /></td>
+                <td><input value={peer.sourceUrl} onChange={(event) => updatePeer(index, 'sourceUrl', event.target.value)} placeholder="Historical source URL" />
+                  <input value={peer.forecastSourceUrl} onChange={(event) => updatePeer(index, 'forecastSourceUrl', event.target.value)} placeholder="Forward-data source URL" />
+                  {peer.researchNote && <p className="note peer-research-note">{peer.researchNote}</p>}</td>
               </tr>)}</tbody>
             </table>
           </div>
@@ -351,13 +469,28 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
             <div className="table-scroll sensitivity-table">
               <h4>Peer multiple statistics</h4>
               <table><thead><tr><th>Multiple</th><th>n</th><th>25th percentile</th><th>Median</th><th>Mean</th><th>75th percentile</th></tr></thead>
-                <tbody>{([['EV / Revenue', compsResult.statistics.evRevenue], ['EV / EBITDA', compsResult.statistics.evEbitda], ['P / E', compsResult.statistics.pe]] as const).map(([label, stats]) => <tr key={label}><th>{label}</th><td>{stats.count}</td><td>{stats.percentile25?.toFixed(2) ?? 'N/A'}x</td><td>{stats.median?.toFixed(2) ?? 'N/A'}x</td><td>{stats.mean?.toFixed(2) ?? 'N/A'}x</td><td>{stats.percentile75?.toFixed(2) ?? 'N/A'}x</td></tr>)}</tbody>
+                <tbody>{([['EV / Revenue (LTM)', compsResult.statistics.evRevenue], ['EV / EBITDA (LTM)', compsResult.statistics.evEbitda], ['P / E (LTM)', compsResult.statistics.pe], ['EV / Revenue (NTM)', compsResult.statistics.evNtmRevenue], ['EV / EBITDA (NTM)', compsResult.statistics.evNtmEbitda], ['P / E (NTM)', compsResult.statistics.ntmPe]] as const).map(([label, stats]) => <tr key={label}><th>{label}</th><td>{stats.count}</td><td>{stats.percentile25?.toFixed(2) ?? 'N/A'}x</td><td>{stats.median?.toFixed(2) ?? 'N/A'}x</td><td>{stats.mean?.toFixed(2) ?? 'N/A'}x</td><td>{stats.percentile75?.toFixed(2) ?? 'N/A'}x</td></tr>)}</tbody>
               </table>
             </div>
+            <section className="comparability-guide">
+              <h4>How peer comparison is assessed</h4>
+              <div className="research-framework-grid">
+                <div><strong>Valuation</strong><p>EV / EBITDA for operational comparability; P / E for mature profitable peers; EV / Revenue when earnings are not meaningful; P / Book for asset-heavy financial businesses.</p></div>
+                <div><strong>Profitability</strong><p>Gross, operating and net margins; ROIC and ROE where source data supports them.</p></div>
+                <div><strong>Growth</strong><p>Revenue, EBITDA and EPS growth distinguish high-growth from mature peers. NTM figures are only shown when explicitly sourced.</p></div>
+                <div><strong>Financial health</strong><p>Net debt / EBITDA, debt-to-equity, and interest coverage test whether apparent valuation differences are actually leverage differences.</p></div>
+              </div>
+            </section>
             <div className="table-scroll sensitivity-table">
               <h4>Implied valuation range</h4>
               <table><thead><tr><th>Method</th><th>Statistic</th><th>Multiple</th><th>Implied EV</th><th>Implied equity value</th><th>Per share</th></tr></thead>
                 <tbody>{compsResult.impliedValuations.map((valuation, index) => <tr key={`${valuation.multiple}-${valuation.statistic}-${index}`}><td>{valuation.multiple}</td><td>{valuation.statistic}</td><td>{valuation.multipleValue.toFixed(2)}x</td><td>{valuation.impliedEnterpriseValue == null ? 'N/A' : `${compsResult.currency} ${valuation.impliedEnterpriseValue.toLocaleString()}`}</td><td>{valuation.impliedEquityValue == null ? 'N/A' : `${compsResult.currency} ${valuation.impliedEquityValue.toLocaleString()}`}</td><td>{valuation.impliedValuePerShare == null ? 'N/A' : `${compsResult.currency} ${valuation.impliedValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</td></tr>)}</tbody>
+              </table>
+            </div>
+            <div className="table-scroll sensitivity-table">
+              <h4>Peer operating and financial-health comparison</h4>
+              <table><thead><tr><th>Peer</th><th>P / Book</th><th>Gross margin</th><th>Operating margin</th><th>EBITDA margin</th><th>Net margin</th><th>ROE</th><th>NTM revenue growth</th><th>NTM EBITDA growth</th><th>Net debt / EBITDA</th><th>Debt / equity</th><th>Interest coverage</th></tr></thead>
+                <tbody>{compsResult.peers.map((peer) => <tr key={peer.ticker}><th>{peer.companyName} ({peer.ticker})</th><td>{peer.priceToBook == null ? 'N/A' : `${peer.priceToBook.toFixed(2)}x`}</td><td>{peer.grossMargin == null ? 'N/A' : `${(peer.grossMargin * 100).toFixed(1)}%`}</td><td>{peer.operatingMargin == null ? 'N/A' : `${(peer.operatingMargin * 100).toFixed(1)}%`}</td><td>{peer.ebitdaMargin == null ? 'N/A' : `${(peer.ebitdaMargin * 100).toFixed(1)}%`}</td><td>{peer.netMargin == null ? 'N/A' : `${(peer.netMargin * 100).toFixed(1)}%`}</td><td>{peer.returnOnEquity == null ? 'N/A' : `${(peer.returnOnEquity * 100).toFixed(1)}%`}</td><td>{peer.ntmRevenueGrowth == null ? 'N/A' : `${(peer.ntmRevenueGrowth * 100).toFixed(1)}%`}</td><td>{peer.ntmEbitdaGrowth == null ? 'N/A' : `${(peer.ntmEbitdaGrowth * 100).toFixed(1)}%`}</td><td>{peer.netDebtEbitda == null ? 'N/A' : `${peer.netDebtEbitda.toFixed(2)}x`}</td><td>{peer.debtToEquity == null ? 'N/A' : `${peer.debtToEquity.toFixed(2)}x`}</td><td>{peer.interestCoverage == null ? 'N/A' : `${peer.interestCoverage.toFixed(2)}x`}</td></tr>)}</tbody>
               </table>
             </div>
             {compsResult.peers.some((peer) => peer.outlierMultiples.length > 0) && <p className="caveat">Outlier review: {compsResult.peers.filter((peer) => peer.outlierMultiples.length > 0).map((peer) => `${peer.ticker} (${peer.outlierMultiples.join(', ')})`).join(' · ')}</p>}
