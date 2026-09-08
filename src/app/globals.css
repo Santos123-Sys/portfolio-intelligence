@@ -163,6 +163,14 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
 .research-framework-grid div { padding: 0.65rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
 .research-framework-grid strong { font-size: 0.74rem; }
 .research-framework-grid p { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.72rem; }
+.research-pipeline { margin: 1.4rem 0; }
+.research-pipeline-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.research-pipeline-heading h2 { margin: 0.1rem 0 0.35rem; font-size: 1.15rem; }
+.research-candidate-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.7rem; margin-top: 0.85rem; }
+.research-candidate { border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.8rem; background: var(--bg); }
+.research-candidate > div { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.6rem; }
+.research-candidate strong, .research-candidate span:not(.badge) { display: block; }
+.research-candidate span:not(.badge), .research-candidate p { color: var(--muted); font-size: 0.83rem; margin: 0.2rem 0 0; }
 .analysis-report-cta { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1rem 0; padding: 0.9rem; border: 1px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .analysis-report-cta p { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.74rem; }
 .analysis-report-cta .action-button { flex: 0 0 auto; margin: 0; }
@@ -516,6 +524,11 @@ textarea {
 
   .research-framework-grid {
     grid-template-columns: 1fr;
+  }
+
+  .research-pipeline-heading {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .analysis-report-cta .action-button {
