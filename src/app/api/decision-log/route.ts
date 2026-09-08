@@ -30,6 +30,7 @@ export async function GET(req: Request) {
       reasoning: decisionLog.reasoning,
       alternativesConsidered: decisionLog.alternativesConsidered,
       outcome: decisionLog.outcome,
+      metadata: decisionLog.metadata,
       relatedSecurityTicker: securities.ticker,
       relatedPortfolioName: portfolios.name,
     })

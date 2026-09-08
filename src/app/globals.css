@@ -154,6 +154,41 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
 .decision-journal-grid label:last-child { grid-column: 1 / -1; }
 .decision-journal-grid input, .decision-journal-grid textarea { width: 100%; box-sizing: border-box; padding: 0.55rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
 .decision-journal-grid textarea { min-height: 4.7rem; resize: vertical; }
+
+/* Investment control center: evidence-led review rather than automated trading. */
+.governance-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.7rem; margin: 1rem 0; }
+.governance-kpis article { display: grid; gap: 0.25rem; }
+.governance-kpis span, .governance-kpis p { color: var(--muted); font-size: 0.74rem; margin: 0; }
+.governance-kpis strong { font-size: 1.5rem; }
+.governance-section { margin-top: 1rem; }
+.governance-section h2 { margin-top: 0; font-size: 1rem; }
+.governance-queue { display: grid; gap: 0.55rem; }
+.governance-queue-item { display: flex; gap: 0.65rem; align-items: flex-start; padding: 0.7rem; border: 1px solid var(--border); border-left-width: 3px; border-radius: 7px; }
+.governance-queue-item.watch { border-left-color: var(--warn); }
+.governance-queue-item.breach { border-left-color: var(--danger); }
+.governance-queue-item.info { border-left-color: var(--accent); }
+.governance-queue-item p, .governance-queue-item small { display: block; margin: 0.2rem 0 0; color: var(--muted); font-size: 0.75rem; }
+.governance-portfolio-grid, .committee-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 0.8rem; }
+.governance-portfolio, .committee-memo { padding: 0.85rem; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.governance-portfolio h3, .committee-memo h3 { margin: 0; font-size: 0.95rem; }
+.governance-exposures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.45rem; margin: 0.75rem 0; }
+.governance-exposures > div, .governance-attribution { padding: 0.6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); font-size: 0.72rem; }
+.governance-exposures p, .governance-attribution p { display: flex; justify-content: space-between; gap: 0.4rem; margin: 0.35rem 0 0; color: var(--muted); }
+.governance-attribution { margin-top: 0.55rem; }
+.committee-memo { display: grid; align-content: start; gap: 0.1rem; }
+.committee-memo > p { margin: 0.45rem 0 0; font-size: 0.8rem; }
+.committee-memo details { margin-top: 0.65rem; font-size: 0.78rem; }
+.committee-memo details p { margin: 0.35rem 0 0; }
+.governance-coverage { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.55rem; }
+.governance-coverage article { padding: 0.7rem; border: 1px solid var(--border); border-radius: 7px; }
+.governance-coverage .badge { float: right; }
+.governance-coverage p { clear: both; margin: 0.45rem 0 0; color: var(--muted); font-size: 0.74rem; }
+.governance-versioning { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.7rem; }
+.governance-versioning > div { padding: 0.7rem; border: 1px solid var(--border); border-radius: 7px; }
+.governance-versioning p { margin: 0.45rem 0 0; color: var(--muted); font-size: 0.75rem; }
+.governance-policy-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.65rem; }
+.governance-policy-grid label { display: grid; gap: 0.3rem; color: var(--muted); font-size: 0.74rem; }
+.governance-policy-grid input { width: 100%; box-sizing: border-box; padding: 0.55rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
 .analysis-stage { margin-top: 1rem; padding: 1.1rem; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; }
 .analysis-stage h3, .valuation-panel h3 { margin: 0; font-size: 1rem; }
 .analysis-stage-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
@@ -559,6 +594,10 @@ textarea {
   }
 
   .decision-journal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .governance-kpis, .governance-policy-grid, .governance-exposures, .governance-versioning {
     grid-template-columns: 1fr;
   }
 
