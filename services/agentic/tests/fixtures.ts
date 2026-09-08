@@ -106,5 +106,16 @@ export const manifest: PortfolioAnalysisManifest = {
     baseCurrency: 'CHF',
     analyses: [analysis],
     synthesis,
+    evidence: [{
+      ticker: 'NESN',
+      exchange: 'XSWX',
+      currency: 'CHF',
+      sector: 'Consumer staples',
+      country: 'CH',
+      dataAsOf: '2026-08-26T00:00:00.000Z',
+      latestClose: 100,
+      riskMetrics: [{ name: 'Volatility', value: 0.14 }],
+      sourceUrls: [],
+    }],
   }],
 };

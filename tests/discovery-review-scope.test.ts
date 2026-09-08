@@ -43,6 +43,12 @@ describe('positions empty-state behavior', () => {
     expect(positionsRoute).toContain("throw new PositionSetupError('This security already has a position in the selected portfolio', 409)");
   });
 
+  it('shows the latest research queue separately from owned positions', () => {
+    expect(positionsPage).toContain('Latest research candidates');
+    expect(positionsPage).toContain('Candidates are opportunities for review, not portfolio holdings.');
+    expect(positionsPage).toContain("fetch('/api/portfolio/research')");
+  });
+
   it('derives position values and weights from refreshed market prices', () => {
     expect(recompute).toContain('export async function recomputePositionValues');
     expect(recompute).toContain('export async function recomputeWeights');
