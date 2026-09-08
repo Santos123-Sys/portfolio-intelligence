@@ -63,6 +63,11 @@ function numeric(row: { valueNumeric: string | null } | undefined): number | nul
   return Number.isFinite(value) ? value : null;
 }
 
+function hasCompletePrimarySourceDcf(data: NonNullable<Awaited<ReturnType<typeof context>>>): boolean {
+  const required = ['free_cash_flow', 'total_debt', 'cash_and_equivalents', 'shares_outstanding'];
+  return required.every((metric) => data.latest.get(metric)?.provider === 'investor-relations');
+}
+
 export async function GET(req: Request) {
   const session = await authenticateRequest(req);
   if (!session.ok) return session.response;
@@ -70,7 +75,7 @@ export async function GET(req: Request) {
   if (!candidateId) return NextResponse.json({ error: 'candidateId is required' }, { status: 400 });
   const data = await context(session.auth.userId, candidateId);
   if (!data) return NextResponse.json({ error: 'Analyzed discovery candidate not found' }, { status: 404 });
-  if (isDcfLocked(data.analysisMode)) {
+  if (isDcfLocked(data.analysisMode) && !hasCompletePrimarySourceDcf(data)) {
     return NextResponse.json({ error: LIMITED_DATA_DCF_LOCK_REASON }, { status: 409 });
   }
   const suitability = assessDcfSuitability(data.candidate.sector, data.latest.keys());
@@ -110,7 +115,7 @@ export async function POST(req: Request) {
   const parsed = valuationSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const data = await context(session.auth.userId, parsed.data.candidateId);
-  if (data && isDcfLocked(data.analysisMode)) {
+  if (data && isDcfLocked(data.analysisMode) && !hasCompletePrimarySourceDcf(data)) {
     return NextResponse.json({ error: LIMITED_DATA_DCF_LOCK_REASON }, { status: 409 });
   }
   if (!data || !data.candidate.analysisId) {
