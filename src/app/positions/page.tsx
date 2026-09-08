@@ -220,7 +220,7 @@ export default function PositionsPage() {
         {!research.latestRun ? (
           <p className="note">No completed market-research run yet. Start discovery to populate this review queue.</p>
         ) : research.candidates.length === 0 ? (
-          <p className="note">The latest market-research run did not find candidates matching the confirmed thesis.</p>
+          <p className="note">No active candidates remain from the latest market-research run. Rejected ideas are kept in Research history and are not shown here.</p>
         ) : (
           <>
             <p className="note">{research.candidates.length} candidate{research.candidates.length === 1 ? '' : 's'} found on {new Date(research.latestRun.completedAt ?? research.latestRun.requestedAt).toLocaleDateString()} via {research.latestRun.provider}.</p>

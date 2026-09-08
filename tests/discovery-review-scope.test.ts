@@ -1,11 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { excludePreviouslyRejectedCandidates } from '../src/lib/discovery-workflow';
 
 const candidateRoute = readFileSync('src/app/api/discovery/candidates/route.ts', 'utf8');
 const discoveryPage = readFileSync('src/app/ai-stock-discovery/page.tsx', 'utf8');
 const positionsPage = readFileSync('src/app/positions/page.tsx', 'utf8');
 const positionsRoute = readFileSync('src/app/api/positions/route.ts', 'utf8');
 const recompute = readFileSync('src/lib/services/recompute.ts', 'utf8');
+const portfolioResearchRoute = readFileSync('src/app/api/portfolio/research/route.ts', 'utf8');
 
 describe('run-scoped candidate review', () => {
   it('requires a run id and constrains the candidate query to that run', () => {
@@ -48,6 +50,22 @@ describe('positions empty-state behavior', () => {
     expect(positionsPage).toContain('Latest research candidates');
     expect(positionsPage).toContain('Candidates are opportunities for review, not portfolio holdings.');
     expect(positionsPage).toContain("fetch('/api/portfolio/research')");
+    expect(portfolioResearchRoute).toContain("ne(discoveryCandidates.decision, 'rejected')");
+  });
+
+  it('does not emit a ticker rejected in an earlier discovery run for the same portfolio', () => {
+    const candidates = [
+      { portfolioId: 'swiss', exchange: 'XSWX', ticker: 'ALC' },
+      { portfolioId: 'swiss', exchange: 'XSWX', ticker: 'ABBN' },
+      { portfolioId: 'brazil', exchange: 'BVMF', ticker: 'ALC' },
+    ];
+    const result = excludePreviouslyRejectedCandidates(candidates, [
+      { portfolioId: 'swiss', exchange: 'xswx', ticker: 'alc' },
+    ]);
+    expect(result).toEqual([
+      { portfolioId: 'swiss', exchange: 'XSWX', ticker: 'ABBN' },
+      { portfolioId: 'brazil', exchange: 'BVMF', ticker: 'ALC' },
+    ]);
   });
 
   it('derives position values and weights from refreshed market prices', () => {
