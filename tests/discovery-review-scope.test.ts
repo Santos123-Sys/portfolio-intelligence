@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { excludePreviouslyRejectedCandidates } from '../src/lib/discovery-workflow';
+import { deduplicateDiscoveryCandidates, excludePreviouslyRejectedCandidates } from '../src/lib/discovery-workflow';
 
 const candidateRoute = readFileSync('src/app/api/discovery/candidates/route.ts', 'utf8');
 const discoveryPage = readFileSync('src/app/ai-stock-discovery/page.tsx', 'utf8');
@@ -64,6 +64,18 @@ describe('positions empty-state behavior', () => {
     ]);
     expect(result).toEqual([
       { portfolioId: 'swiss', exchange: 'XSWX', ticker: 'ABBN' },
+      { portfolioId: 'brazil', exchange: 'BVMF', ticker: 'ALC' },
+    ]);
+  });
+
+  it('keeps only one exchange and ticker identity in a discovery output', () => {
+    const result = deduplicateDiscoveryCandidates([
+      { portfolioId: 'swiss', exchange: 'XSWX', ticker: 'ALC' },
+      { portfolioId: 'swiss', exchange: 'xswx', ticker: 'alc' },
+      { portfolioId: 'brazil', exchange: 'BVMF', ticker: 'ALC' },
+    ]);
+    expect(result).toEqual([
+      { portfolioId: 'swiss', exchange: 'XSWX', ticker: 'ALC' },
       { portfolioId: 'brazil', exchange: 'BVMF', ticker: 'ALC' },
     ]);
   });
