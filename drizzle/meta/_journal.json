@@ -78,6 +78,13 @@
       "when": 1788897483318,
       "tag": "0010_loud_satana",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788899323441,
+      "tag": "0011_furry_photon",
+      "breakpoints": true
     }
   ]
 }
