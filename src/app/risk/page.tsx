@@ -6,6 +6,7 @@
  * (ADR-003), plus the global caveat about VaR/parametric assumptions that
  * must stay visible regardless of which metric is expanded.
  */
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { PortfolioSelector, type SelectablePortfolio } from '@/components/portfolio-selector';
 import { MetricDrill, type DrillableMetric } from '@/components/metric-drill';
@@ -81,7 +82,7 @@ export default function RiskDetailPage() {
   if (error) {
     return (
       <main>
-        <h1>Risk Detail</h1>
+        <h1>Portfolio risk</h1>
         <div className="card">
           <p className="note">
             Connection failed: Unable to reach backend.
@@ -97,8 +98,8 @@ export default function RiskDetailPage() {
 
   return (
     <main>
-      <h1>Risk Detail</h1>
-      <p className="sub">Every figure here is portfolio-scoped and currency-scoped (ADR-002). Click a metric for its methodology.</p>
+      <h1>Portfolio risk</h1>
+      <p className="sub">Portfolio-level risk for recorded holdings. Candidate risk is reviewed inside the discovery workflow before a holding is added.</p>
 
       <GlobalCaveat />
 
@@ -108,7 +109,9 @@ export default function RiskDetailPage() {
         <p className="note">Fetching...</p>
       ) : metrics.length === 0 ? (
         <div className="card">
-          <p className="note">No metrics computed yet. Trigger /api/cron/refresh.</p>
+          <h2>Portfolio metrics will appear when they are meaningful</h2>
+          <p className="note">This portfolio has no computed holding-level metrics yet. They are refreshed automatically after there are recorded positions and sufficient market-price history. This does not affect candidate-level research risk.</p>
+          <Link className="action-button inline-action" href="/positions">Review positions</Link>
         </div>
       ) : (
         <div className="grid">

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ValuationWorkbench } from '@/components/valuation-workbench';
 
@@ -153,30 +154,10 @@ function frameworkLabel(value: string): string {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-/**
- * What to show in the Issue column.
- *
- * A failed run has an errorMessage. A completed run with candidates has
- * nothing to report. The case that was silently blank is the third one: a run
- * that completed and found nothing. The agent is required to explain coverage
- * and evidence gaps in `limitations`, so that explanation is the issue — it is
- * the only thing that tells the reader whether to widen the thesis, wait for
- * better data, or look at the universe.
- */
-function runIssue(run: DiscoveryRun): string {
-  if (run.errorMessage) return run.errorMessage;
-  if (run.status !== 'completed' || run.candidateCount > 0) return '—';
-  const limitations = run.resultJson?.limitations ?? [];
-  if (limitations.length > 0) return `No candidates matched. ${limitations.join(' ')}`;
-  return 'No candidates matched, and the agent recorded no limitations explaining why. '
-    + 'Check that the security universe covers the exchanges your thesis targets.';
-}
-
 export default function AIStockDiscoveryPage() {
   const [runs, setRuns] = useState<DiscoveryRun[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [showRunHistory, setShowRunHistory] = useState(false);
   const [candidateListLoading, setCandidateListLoading] = useState(false);
   const [candidateLimit, setCandidateLimit] = useState('6');
   const [busy, setBusy] = useState<string | null>(null);
@@ -253,7 +234,6 @@ export default function AIStockDiscoveryPage() {
     setError(null);
     setSelectedRunId(null);
     setCandidates([]);
-    setShowRunHistory(false);
     try {
       const response = await fetch('/api/discovery/runs', {
         method: 'POST',
@@ -296,24 +276,6 @@ export default function AIStockDiscoveryPage() {
       const message = (cause as Error).message;
       setError(message);
       setCandidateErrors((current) => ({ ...current, [candidateId]: message }));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function retryDiscovery(runId: string) {
-    setBusy(`discovery:${runId}`);
-    setError(null);
-    setSelectedRunId(null);
-    setCandidates([]);
-    setShowRunHistory(false);
-    try {
-      const response = await fetch(`/api/discovery/runs?id=${encodeURIComponent(runId)}`, { method: 'PATCH' });
-      const body = await response.json().catch(() => ({})) as { error?: string };
-      if (!response.ok) throw new Error(body.error ?? `Discovery retry failed (${response.status})`);
-      await loadRuns();
-    } catch (cause) {
-      setError((cause as Error).message);
     } finally {
       setBusy(null);
     }
@@ -405,20 +367,12 @@ export default function AIStockDiscoveryPage() {
       <section className="card">
         <div className="section-heading">
           <div>
-            <h2>Discovery runs</h2>
-            <p className="note">Run history stays collapsed. Open it only when you want to review or retry a specific run.</p>
+            <h2>Latest market research</h2>
+            <p className="note">The current shortlist stays here. Older discovery, thesis, and company-research activity is organized in Research history.</p>
           </div>
-          {runs.length > 0 && <button
-            className="action-button"
-            type="button"
-            aria-expanded={showRunHistory}
-            aria-controls="discovery-run-history"
-            onClick={() => setShowRunHistory((current) => !current)}
-          >
-            {showRunHistory ? 'Hide run history' : `Show run history (${runs.length})`}
-          </button>}
+          <Link className="secondary-button inline-action" href="/research-history">Open research history</Link>
         </div>
-        {runs.length === 0 ? <p className="note">No market-research run has been started.</p> : !showRunHistory ? (
+        {runs.length === 0 ? <p className="note">No market-research run has been started.</p> : (
           <div className="latest-run-summary" aria-live="polite">
             <p>
               <strong>Latest run:</strong> {new Date(latestRun!.requestedAt).toLocaleString()} ·{' '}
@@ -433,31 +387,6 @@ export default function AIStockDiscoveryPage() {
               {selectedRunId === latestRun!.id ? 'Hide candidates' : 'Review latest candidates'}
             </button>}
           </div>
-        ) : (
-          <div className="table-scroll" id="discovery-run-history"><table>
-            <thead><tr><th>Requested</th><th>Provider</th><th>Status</th><th>Candidates by portfolio</th><th>Issue</th><th>Action</th></tr></thead>
-            <tbody>{runs.map((run) => <tr key={run.id}>
-              <td>{new Date(run.requestedAt).toLocaleString()}</td>
-              <td>{run.provider}</td>
-              <td><span className={`badge ${run.status === 'failed' ? 'breach' : run.status === 'completed' ? 'ok' : 'watch'}`}>{run.status}</span></td>
-              <td>
-                <strong>{run.candidateCount} total</strong>
-                {run.portfolioCandidateCounts.length > 0 && (
-                  <ul className="run-candidate-breakdown">
-                    {run.portfolioCandidateCounts.map((portfolio) => <li key={portfolio.portfolioId}>
-                      {portfolio.portfolioName}: {portfolio.count}/{run.maxCandidatesPerPortfolio ?? '—'}
-                    </li>)}
-                  </ul>
-                )}
-              </td>
-              <td className="note">{runIssue(run)}</td>
-              <td>{run.status === 'failed' ? <button type="button" onClick={() => void retryDiscovery(run.id)} disabled={busy !== null}>
-                {busy === `discovery:${run.id}` ? 'Retrying…' : 'Retry'}
-              </button> : run.status === 'completed' && run.candidateCount > 0 ? <button type="button" onClick={() => toggleCandidateReview(run.id)}>
-                {selectedRunId === run.id ? 'Hide candidates' : 'Review candidates'}
-              </button> : '—'}</td>
-            </tr>)}</tbody>
-          </table></div>
         )}
       </section>
 
@@ -469,7 +398,7 @@ export default function AIStockDiscoveryPage() {
           </div>
           {selectedRunId && <button className="action-button" type="button" onClick={() => setSelectedRunId(null)}>Hide candidates</button>}
         </div>
-        {!selectedRunId ? <div className="card"><p className="note">Candidate results are hidden. Review the latest run above, or open run history to choose an earlier run.</p></div>
+        {!selectedRunId ? <div className="card"><p className="note">Candidate results are hidden. Review the latest run above to open its shortlist.</p></div>
           : candidateListLoading ? <div className="card"><p className="note">Loading this run&apos;s candidates…</p></div>
           : candidates.length === 0 ? <div className="card"><p className="note">This market-research run returned no candidates.</p></div> : (
           <div className="candidate-list">{candidates.map((candidate) => {

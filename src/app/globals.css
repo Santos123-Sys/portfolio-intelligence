@@ -585,3 +585,20 @@ textarea {
 .prerequisite-list li { color: var(--muted); font-size: 0.85rem; line-height: 1.55; }
 .prerequisite-list strong { color: var(--text); font-weight: 500; }
 .prerequisite-list code { background: var(--bg); border-radius: 4px; padding: 0.1rem 0.3rem; font-size: 0.8em; }
+
+/* Guided workspace and research archive: keep active decisions distinct from
+   operational history without hiding the audit trail. */
+.workflow-guide,
+.history-folders { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; }
+.workflow-guide .card { display: flex; flex-direction: column; align-items: flex-start; }
+.workflow-guide .inline-action { margin-top: auto; }
+.history-folder details { margin-top: 0.75rem; }
+.history-list { display: grid; gap: 0.85rem; list-style: none; padding: 0; margin: 0.85rem 0 0; }
+.history-list li { border-top: 1px solid var(--border); padding-top: 0.85rem; }
+.history-list .badge { margin-left: 0.5rem; }
+.history-list p { margin: 0.35rem 0; color: var(--muted); }
+.history-list small { color: var(--muted); }
+.comps-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin: 0.75rem 0; }
+.comps-input-table input + input { margin-top: 0.4rem; }
+.peer-research-note { max-width: 20rem; margin: 0.4rem 0 0; font-size: 0.78rem; }
+.comparability-guide { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; }

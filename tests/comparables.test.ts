@@ -9,6 +9,17 @@ const peers = Array.from({ length: 6 }, (_, index) => ({
   revenue: 40 + index,
   ebitda: 10 + index,
   netIncome: 6 + index,
+  ntmRevenue: 45 + index,
+  ntmEbitda: 12 + index,
+  ntmNetIncome: 8 + index,
+  grossProfit: 20 + index,
+  operatingIncome: 8 + index,
+  totalEquity: 60 + index,
+  totalDebt: 30,
+  interestExpense: 2,
+  cashAndEquivalents: 10,
+  incomeTaxExpense: 2,
+  preTaxIncome: 8,
   sourceUrl: `https://example.com/peer-${index + 1}`,
 }));
 
@@ -21,6 +32,10 @@ describe('deterministic comparable-company analysis', () => {
     expect(result.peers).toHaveLength(6);
     expect(result.peers[0].enterpriseValue).toBe(120);
     expect(result.statistics.evRevenue.count).toBe(6);
+    expect(result.statistics.evNtmRevenue.count).toBe(6);
+    expect(result.peers[0].priceToBook).not.toBeNull();
+    expect(result.peers[0].interestCoverage).not.toBeNull();
+    expect(result.peers[0].roic).not.toBeNull();
     expect(result.impliedValuations.some((value) => value.multiple === 'EV / EBITDA' && value.statistic === 'Median')).toBe(true);
   });
 
