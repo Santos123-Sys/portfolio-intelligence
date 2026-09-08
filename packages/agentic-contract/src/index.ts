@@ -583,7 +583,7 @@ export function validateDiscoveryOutput(
   for (const candidate of output.candidates) {
     const portfolio = portfoliosById.get(candidate.portfolioId);
     if (!portfolio) throw new ContractValidationError(`Candidate references unknown portfolio ${candidate.portfolioId}`);
-    const uniqueKey = `${candidate.portfolioId}:${candidate.exchange}:${candidate.ticker}`;
+    const uniqueKey = `${candidate.exchange}:${candidate.ticker}`;
     if (seen.has(uniqueKey)) throw new ContractValidationError(`Duplicate discovery candidate ${uniqueKey}`);
     seen.add(uniqueKey);
     const count = (perPortfolio.get(candidate.portfolioId) ?? 0) + 1;

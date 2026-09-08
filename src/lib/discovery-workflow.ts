@@ -56,6 +56,22 @@ export function candidateIdentityKey(candidate: CandidateIdentity): string {
   return [candidate.portfolioId, candidate.exchange.trim().toUpperCase(), candidate.ticker.trim().toUpperCase()].join('::');
 }
 
+function securityIdentityKey(candidate: Pick<CandidateIdentity, 'exchange' | 'ticker'>): string {
+  return [candidate.exchange.trim().toUpperCase(), candidate.ticker.trim().toUpperCase()].join('::');
+}
+
+/** One security is reviewed once per market-research output, even if a model
+ * accidentally emits it more than once or assigns it to multiple mandates. */
+export function deduplicateDiscoveryCandidates<T extends CandidateIdentity>(candidates: T[]): T[] {
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = securityIdentityKey(candidate);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function excludePreviouslyRejectedCandidates<T extends CandidateIdentity>(
   candidates: T[],
   previouslyRejected: Iterable<CandidateIdentity>
@@ -208,7 +224,11 @@ export async function synchronizeDiscoveryRun(
   }
   if (!remote.result) throw new Error('Completed discovery is missing its result');
   const request = DiscoveryRunRequest.parse(local.requestJson);
-  const result = MarketDiscoveryOutput.parse(remote.result);
+  const parsedResult = MarketDiscoveryOutput.parse(remote.result);
+  const result = MarketDiscoveryOutput.parse({
+    ...parsedResult,
+    candidates: deduplicateDiscoveryCandidates(parsedResult.candidates),
+  });
   validateDiscoveryOutput(result, request);
 
   return db.transaction(async (tx) => {

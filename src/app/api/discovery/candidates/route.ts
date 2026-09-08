@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { assertSameOrigin } from '@/lib/auth';
 import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
+import { getPriceProvider } from '@/lib/connectors';
+import { loadDiscoveryLatestPrices } from '@/lib/discovery-market-data';
 import { aiAnalyses, portfolios, thesisVersions } from '@/lib/db/schema';
 import {
   discoveryCandidates,
@@ -60,6 +62,17 @@ export async function GET(req: Request) {
       isNull(thesisVersions.excludedAt)
     ))
     .orderBy(desc(discoveryCandidates.createdAt));
+  let latestPrices = new Map();
+  try {
+    latestPrices = await loadDiscoveryLatestPrices(rows.map((row) => ({
+      id: row.candidate.id,
+      ticker: row.candidate.ticker,
+      exchange: row.candidate.exchange,
+    })), getPriceProvider());
+  } catch {
+    // Price enrichment is best-effort; the discovery shortlist remains usable
+    // when a provider is not configured on a development environment.
+  }
   const externalIds = rows.flatMap((row) => row.candidate.externalAnalysisRunId ? [row.candidate.externalAnalysisRunId] : []);
   const externalRuns = externalIds.length
     ? await db.select().from(externalAgenticRuns).where(and(
@@ -121,6 +134,7 @@ export async function GET(req: Request) {
     const dcfLocked = isDcfLocked(analysisMode) && !primaryDcfReady;
     return {
       ...row.candidate,
+      latestPrice: latestPrices.get(row.candidate.id) ?? null,
       portfolioName: row.portfolioName,
       discoveryRequestedAt: row.discoveryRequestedAt,
       analysisRunStatus: run?.status ?? null,

@@ -195,6 +195,18 @@ function pinCandidateIdentity(
   });
 }
 
+function deduplicateCandidateIdentities(
+  candidates: z.infer<typeof MarketDiscoveryModelOutput>['candidates']
+) {
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = `${candidate.exchange.trim().toUpperCase()}:${candidate.ticker.trim().toUpperCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function sourceCurrencyLimitations(request: z.infer<typeof DiscoveryRunRequest>): string[] {
   const thesisCurrencyByRole = new Map(
     request.thesis.criteria.portfolios.map((mandate) => [mandate.role, mandate.currency])
@@ -272,6 +284,7 @@ Absolute rules:
 9. Copy portfolioId, role and currency for every market mandate exactly from PORTFOLIOS. A source placeholder such as "Unspecified" is an information gap, not portfolio identity.
 10. Return at most maxCandidatesPerPortfolio candidates for each portfolio. Zero candidates is valid when evidence is insufficient. The intended combined shortlist is 5–15, not a broad universe.
 11. Do not value securities, calculate volatility, recommend trades, or alter holdings. Human approval is required before financial analysis.
+12. Return a security identity (exchange plus ticker) at most once across the combined candidate output.
 
 Prefer decision-useful gaps over generic caveats. A concise, evidence-bound shortlist is better than a long speculative list.`;
 
@@ -707,7 +720,7 @@ export class OpenAIAgenticPipeline {
       const output = MarketDiscoveryOutput.parse({
         ...response.output_parsed,
         marketMandates: pinMarketMandateIdentity(response.output_parsed.marketMandates, request),
-        candidates: pinCandidateIdentity(response.output_parsed.candidates, request),
+        candidates: deduplicateCandidateIdentities(pinCandidateIdentity(response.output_parsed.candidates, request)),
         limitations: [
           ...new Set([
             ...response.output_parsed.limitations,

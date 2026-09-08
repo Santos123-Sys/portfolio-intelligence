@@ -70,6 +70,13 @@ interface Candidate {
   analysisMode: 'full_fundamentals' | 'limited_research_risk' | null;
   dcfLocked: boolean;
   dcfLockReason: string | null;
+  latestPrice: {
+    close: number;
+    currency: string;
+    asOf: string;
+    provider: string;
+    sourceUrl: string | null;
+  } | null;
   discoveryJson: {
     thesisAlignmentScore: number;
     rationale: string;
@@ -152,6 +159,19 @@ function friendlyRiskMetric(metricName: string): string {
 
 function frameworkLabel(value: string): string {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatLatestPrice(price: Candidate['latestPrice']): string | null {
+  if (!price) return null;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: price.currency,
+      maximumFractionDigits: 2,
+    }).format(price.close);
+  } catch {
+    return `${price.currency} ${price.close.toFixed(2)}`;
+  }
 }
 
 export default function AIStockDiscoveryPage() {
@@ -419,6 +439,7 @@ export default function AIStockDiscoveryPage() {
                 <div className="candidate-score"><strong>{discovery.thesisAlignmentScore}</strong><span>thesis fit</span></div>
               </div>
               <p>{discovery.rationale}</p>
+              {candidate.latestPrice && <p className="note"><strong>Latest market close:</strong> {formatLatestPrice(candidate.latestPrice)} · as of {candidate.latestPrice.asOf} · {candidate.latestPrice.provider}</p>}
               <p className="note"><strong>Matched:</strong> {discovery.matchedCriteria.join(' · ') || 'None evidenced'}</p>
               {discovery.violatedCriteria.length > 0 && <p className="caveat"><strong>Conflicts:</strong> {discovery.violatedCriteria.join(' · ')}</p>}
               {discovery.informationGaps.length > 0 && <p className="note"><strong>Gaps:</strong> {discovery.informationGaps.join(' · ')}</p>}

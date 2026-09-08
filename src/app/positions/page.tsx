@@ -39,6 +39,22 @@ interface ResearchCandidateRow {
   decision: string;
   workflowStatus: string;
   thesisAlignmentScore: number | null;
+  latestPrice: {
+    close: number;
+    currency: string;
+    asOf: string;
+    provider: string;
+    sourceUrl: string | null;
+  } | null;
+}
+
+function formatLatestResearchPrice(price: ResearchCandidateRow['latestPrice']): string | null {
+  if (!price) return null;
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: price.currency, maximumFractionDigits: 2 }).format(price.close);
+  } catch {
+    return `${price.currency} ${price.close.toFixed(2)}`;
+  }
 }
 
 interface LatestResearch {
@@ -228,7 +244,8 @@ export default function PositionsPage() {
               {research.candidates.map((candidate) => <div className="research-candidate" key={candidate.id}>
                 <div><strong>{candidate.companyName}</strong><span>{candidate.ticker} · {candidate.portfolioName}</span></div>
                 <span className={`badge ${candidate.decision === 'rejected' || candidate.workflowStatus === 'analysis_failed' ? 'breach' : candidate.decision === 'approved' || candidate.workflowStatus === 'analysis_complete' ? 'ok' : 'watch'}`}>{researchState(candidate)}</span>
-                <p>{candidate.sector ?? 'Sector not classified'} · {candidate.country ?? 'Country not classified'}{candidate.thesisAlignmentScore == null ? '' : ` · ${candidate.thesisAlignmentScore}/100 thesis fit`}</p>
+                          <p>{candidate.sector ?? 'Sector not classified'} · {candidate.country ?? 'Country not classified'}{candidate.thesisAlignmentScore == null ? '' : ` · ${candidate.thesisAlignmentScore}/100 thesis fit`}</p>
+                          {candidate.latestPrice && <p className="note">Latest market close: {formatLatestResearchPrice(candidate.latestPrice)} · {candidate.latestPrice.asOf}</p>}
               </div>)}
             </div>
           </>
