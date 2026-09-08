@@ -29,6 +29,23 @@ interface PositionRow {
   thesisBreakers: string[] | null;
 }
 
+interface ResearchCandidateRow {
+  id: string;
+  ticker: string;
+  companyName: string;
+  country: string | null;
+  sector: string | null;
+  portfolioName: string;
+  decision: string;
+  workflowStatus: string;
+  thesisAlignmentScore: number | null;
+}
+
+interface LatestResearch {
+  latestRun: { requestedAt: string; completedAt: string | null; provider: string } | null;
+  candidates: ResearchCandidateRow[];
+}
+
 type SortKey = 'ticker' | 'portfolioName' | 'quantity' | 'avgCost' | 'marketValueNative' | 'weight' | 'dayChangePct' | 'aiScore' | 'thesisAlignment';
 
 function riskFlag(row: PositionRow): { label: string; className: string } {
@@ -40,6 +57,7 @@ function riskFlag(row: PositionRow): { label: string; className: string } {
 export default function PositionsPage() {
   const router = useRouter();
   const [rows, setRows] = useState<PositionRow[]>([]);
+  const [research, setResearch] = useState<LatestResearch>({ latestRun: null, candidates: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,13 +70,20 @@ export default function PositionsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/positions')
-      .then((res) => {
-        if (!res.ok) throw new Error(`API returned ${res.status}`);
-        return res.json();
-      })
-      .then((data: { positions: PositionRow[] }) => {
-        if (!cancelled) setRows(data.positions);
+    Promise.all([
+      fetch('/api/positions').then((res) => {
+        if (!res.ok) throw new Error(`Positions API returned ${res.status}`);
+        return res.json() as Promise<{ positions: PositionRow[] }>;
+      }),
+      fetch('/api/portfolio/research').then((res) => {
+        if (!res.ok) throw new Error(`Research API returned ${res.status}`);
+        return res.json() as Promise<LatestResearch>;
+      }),
+    ])
+      .then(([positionsData, researchData]) => {
+        if (cancelled) return;
+        setRows(positionsData.positions);
+        setResearch(researchData);
       })
       .catch((e) => {
         if (!cancelled) setError((e as Error).message);
@@ -125,6 +150,15 @@ export default function PositionsPage() {
     };
   }
 
+  function researchState(candidate: ResearchCandidateRow) {
+    if (candidate.workflowStatus === 'analysis_complete') return 'Research complete';
+    if (candidate.workflowStatus === 'analysis_failed') return 'Research needs attention';
+    if (candidate.decision === 'approved') return 'Approved for analysis';
+    if (candidate.decision === 'watchlist') return 'Watchlist';
+    if (candidate.decision === 'rejected') return 'Rejected';
+    return 'Awaiting review';
+  }
+
   if (error) {
     return (
       <main>
@@ -173,6 +207,33 @@ export default function PositionsPage() {
           ))}
         </select>
       </div>
+
+      <section className="research-pipeline card" aria-label="Latest market research">
+        <div className="research-pipeline-heading">
+          <div>
+            <p className="analysis-eyebrow">Market research</p>
+            <h2>Latest research candidates</h2>
+            <p className="note">Candidates are opportunities for review, not portfolio holdings. A position appears below only after you record an investment decision and quantity.</p>
+          </div>
+          <Link className="action-button inline-action" href="/ai-stock-discovery">Review candidates</Link>
+        </div>
+        {!research.latestRun ? (
+          <p className="note">No completed market-research run yet. Start discovery to populate this review queue.</p>
+        ) : research.candidates.length === 0 ? (
+          <p className="note">The latest market-research run did not find candidates matching the confirmed thesis.</p>
+        ) : (
+          <>
+            <p className="note">{research.candidates.length} candidate{research.candidates.length === 1 ? '' : 's'} found on {new Date(research.latestRun.completedAt ?? research.latestRun.requestedAt).toLocaleDateString()} via {research.latestRun.provider}.</p>
+            <div className="research-candidate-grid">
+              {research.candidates.map((candidate) => <div className="research-candidate" key={candidate.id}>
+                <div><strong>{candidate.companyName}</strong><span>{candidate.ticker} · {candidate.portfolioName}</span></div>
+                <span className={`badge ${candidate.decision === 'rejected' || candidate.workflowStatus === 'analysis_failed' ? 'breach' : candidate.decision === 'approved' || candidate.workflowStatus === 'analysis_complete' ? 'ok' : 'watch'}`}>{researchState(candidate)}</span>
+                <p>{candidate.sector ?? 'Sector not classified'} · {candidate.country ?? 'Country not classified'}{candidate.thesisAlignmentScore == null ? '' : ` · ${candidate.thesisAlignmentScore}/100 thesis fit`}</p>
+              </div>)}
+            </div>
+          </>
+        )}
+      </section>
 
       {loading ? (
         <p className="note">Fetching...</p>
