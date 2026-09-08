@@ -1,11 +1,14 @@
 import { after, NextResponse } from 'next/server';
 import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { z } from 'zod';
+import { DiscoveryCandidate } from '@portfolio-intelligence/agentic-contract';
 import { assertSameOrigin } from '@/lib/auth';
 import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 import { getPriceProvider } from '@/lib/connectors';
 import { loadDiscoveryLatestPrices } from '@/lib/discovery-market-data';
+import { scoreDiscoveryEvidence } from '@/lib/discovery-evidence';
+import { decisionJournalSchema } from '@/lib/decision-journal';
 import { aiAnalyses, portfolios, thesisVersions } from '@/lib/db/schema';
 import {
   discoveryCandidates,
@@ -33,7 +36,7 @@ export const runtime = 'nodejs';
 const decisionSchema = z.object({
   candidateId: z.string().uuid(),
   decision: z.enum(['approved', 'rejected', 'watchlist']),
-  rationale: z.string().trim().max(2_000).optional(),
+  journal: decisionJournalSchema.optional(),
 }).strict();
 
 const runIdSchema = z.string().uuid();
@@ -132,9 +135,12 @@ export async function GET(req: Request) {
     const primaryDcfReady = row.candidate.securityId != null && ['free_cash_flow', 'total_debt', 'cash_and_equivalents', 'shares_outstanding']
       .every((metric) => primaryMetricsBySecurity.get(row.candidate.securityId!)?.has(metric));
     const dcfLocked = isDcfLocked(analysisMode) && !primaryDcfReady;
+    const latestPrice = latestPrices.get(row.candidate.id) ?? null;
+    const discovery = DiscoveryCandidate.parse(row.candidate.discoveryJson);
     return {
       ...row.candidate,
-      latestPrice: latestPrices.get(row.candidate.id) ?? null,
+      latestPrice,
+      evidenceScorecard: scoreDiscoveryEvidence(discovery, latestPrice),
       portfolioName: row.portfolioName,
       discoveryRequestedAt: row.discoveryRequestedAt,
       analysisRunStatus: run?.status ?? null,
@@ -165,10 +171,14 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   try {
     if (parsed.data.decision === 'approved') {
+      if (!parsed.data.journal) {
+        return NextResponse.json({ error: 'Complete the decision journal before approving a candidate for analysis' }, { status: 400 });
+      }
       const approval = await approveCandidateForAnalysis(
         session.auth.userId,
         parsed.data.candidateId,
-        session.auth.email
+        session.auth.email,
+        parsed.data.journal
       );
       after(async () => {
         try {
@@ -195,7 +205,7 @@ export async function POST(req: Request) {
       session.auth.userId,
       parsed.data.candidateId,
       parsed.data.decision,
-      parsed.data.rationale
+      parsed.data.journal
     );
     return NextResponse.json({ candidate });
   } catch (error) {
