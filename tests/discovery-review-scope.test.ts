@@ -15,6 +15,8 @@ describe('run-scoped candidate review', () => {
     expect(candidateRoute).toContain("error: 'A valid discovery runId is required'");
     expect(candidateRoute).toContain('eq(discoveryCandidates.runId, parsedRunId.data)');
     expect(candidateRoute).toContain("ne(discoveryCandidates.decision, 'rejected')");
+    expect(candidateRoute).toContain('evidenceScorecard');
+    expect(candidateRoute).toContain('journal: decisionJournalSchema.optional()');
   });
 
   it('loads candidates only after the user chooses a specific discovery run', () => {
@@ -22,6 +24,8 @@ describe('run-scoped candidate review', () => {
     expect(discoveryPage).toContain('/api/discovery/candidates?runId=');
     expect(discoveryPage).toContain('Review latest candidates');
     expect(discoveryPage).toContain('Candidate results are hidden.');
+    expect(discoveryPage).toContain('Check readiness');
+    expect(discoveryPage).toContain('Decision journal');
   });
 
   it('keeps only the latest run in the active workflow and moves history to its own folder', () => {
