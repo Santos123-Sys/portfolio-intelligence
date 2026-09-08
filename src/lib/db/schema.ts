@@ -292,6 +292,8 @@ export const aiAnalyses = pgTable(
     keyRisks: jsonb('key_risks').$type<string[]>(),
     thesisBreakers: jsonb('thesis_breakers').$type<string[]>(),
     confidenceScore: real('confidence_score').notNull(),
+    /** Structured macro/sector/company research map imported from the agentic analysis. */
+    researchFramework: jsonb('research_framework').$type<import('@portfolio-intelligence/agentic-contract').ResearchFramework>(),
     /**
      * The audit trail: which deterministic values this conclusion rested on,
      * by metric name and timestamp. An analysis with an empty groundedIn is a
