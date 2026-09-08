@@ -51,6 +51,23 @@ export type AgentCustomization = z.infer<typeof AgentCustomization>;
 
 const score = z.number().int().min(0).max(100);
 
+/**
+ * The decision-oriented research map that sits between a discovery shortlist
+ * and a valuation model. It makes the analyst's reasoning visible without
+ * pretending incomplete evidence supports a full financial forecast.
+ */
+export const ResearchFramework = z.object({
+  coverageRationale: z.string().min(1),
+  marketContext: z.array(z.string()),
+  sectorDrivers: z.array(z.string()),
+  companyDrivers: z.array(z.string()),
+  criticalValuationDrivers: z.array(z.string()),
+  monitoringTriggers: z.array(z.string()).min(1),
+  evidenceQuality: z.enum(['limited', 'developing', 'sufficient']),
+  scenarioReadiness: z.enum(['not_ready', 'qualitative_only', 'driver_ready']),
+}).strict();
+export type ResearchFramework = z.infer<typeof ResearchFramework>;
+
 export const ThesisPortfolioCriteria = z.object({
   role: PortfolioRole,
   currency: z.string().min(1),
@@ -96,6 +113,7 @@ export const AnalysisOutput = z.object({
   keyRisks: z.array(z.string()).min(1),
   thesisBreakers: z.array(z.string()).min(1),
   confidenceScore: z.number().min(0).max(1),
+  researchFramework: ResearchFramework,
   groundedIn: z.array(z.string()).min(1),
   informationGaps: z.array(z.string()),
 }).strict();
@@ -416,6 +434,11 @@ export function validateAnalysisSemantics(output: AnalysisOutput): void {
       !/strongest counter-case\s*:/i.test(output.investmentThesis)) {
     throw new ContractValidationError(
       'investmentThesis must label both "Affirmative case:" and "Strongest counter-case:"'
+    );
+  }
+  if (output.researchFramework.scenarioReadiness === 'driver_ready' && output.informationGaps.some((gap) => /structured financial statements unavailable|dcf locked/i.test(gap))) {
+    throw new ContractValidationError(
+      'driver_ready scenarios require structured financial statements; use qualitative_only or not_ready'
     );
   }
 }

@@ -242,6 +242,27 @@ export async function renderReportPdf(
       doc.y = decisionY + 54;
 
       if (narrative) paragraph(narrative.narrative, eyebrow);
+      doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('RESEARCH FRAMEWORK', margin, doc.y);
+      paragraph(`Coverage rationale: ${analysis.researchFramework.coverageRationale}`, eyebrow, { size: 9 });
+      ensureSpace(84, eyebrow);
+      const frameworkY = doc.y;
+      doc.roundedRect(margin, frameworkY, contentWidth, 70, 6).fillAndStroke(palette.panel, palette.line);
+      labelValue('Evidence quality', roleLabel(analysis.researchFramework.evidenceQuality), margin + 12, frameworkY + 11, 150);
+      labelValue('Scenario readiness', roleLabel(analysis.researchFramework.scenarioReadiness), margin + 190, frameworkY + 11, 150);
+      labelValue('Monitoring triggers', String(analysis.researchFramework.monitoringTriggers.length), margin + 368, frameworkY + 11, 125);
+      doc.y = frameworkY + 82;
+      doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('MARKET AND SECTOR CONTEXT', margin, doc.y);
+      bullets([
+        ...analysis.researchFramework.marketContext,
+        ...analysis.researchFramework.sectorDrivers,
+      ], eyebrow, 'Not evidenced in the current research pack.');
+      doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('COMPANY AND VALUATION DRIVERS', margin, doc.y);
+      bullets([
+        ...analysis.researchFramework.companyDrivers,
+        ...analysis.researchFramework.criticalValuationDrivers,
+      ], eyebrow, 'Not ready without further validated financial evidence.');
+      doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('MONITORING TRIGGERS', margin, doc.y);
+      bullets(analysis.researchFramework.monitoringTriggers, eyebrow);
       doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('EVIDENCE COVERAGE', margin, doc.y);
       paragraph(analysis.fundamentalSummary, eyebrow, { size: 9 });
       doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('INVESTMENT CASE AND COUNTER-CASE', margin, doc.y);

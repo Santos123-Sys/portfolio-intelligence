@@ -40,6 +40,7 @@ export async function GET(req: Request) {
       keyRisks: aiAnalyses.keyRisks,
       thesisBreakers: aiAnalyses.thesisBreakers,
       confidenceScore: aiAnalyses.confidenceScore,
+      researchFramework: aiAnalyses.researchFramework,
       groundedIn: aiAnalyses.groundedIn,
       informationGaps: aiAnalyses.informationGaps,
       externalRunId: aiAnalyses.externalRunId,

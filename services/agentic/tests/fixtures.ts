@@ -57,6 +57,16 @@ export const analysis: AnalysisOutput = {
   keyRisks: ['Portfolio-level volatility context remains material'],
   thesisBreakers: ['Loss of the supplied free-cash-flow resilience'],
   confidenceScore: 0.72,
+  researchFramework: {
+    coverageRationale: 'Swiss-listed consumer-staples issuer matched to the confirmed Swiss Quality mandate.',
+    marketContext: [],
+    sectorDrivers: ['Consumer-staples resilience is the supplied sector context.'],
+    companyDrivers: ['Supplied free-cash-flow observation supports resilience.'],
+    criticalValuationDrivers: [],
+    monitoringTriggers: ['Loss of supplied free-cash-flow resilience.'],
+    evidenceQuality: 'developing',
+    scenarioReadiness: 'qualitative_only',
+  },
   groundedIn: [
     'fundamental:free_cash_flow:observation-1',
     'portfolioRiskMetric:Volatility:2026-08-26T00:00:00.000Z',

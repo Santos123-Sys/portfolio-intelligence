@@ -1,6 +1,6 @@
-import { validateGrounding, type AnalysisOutput } from '@portfolio-intelligence/agentic-contract';
+import { validateAnalysisSemantics, validateGrounding, type AnalysisOutput } from '@portfolio-intelligence/agentic-contract';
 
-export { validateGrounding };
+export { validateAnalysisSemantics, validateGrounding };
 
 /** Produces an explicit dashboard delta between two immutable analyses. */
 export function diffAnalyses(
@@ -17,6 +17,7 @@ export function diffAnalyses(
     'riskScore',
     'dividendScore',
     'confidenceScore',
+    'researchFramework',
   ];
   return watched
     .filter((field) => previous[field] !== next[field])
