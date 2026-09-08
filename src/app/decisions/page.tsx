@@ -15,6 +15,7 @@ interface DecisionRow {
   reasoning: string | null;
   alternativesConsidered: string | null;
   outcome: string | null;
+  metadata: { thesisVersionId?: string; valuationScenarioId?: string; evidenceAsOf?: string } | null;
   relatedSecurityTicker: string | null;
   relatedPortfolioName: string | null;
 }
@@ -112,7 +113,7 @@ export default function DecisionLogPage() {
               {sorted.map((d) => (
                 <tr key={d.id}>
                   <td className="num">{new Date(d.decisionDate).toLocaleDateString()}</td>
-                  <td><strong>{d.title}</strong><br /><span className="note">{d.decision}</span></td>
+                  <td><strong>{d.title}</strong><br /><span className="note">{d.decision}{d.metadata?.thesisVersionId ? ' · thesis snapshot retained' : ''}</span></td>
                   <td>{d.reasoning ?? '—'}</td>
                   <td>{d.relatedSecurityTicker ?? '—'}</td>
                   <td>{d.relatedPortfolioName ?? '—'}</td>
