@@ -476,7 +476,7 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
               <h4>How peer comparison is assessed</h4>
               <div className="research-framework-grid">
                 <div><strong>Valuation</strong><p>EV / EBITDA for operational comparability; P / E for mature profitable peers; EV / Revenue when earnings are not meaningful; P / Book for asset-heavy financial businesses.</p></div>
-                <div><strong>Profitability</strong><p>Gross, operating and net margins; ROIC and ROE where source data supports them.</p></div>
+                <div><strong>Profitability</strong><p>Gross, operating and net margins plus ROE are calculated when sourced. ROIC stays unavailable until tax and invested-capital definitions are source-confirmed; the system will not substitute a proxy.</p></div>
                 <div><strong>Growth</strong><p>Revenue, EBITDA and EPS growth distinguish high-growth from mature peers. NTM figures are only shown when explicitly sourced.</p></div>
                 <div><strong>Financial health</strong><p>Net debt / EBITDA, debt-to-equity, and interest coverage test whether apparent valuation differences are actually leverage differences.</p></div>
               </div>
