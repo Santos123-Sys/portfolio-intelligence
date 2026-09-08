@@ -1,6 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { createRequire } from 'node:module';
-import type { AnalysisOutput, PortfolioAnalysisManifest } from '@portfolio-intelligence/agentic-contract';
+import type { AnalysisOutput, PortfolioAnalysisManifest, ReportEvidence } from '@portfolio-intelligence/agentic-contract';
 
 const palette = {
   navy: '#102A43', blue: '#246B8E', teal: '#147D73', gold: '#B88932', ink: '#17212B',
@@ -34,6 +34,14 @@ function roleLabel(value: string): string {
 
 function average(values: number[]): number {
   return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : 0;
+}
+
+function metricLabel(name: string): string {
+  return name.replace(/([a-z])([A-Z])/g, '$1 $2').replaceAll('_', ' ');
+}
+
+function metricValue(value: number): string {
+  return `${(value * 100).toFixed(2)}%`;
 }
 
 export async function renderReportPdf(
@@ -153,8 +161,33 @@ export async function renderReportPdf(
     doc.x = margin;
   };
 
+  const riskPanel = (evidence: ReportEvidence | undefined, eyebrow: string) => {
+    if (!evidence?.riskMetrics.length) return;
+    const metrics = evidence.riskMetrics.slice(0, 4);
+    ensureSpace(98, eyebrow);
+    const y = doc.y;
+    doc.roundedRect(margin, y, contentWidth, 84, 7).fillAndStroke(palette.panel, palette.line);
+    doc.font('ReportBold').fontSize(8).fillColor(palette.navy)
+      .text('PRICE-RISK DASHBOARD', margin + 14, y + 12);
+    metrics.forEach((metric, index) => {
+      const x = margin + 14 + index * 124;
+      const label = metricLabel(metric.name);
+      doc.font('ReportRegular').fontSize(7.1).fillColor(palette.muted)
+        .text(label.toUpperCase(), x, y + 32, { width: 112 });
+      doc.font('ReportBold').fontSize(11).fillColor(palette.navy)
+        .text(metricValue(metric.value), x, y + 45, { width: 112 });
+      doc.rect(x, y + 67, 102, 3).fill(palette.line);
+      doc.rect(x, y + 67, Math.max(2, Math.min(102, metric.value * 250)), 3).fill(palette.gold);
+    });
+    doc.y = y + 96;
+    doc.x = margin;
+  };
+
   const analyses = manifest.portfolios.flatMap((portfolio) => portfolio.analyses);
   const supportedCount = analyses.filter((analysis) => analysis.portfolioCandidate).length;
+  const singleSecurity = analyses.length === 1 ? analyses[0] : null;
+  const singlePortfolio = manifest.portfolios.length === 1 ? manifest.portfolios[0] : null;
+  const singleEvidence = singlePortfolio?.evidence?.find((item) => item.ticker === singleSecurity?.ticker);
 
   // Cover: decision context first. The internal job identifier is deliberately
   // excluded and appears only once in the final audit note.
@@ -163,19 +196,19 @@ export async function renderReportPdf(
   doc.rect(0, 0, 14, pageHeight).fill(palette.gold);
   doc.font('ReportBold').fontSize(10).fillColor('#BFD0DD')
     .text('PORTFOLIO INTELLIGENCE', 64, 74, { characterSpacing: 0.6 });
-  doc.font('ReportBold').fontSize(30).fillColor(palette.white)
-    .text('Investment Research\n& Risk Report', 64, 145, { width: 470, lineGap: 4 });
+  doc.font('ReportBold').fontSize(singleSecurity ? 25 : 30).fillColor(palette.white)
+    .text(singleSecurity ? `${singleSecurity.companyName}\nInvestment Research Report` : 'Investment Research\n& Risk Report', 64, 145, { width: 470, lineGap: 4 });
   doc.moveTo(64, 257).lineTo(170, 257).lineWidth(4).strokeColor(palette.gold).stroke();
   doc.font('ReportRegular').fontSize(12).fillColor('#D7E3EC')
-    .text('Decision-ready analysis for human review', 64, 283, { width: 470 });
+    .text(singleSecurity ? `${singleSecurity.ticker} | ${singleEvidence?.exchange ?? 'Exchange not supplied'} | ${singlePortfolio?.name ?? 'Investment research'}` : 'Decision-ready analysis for human review', 64, 283, { width: 470 });
 
   doc.roundedRect(64, 362, 484, 150, 10).fill('#183852');
-  labelValue('Coverage', `${manifest.portfolios.length} portfolio${manifest.portfolios.length === 1 ? '' : 's'}`, 86, 389, 120, true);
-  labelValue('Securities reviewed', String(analyses.length), 226, 389, 130, true);
-  labelValue('Supported for review', String(supportedCount), 386, 389, 130, true);
-  labelValue('Thesis version', String(manifest.thesisVersion), 86, 452, 120, true);
+  labelValue(singleSecurity ? 'Decision status' : 'Coverage', singleSecurity ? (singleSecurity.portfolioCandidate ? 'Further review' : 'Do not advance') : `${manifest.portfolios.length} portfolio${manifest.portfolios.length === 1 ? '' : 's'}`, 86, 389, 120, true);
+  labelValue(singleSecurity ? 'Evidence confidence' : 'Securities reviewed', singleSecurity ? `${Math.round(singleSecurity.confidenceScore * 100)}%` : String(analyses.length), 226, 389, 130, true);
+  labelValue(singleSecurity ? 'Latest close' : 'Supported for review', singleSecurity ? (singleEvidence?.latestClose == null ? 'Not supplied' : `${singleEvidence.currency} ${singleEvidence.latestClose.toLocaleString(undefined, { maximumFractionDigits: 2 })}`) : String(supportedCount), 386, 389, 130, true);
+  labelValue(singleSecurity ? 'Sector / country' : 'Thesis version', singleSecurity ? `${singleEvidence?.sector ?? 'Not supplied'} / ${singleEvidence?.country ?? 'Not supplied'}` : String(manifest.thesisVersion), 86, 452, 120, true);
   labelValue('Prepared', formatDate(manifest.generatedAt), 226, 452, 140, true);
-  labelValue('Average confidence', `${average(analyses.map((analysis) => analysis.confidenceScore * 100))}%`, 386, 452, 140, true);
+  labelValue(singleSecurity ? 'Data as of' : 'Average confidence', singleSecurity ? formatDate(singleEvidence?.dataAsOf ?? manifest.generatedAt) : `${average(analyses.map((analysis) => analysis.confidenceScore * 100))}%`, 386, 452, 140, true);
 
   doc.font('ReportRegular').fontSize(8.7).fillColor('#BFD0DD')
     .text(
@@ -215,6 +248,7 @@ export async function renderReportPdf(
 
     sectionTitle('Security research', eyebrow);
     for (const analysis of portfolio.analyses) {
+      const evidence = portfolio.evidence?.find((item) => item.ticker === analysis.ticker);
       const narrative = portfolio.synthesis.perSecurityNarratives.find((item) => item.ticker === analysis.ticker);
       ensureSpace(116, eyebrow);
       doc.font('ReportBold').fontSize(13).fillColor(palette.blue)
@@ -242,6 +276,16 @@ export async function renderReportPdf(
       doc.y = decisionY + 54;
 
       if (narrative) paragraph(narrative.narrative, eyebrow);
+      sectionTitle('Company profile and research scope', eyebrow);
+      paragraph(
+        `${analysis.companyName} (${analysis.ticker}) trades on ${evidence?.exchange ?? 'the supplied exchange'}. ${evidence?.sector ?? 'Sector classification was not supplied'}${evidence?.country ? `, ${evidence.country}` : ''}. Data in this report is current to ${formatDate(evidence?.dataAsOf ?? manifest.generatedAt)} and is expressed in ${evidence?.currency ?? 'the supplied currency'}.`,
+        eyebrow,
+        { size: 9 }
+      );
+      if (evidence?.analysisMode === 'limited_research_risk') {
+        paragraph('Research scope: limited-data research and price-risk assessment. Structured financial statements were not supplied, so DCF valuation is intentionally locked.', eyebrow, { muted: true, size: 8.8 });
+      }
+      riskPanel(evidence, eyebrow);
       doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('RESEARCH FRAMEWORK', margin, doc.y);
       paragraph(`Coverage rationale: ${analysis.researchFramework.coverageRationale}`, eyebrow, { size: 9 });
       ensureSpace(84, eyebrow);
@@ -275,6 +319,17 @@ export async function renderReportPdf(
       bullets(analysis.thesisBreakers, eyebrow);
       doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('INFORMATION GAPS', margin, doc.y);
       bullets(analysis.informationGaps, eyebrow, 'No information gap was reported.');
+      doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('SELECTED PUBLIC RESEARCH SOURCES', margin, doc.y);
+      if (evidence?.sourceUrls.length) {
+        for (const url of evidence.sourceUrls) {
+          ensureSpace(23, eyebrow);
+          doc.font('ReportRegular').fontSize(8).fillColor(palette.blue)
+            .text(url, margin, doc.y, { width: contentWidth, link: url, underline: true });
+          doc.moveDown(0.28);
+        }
+      } else {
+        paragraph('No public web source was retained in the validated research bundle. This report does not invent or substitute sources.', eyebrow, { muted: true, size: 8.6 });
+      }
       doc.moveDown(0.9);
     }
 
