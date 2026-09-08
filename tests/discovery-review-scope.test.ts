@@ -18,14 +18,14 @@ describe('run-scoped candidate review', () => {
     expect(discoveryPage).toContain('const [selectedRunId, setSelectedRunId] = useState<string | null>(null)');
     expect(discoveryPage).toContain('/api/discovery/candidates?runId=');
     expect(discoveryPage).toContain('Review latest candidates');
-    expect(discoveryPage).toContain('Review candidates');
     expect(discoveryPage).toContain('Candidate results are hidden.');
   });
 
-  it('collapses historical runs and candidate results when research starts or retries', () => {
-    expect(discoveryPage).toContain('const [showRunHistory, setShowRunHistory] = useState(false)');
-    expect(discoveryPage.match(/setShowRunHistory\(false\)/g)).toHaveLength(2);
-    expect(discoveryPage.match(/setSelectedRunId\(null\)/g)?.length).toBeGreaterThanOrEqual(3);
+  it('keeps only the latest run in the active workflow and moves history to its own folder', () => {
+    expect(discoveryPage).toContain('Latest market research');
+    expect(discoveryPage).toContain('href="/research-history"');
+    expect(discoveryPage).not.toContain('Show run history');
+    expect(discoveryPage).toContain('setSelectedRunId(null)');
   });
 });
 
