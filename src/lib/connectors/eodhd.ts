@@ -444,6 +444,8 @@ export class EodhdProvider implements PriceProvider {
       ['operating_income', first(incomeStatement, 'operatingIncome', 'OperatingIncome')],
       ['net_income', first(incomeStatement, 'netIncome', 'NetIncome')],
       ['interest_expense', first(incomeStatement, 'interestExpense', 'InterestExpense')],
+      ['income_tax_expense', first(incomeStatement, 'incomeTaxExpense', 'IncomeTaxExpense')],
+      ['pre_tax_income', first(incomeStatement, 'incomeBeforeTax', 'IncomeBeforeTax')],
       ['total_equity', first(balanceSheet, 'totalStockholderEquity', 'totalEquity', 'TotalEquity')],
       ['ebitda', first(highlights, 'EBITDA')],
       ['pe_ratio', first(highlights, 'PERatio', 'PEGRatio')],
