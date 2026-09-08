@@ -5,11 +5,19 @@ export interface ComparablePeerInput {
   ticker: string;
   marketCapitalization: number;
   netDebt: number;
+  totalDebt?: number;
   minorityInterest?: number;
   preferredStock?: number;
   revenue?: number;
   ebitda?: number;
   netIncome?: number;
+  grossProfit?: number;
+  operatingIncome?: number;
+  totalEquity?: number;
+  interestExpense?: number;
+  ntmRevenue?: number;
+  ntmEbitda?: number;
+  ntmNetIncome?: number;
   sourceUrl: string;
 }
 
@@ -19,6 +27,9 @@ export interface ComparableTargetInput {
   revenue?: number;
   ebitda?: number;
   netIncome?: number;
+  ntmRevenue?: number;
+  ntmEbitda?: number;
+  ntmNetIncome?: number;
   netDebt?: number;
   sharesOutstanding?: number;
 }
@@ -40,9 +51,23 @@ export interface ComparableResult {
     evRevenue: number | null;
     evEbitda: number | null;
     pe: number | null;
+    evNtmRevenue: number | null;
+    evNtmEbitda: number | null;
+    ntmPe: number | null;
+    ebitdaMargin: number | null;
+    netMargin: number | null;
+    ntmRevenueGrowth: number | null;
+    ntmEbitdaGrowth: number | null;
+    netDebtEbitda: number | null;
+    grossMargin: number | null;
+    operatingMargin: number | null;
+    returnOnEquity: number | null;
+    priceToBook: number | null;
+    interestCoverage: number | null;
+    debtToEquity: number | null;
     outlierMultiples: string[];
   }>;
-  statistics: Record<'evRevenue' | 'evEbitda' | 'pe', MultipleStatistics>;
+  statistics: Record<'evRevenue' | 'evEbitda' | 'pe' | 'evNtmRevenue' | 'evNtmEbitda' | 'ntmPe', MultipleStatistics>;
   impliedValuations: Array<{
     multiple: 'EV / Revenue' | 'EV / EBITDA' | 'P / E';
     statistic: 'Median' | 'Mean';
@@ -93,6 +118,14 @@ function multiple(value: number, denominator: number | undefined): number | null
   return denominator != null && denominator > 0 ? value / denominator : null;
 }
 
+function ratio(numerator: number | undefined, denominator: number | undefined): number | null {
+  return numerator != null && denominator != null && denominator > 0 ? numerator / denominator : null;
+}
+
+function growth(next: number | undefined, current: number | undefined): number | null {
+  return next != null && current != null && current > 0 ? next / current - 1 : null;
+}
+
 function impliedValue(
   target: ComparableTargetInput,
   multipleName: 'EV / Revenue' | 'EV / EBITDA' | 'P / E',
@@ -139,15 +172,37 @@ export function comparableCompanyAnalysis(
       ...peer,
       marketCapitalization,
       netDebt,
+      totalDebt: finite('total debt', peer.totalDebt),
       minorityInterest,
       preferredStock,
       revenue: finite('revenue', peer.revenue),
       ebitda: finite('EBITDA', peer.ebitda),
       netIncome: finite('net income', peer.netIncome),
+      grossProfit: finite('gross profit', peer.grossProfit),
+      operatingIncome: finite('operating income', peer.operatingIncome),
+      totalEquity: finite('total equity', peer.totalEquity),
+      interestExpense: finite('interest expense', peer.interestExpense),
+      ntmRevenue: finite('NTM revenue', peer.ntmRevenue),
+      ntmEbitda: finite('NTM EBITDA', peer.ntmEbitda),
+      ntmNetIncome: finite('NTM net income', peer.ntmNetIncome),
       enterpriseValue,
       evRevenue: multiple(enterpriseValue, peer.revenue),
       evEbitda: multiple(enterpriseValue, peer.ebitda),
       pe: multiple(marketCapitalization, peer.netIncome),
+      evNtmRevenue: multiple(enterpriseValue, peer.ntmRevenue),
+      evNtmEbitda: multiple(enterpriseValue, peer.ntmEbitda),
+      ntmPe: multiple(marketCapitalization, peer.ntmNetIncome),
+      ebitdaMargin: ratio(peer.ebitda, peer.revenue),
+      netMargin: ratio(peer.netIncome, peer.revenue),
+      ntmRevenueGrowth: growth(peer.ntmRevenue, peer.revenue),
+      ntmEbitdaGrowth: growth(peer.ntmEbitda, peer.ebitda),
+      netDebtEbitda: multiple(netDebt, peer.ebitda),
+      grossMargin: ratio(peer.grossProfit, peer.revenue),
+      operatingMargin: ratio(peer.operatingIncome, peer.revenue),
+      returnOnEquity: ratio(peer.netIncome, peer.totalEquity),
+      priceToBook: multiple(marketCapitalization, peer.totalEquity),
+      interestCoverage: ratio(peer.operatingIncome, peer.interestExpense),
+      debtToEquity: ratio(peer.totalDebt, peer.totalEquity),
       outlierMultiples: [] as string[],
     };
   });
@@ -155,11 +210,17 @@ export function comparableCompanyAnalysis(
     evRevenue: statistics(normalizedPeers.map((peer) => peer.evRevenue)),
     evEbitda: statistics(normalizedPeers.map((peer) => peer.evEbitda)),
     pe: statistics(normalizedPeers.map((peer) => peer.pe)),
+    evNtmRevenue: statistics(normalizedPeers.map((peer) => peer.evNtmRevenue)),
+    evNtmEbitda: statistics(normalizedPeers.map((peer) => peer.evNtmEbitda)),
+    ntmPe: statistics(normalizedPeers.map((peer) => peer.ntmPe)),
   };
   for (const peer of normalizedPeers) {
     if (outlier(peer.evRevenue, statisticsByMultiple.evRevenue)) peer.outlierMultiples.push('EV / Revenue');
     if (outlier(peer.evEbitda, statisticsByMultiple.evEbitda)) peer.outlierMultiples.push('EV / EBITDA');
     if (outlier(peer.pe, statisticsByMultiple.pe)) peer.outlierMultiples.push('P / E');
+    if (outlier(peer.evNtmRevenue, statisticsByMultiple.evNtmRevenue)) peer.outlierMultiples.push('EV / NTM Revenue');
+    if (outlier(peer.evNtmEbitda, statisticsByMultiple.evNtmEbitda)) peer.outlierMultiples.push('EV / NTM EBITDA');
+    if (outlier(peer.ntmPe, statisticsByMultiple.ntmPe)) peer.outlierMultiples.push('NTM P / E');
   }
   const valuationInputs: Array<['EV / Revenue' | 'EV / EBITDA' | 'P / E', MultipleStatistics]> = [
     ['EV / Revenue', statisticsByMultiple.evRevenue],
@@ -178,7 +239,7 @@ export function comparableCompanyAnalysis(
     peers: normalizedPeers,
     statistics: statisticsByMultiple,
     impliedValuations,
-    methodology: 'Comparable-company analysis: enterprise value equals market capitalization plus net debt, minority interest, and preferred stock. Multiples and summary statistics are calculated deterministically from the human-reviewed peer inputs.',
+    methodology: 'Comparable-company analysis: enterprise value equals market capitalization plus net debt, minority interest, and preferred stock. LTM and, when sourced, NTM multiples and summary statistics are calculated deterministically from the human-reviewed peer inputs.',
     caveats: [
       'Peer selection and source quality remain a human judgment; this calculator does not certify comparability.',
       'Outlier flags use the 1.5x interquartile-range rule and are a review prompt, not an automatic exclusion.',
