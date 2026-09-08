@@ -112,6 +112,7 @@ export const discoveryCandidates = pgTable(
     discoveryJson: jsonb('discovery_json').notNull(),
     decision: text('decision').notNull().default('pending'),
     rationale: text('decision_rationale'),
+    decisionJournal: jsonb('decision_journal'),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     workflowStatus: text('workflow_status').notNull().default('awaiting_review'),
     externalAnalysisRunId: text('external_analysis_run_id'),
