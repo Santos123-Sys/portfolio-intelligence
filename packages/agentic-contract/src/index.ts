@@ -170,12 +170,31 @@ export const ReportSynthesisOutput = z.object({
 }).strict();
 export type ReportSynthesisOutput = z.infer<typeof ReportSynthesisOutput>;
 
+/** Reader-facing evidence projected from the validated grounding bundle. */
+export const ReportEvidence = z.object({
+  ticker: z.string().min(1),
+  exchange: z.string().min(1),
+  currency: z.string().min(1),
+  sector: z.string().nullable(),
+  country: z.string().nullable(),
+  dataAsOf: z.string().datetime(),
+  analysisMode: AnalysisDataMode.optional(),
+  latestClose: z.number().finite().optional(),
+  riskMetrics: z.array(z.object({
+    name: z.string().min(1),
+    value: z.number().finite(),
+  }).strict()),
+  sourceUrls: z.array(z.string().url()),
+}).strict();
+export type ReportEvidence = z.infer<typeof ReportEvidence>;
+
 export const PortfolioManifest = z.object({
   portfolioId: z.string().uuid(),
   name: z.string().min(1),
   baseCurrency: z.string().min(1),
   analyses: z.array(AnalysisOutput).min(1),
   synthesis: ReportSynthesisOutput,
+  evidence: z.array(ReportEvidence).optional(),
 }).strict();
 
 export const PortfolioAnalysisManifest = z.object({
@@ -642,6 +661,26 @@ export function validateManifestAgainstRequest(
         throw new ContractValidationError(`Company identity changed for ${output.ticker}`);
       }
       validateGrounding(output, grounding.bundle);
+    }
+    if (portfolio.evidence) {
+      const expectedEvidence = new Map(request.groundingBundles
+        .filter((item) => item.portfolioId === portfolio.portfolioId)
+        .map((item) => [item.bundle.ticker, item.bundle]));
+      if (portfolio.evidence.length !== expectedEvidence.size) {
+        throw new ContractValidationError(`Manifest evidence coverage changed for ${portfolio.portfolioId}`);
+      }
+      for (const evidence of portfolio.evidence) {
+        const bundle = expectedEvidence.get(evidence.ticker);
+        if (!bundle || evidence.exchange !== bundle.exchange || evidence.currency !== bundle.currency) {
+          throw new ContractValidationError(`Manifest evidence identity changed for ${evidence.ticker}`);
+        }
+        const allowedUrls = new Set(Object.values(bundle.researchEvidence ?? {})
+          .flatMap((value) => value.split('|').map((item) => item.trim()))
+          .filter((value) => /^https?:\/\//.test(value)));
+        if (evidence.sourceUrls.some((url) => !allowedUrls.has(url))) {
+          throw new ContractValidationError(`Manifest source URL was not grounded for ${evidence.ticker}`);
+        }
+      }
     }
     validateSynthesisCoverage(portfolio.synthesis, portfolio.analyses);
   }
