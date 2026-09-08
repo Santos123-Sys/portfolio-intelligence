@@ -16,6 +16,16 @@ const EXCHANGE_INFO: Record<string, { finnhubCode: string; currency: string; cou
   BVMF: { finnhubCode: 'SA', currency: 'BRL', country: 'Brazil' },
 };
 
+function marketLabel(exchange: string): string {
+  if (exchange === 'BVMF') return 'Brazilian B3 market (BVMF)';
+  if (exchange === 'XSWX') return 'Swiss SIX market (XSWX)';
+  return exchange;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown provider error';
+}
+
 const NON_EQUITY = ['etf', 'fund', 'bond', 'index', 'currency', 'warrant', 'right'];
 
 function finite(value: unknown): number | undefined {
@@ -145,11 +155,18 @@ export async function loadDiscoveryUniverse(exchange: string, limit: number): Pr
     if (env.DISCOVERY_FALLBACK_PROVIDER === 'eodhd' && primary.name !== 'eodhd') {
       if (!env.MARKET_DATA_API_KEY) throw primaryError;
       const fallback = new EodhdDiscoveryProvider(new EodhdProvider(env.MARKET_DATA_API_KEY, getProviderGateway()));
-      const records = await fallback.getSecurityUniverse(exchange, limit);
-      if (!records.length) throw primaryError;
-      await saveUniverse(fallback.name, exchange, records);
-      return { records, provider: fallback.name, cached: false };
+      try {
+        const records = await fallback.getSecurityUniverse(exchange, limit);
+        if (!records.length) throw new Error('EODHD returned an empty security universe');
+        await saveUniverse(fallback.name, exchange, records);
+        return { records, provider: fallback.name, cached: false };
+      } catch (fallbackError) {
+        throw new Error(
+          `${marketLabel(exchange)} could not be loaded. ${primary.name}: ${errorMessage(primaryError)}. ` +
+          `EODHD fallback: ${errorMessage(fallbackError)}`
+        );
+      }
     }
-    throw primaryError;
+    throw new Error(`${marketLabel(exchange)} could not be loaded from ${primary.name}: ${errorMessage(primaryError)}`);
   }
 }
