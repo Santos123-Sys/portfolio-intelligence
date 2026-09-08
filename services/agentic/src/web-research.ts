@@ -16,7 +16,7 @@ function text(value: unknown): string { return typeof value === 'string' ? value
 
 /** Server-side qualitative evidence only: never a substitute for market data. */
 export async function researchCompany(companyName: string, ticker: string, config: WebResearchConfig): Promise<WebResearchEvidence> {
-  const query = `${companyName} ${ticker} business model strategy catalysts competitive advantage risks`;
+  const query = `${companyName} ${ticker} business activities products services customers market sector business model strategy catalysts competitive advantage risks`;
   if (config.provider === 'none' || !config.apiKey) return { query, urls: [], snippets: [] };
   if (config.provider === 'tavily') {
     const response = await fetch('https://api.tavily.com/search', {
