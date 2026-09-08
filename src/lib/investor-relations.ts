@@ -10,11 +10,16 @@ export interface InvestorRelationsFundamentals {
 const XBRL_METRICS: Record<string, string> = {
   'us-gaap:Revenues': 'revenue',
   'us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax': 'revenue',
+  'us-gaap:GrossProfit': 'gross_profit',
+  'us-gaap:OperatingIncomeLoss': 'operating_income',
   'us-gaap:NetCashProvidedByUsedInOperatingActivities': 'operating_cash_flow',
   'us-gaap:PaymentsToAcquirePropertyPlantAndEquipment': 'capital_expenditure',
   'us-gaap:CashAndCashEquivalentsAtCarryingValue': 'cash_and_equivalents',
   'us-gaap:LongTermDebt': 'total_debt',
   'us-gaap:LongTermDebtNoncurrent': 'total_debt',
+  'us-gaap:StockholdersEquity': 'total_equity',
+  'us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest': 'total_equity',
+  'us-gaap:InterestExpenseNonoperating': 'interest_expense',
   'us-gaap:NetIncomeLoss': 'net_income',
   'dei:EntityCommonStockSharesOutstanding': 'shares_outstanding',
 };
