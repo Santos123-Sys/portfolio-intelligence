@@ -96,7 +96,7 @@ interface Candidate {
     groundedIn: string[] | null;
     informationGaps: string[] | null;
   } | null;
-  valuation: { resultJson: { currency: string; fairValuePerShare: number } } | null;
+  valuation: { resultJson: { currency: string; fairValuePerShare?: number } } | null;
 }
 
 function friendlyAnalysisStatus(candidate: Candidate): {
@@ -571,17 +571,14 @@ export default function AIStockDiscoveryPage() {
                       </div>
                       <a className="action-button inline-action" href={candidate.reportUrl} target="_blank" rel="noreferrer">Open PDF report</a>
                     </div>}
-                    {candidate.dcfLocked ? (
-                      <p className="caveat"><strong>DCF locked.</strong> {candidate.dcfLockReason}</p>
-                    ) : <>
-                      <button className="action-button" type="button" onClick={() => setValuationCandidateId((current) => current === candidate.id ? null : candidate.id)}>
-                        {valuationCandidateId === candidate.id ? 'Close valuation' : candidate.valuation ? 'Review valuation' : 'Prepare DCF valuation'}
-                      </button>
-                      {candidate.valuation && <p className="security-state">Latest fair-value scenario: {candidate.valuation.resultJson.currency} {candidate.valuation.resultJson.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })} per share.</p>}
-                      {valuationCandidateId === candidate.id && <ValuationWorkbench candidateId={candidate.id} onSaved={() => {
-                        if (selectedRunId) void loadCandidates(selectedRunId);
-                      }} />}
-                    </>}
+                    {candidate.dcfLocked && <p className="caveat"><strong>DCF locked.</strong> {candidate.dcfLockReason}</p>}
+                    <button className="action-button" type="button" onClick={() => setValuationCandidateId((current) => current === candidate.id ? null : candidate.id)}>
+                      {valuationCandidateId === candidate.id ? 'Close valuation' : candidate.valuation ? 'Review valuation workspace' : 'Open valuation workspace'}
+                    </button>
+                    {candidate.valuation && typeof candidate.valuation.resultJson.fairValuePerShare === 'number' && <p className="security-state">Latest DCF fair-value scenario: {candidate.valuation.resultJson.currency} {candidate.valuation.resultJson.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })} per share.</p>}
+                    {valuationCandidateId === candidate.id && <ValuationWorkbench candidateId={candidate.id} onSaved={() => {
+                      if (selectedRunId) void loadCandidates(selectedRunId);
+                    }} />}
                     <details className="analysis-evidence"><summary>Audit and processing details</summary>
                       <p>Status: {candidate.analysisRunStatus ?? candidate.workflowStatus}</p>
                       {candidate.externalAnalysisRunId && <p>Internal reference: <code>{candidate.externalAnalysisRunId}</code></p>}
