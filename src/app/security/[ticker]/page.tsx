@@ -51,6 +51,16 @@ interface Analysis {
   keyCatalysts: string[] | null;
   keyRisks: string[] | null;
   thesisBreakers: string[] | null;
+  researchFramework: {
+    coverageRationale: string;
+    marketContext: string[];
+    sectorDrivers: string[];
+    companyDrivers: string[];
+    criticalValuationDrivers: string[];
+    monitoringTriggers: string[];
+    evidenceQuality: string;
+    scenarioReadiness: string;
+  } | null;
   confidenceScore: number;
   groundedIn: string[] | null;
   analysisTimestamp: string;
@@ -248,6 +258,22 @@ export default function SecurityDetailPage({ params }: { params: Promise<{ ticke
               <p className="note">Catalysts: {(latestAnalysis.keyCatalysts ?? []).join(' · ') || '—'}</p>
               <p className="note">Risks: {(latestAnalysis.keyRisks ?? []).join(' · ') || '—'}</p>
               <p className="caveat">Thesis breakers: {(latestAnalysis.thesisBreakers ?? []).join(' · ') || 'none'}</p>
+              {latestAnalysis.researchFramework && <div className="research-framework">
+                <div className="research-framework-heading">
+                  <div>
+                    <h4>Research framework</h4>
+                    <p>Coverage rationale, drivers, and monitoring conditions.</p>
+                  </div>
+                  <div className="research-framework-badges">
+                    <span className="badge">Evidence: {latestAnalysis.researchFramework.evidenceQuality.replaceAll('_', ' ')}</span>
+                    <span className="badge">Scenarios: {latestAnalysis.researchFramework.scenarioReadiness.replaceAll('_', ' ')}</span>
+                  </div>
+                </div>
+                <p><strong>Coverage rationale:</strong> {latestAnalysis.researchFramework.coverageRationale}</p>
+                <p className="note"><strong>Sector drivers:</strong> {latestAnalysis.researchFramework.sectorDrivers.join(' · ') || 'Not evidenced'}</p>
+                <p className="note"><strong>Company drivers:</strong> {latestAnalysis.researchFramework.companyDrivers.join(' · ') || 'Not evidenced'}</p>
+                <p className="note"><strong>Monitoring triggers:</strong> {latestAnalysis.researchFramework.monitoringTriggers.join(' · ')}</p>
+              </div>}
               <p className="note">Confidence: {(latestAnalysis.confidenceScore * 100).toFixed(0)}%</p>
               <p className="note">Analyzed: {new Date(latestAnalysis.analysisTimestamp).toLocaleString()}</p>
               <p className="note">Thesis version: {latestAnalysis.thesisVersionId}</p>
