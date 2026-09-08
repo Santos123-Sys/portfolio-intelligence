@@ -11,16 +11,17 @@ import { useEffect, useState } from 'react';
 import { usePortfolioBreadcrumb } from '@/lib/portfolio-context';
 
 const WORKFLOW_NAV = [
-  ['/', 'Overview'],
+  ['/how-it-works', 'How it works'],
   ['/investment-thesis', '1. Thesis'],
   ['/ai-stock-discovery', '2. Discover'],
   ['/positions', '3. Portfolio'],
-  ['/risk', 'Monitor'],
 ] as const;
 
 const EXTENDED_NAV = [
   ['/portfolio-setup', 'Portfolio setup & manual holdings'],
   ['/allocation', 'Allocation'],
+  ['/risk', 'Portfolio risk'],
+  ['/research-history', 'Research history'],
   ['/intelligence', 'AI Feed'],
   ['/decisions', 'Decision Log'],
   ['/candidates', 'Candidate records'],
