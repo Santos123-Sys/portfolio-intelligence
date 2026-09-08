@@ -15,6 +15,9 @@ export interface ComparablePeerInput {
   operatingIncome?: number;
   totalEquity?: number;
   interestExpense?: number;
+  cashAndEquivalents?: number;
+  incomeTaxExpense?: number;
+  preTaxIncome?: number;
   ntmRevenue?: number;
   ntmEbitda?: number;
   ntmNetIncome?: number;
@@ -65,6 +68,7 @@ export interface ComparableResult {
     priceToBook: number | null;
     interestCoverage: number | null;
     debtToEquity: number | null;
+    roic: number | null;
     outlierMultiples: string[];
   }>;
   statistics: Record<'evRevenue' | 'evEbitda' | 'pe' | 'evNtmRevenue' | 'evNtmEbitda' | 'ntmPe', MultipleStatistics>;
@@ -120,6 +124,21 @@ function multiple(value: number, denominator: number | undefined): number | null
 
 function ratio(numerator: number | undefined, denominator: number | undefined): number | null {
   return numerator != null && denominator != null && denominator > 0 ? numerator / denominator : null;
+}
+
+function returnOnInvestedCapital(
+  operatingIncome: number | undefined,
+  incomeTaxExpense: number | undefined,
+  preTaxIncome: number | undefined,
+  totalDebt: number | undefined,
+  totalEquity: number | undefined,
+  cashAndEquivalents: number | undefined
+): number | null {
+  if (operatingIncome == null || incomeTaxExpense == null || preTaxIncome == null || preTaxIncome <= 0 || totalDebt == null || totalEquity == null || cashAndEquivalents == null) return null;
+  const effectiveTaxRate = incomeTaxExpense / preTaxIncome;
+  const investedCapital = totalDebt + totalEquity - cashAndEquivalents;
+  if (!Number.isFinite(effectiveTaxRate) || effectiveTaxRate < 0 || effectiveTaxRate > 1 || investedCapital <= 0) return null;
+  return operatingIncome * (1 - effectiveTaxRate) / investedCapital;
 }
 
 function growth(next: number | undefined, current: number | undefined): number | null {
@@ -182,6 +201,9 @@ export function comparableCompanyAnalysis(
       operatingIncome: finite('operating income', peer.operatingIncome),
       totalEquity: finite('total equity', peer.totalEquity),
       interestExpense: finite('interest expense', peer.interestExpense),
+      cashAndEquivalents: finite('cash and equivalents', peer.cashAndEquivalents),
+      incomeTaxExpense: finite('income tax expense', peer.incomeTaxExpense),
+      preTaxIncome: finite('pre-tax income', peer.preTaxIncome),
       ntmRevenue: finite('NTM revenue', peer.ntmRevenue),
       ntmEbitda: finite('NTM EBITDA', peer.ntmEbitda),
       ntmNetIncome: finite('NTM net income', peer.ntmNetIncome),
@@ -203,6 +225,7 @@ export function comparableCompanyAnalysis(
       priceToBook: multiple(marketCapitalization, peer.totalEquity),
       interestCoverage: ratio(peer.operatingIncome, peer.interestExpense),
       debtToEquity: ratio(peer.totalDebt, peer.totalEquity),
+      roic: returnOnInvestedCapital(peer.operatingIncome, peer.incomeTaxExpense, peer.preTaxIncome, peer.totalDebt, peer.totalEquity, peer.cashAndEquivalents),
       outlierMultiples: [] as string[],
     };
   });
