@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import {
   AgenticRunRequest,
   DiscoveryCandidate,
@@ -39,6 +39,29 @@ function uniqueBy<T>(rows: T[], key: (row: T) => string): T[] {
     seen.add(value);
     return true;
   });
+}
+
+type CandidateIdentity = {
+  portfolioId: string;
+  exchange: string;
+  ticker: string;
+};
+
+/**
+ * A rejection is a user decision, not a transient visual state. Keep it from
+ * being rediscovered for the same portfolio and security identity on a later
+ * run. The original record remains in Research history for auditability.
+ */
+export function candidateIdentityKey(candidate: CandidateIdentity): string {
+  return [candidate.portfolioId, candidate.exchange.trim().toUpperCase(), candidate.ticker.trim().toUpperCase()].join('::');
+}
+
+export function excludePreviouslyRejectedCandidates<T extends CandidateIdentity>(
+  candidates: T[],
+  previouslyRejected: Iterable<CandidateIdentity>
+): T[] {
+  const rejectedKeys = new Set(Array.from(previouslyRejected, candidateIdentityKey));
+  return candidates.filter((candidate) => !rejectedKeys.has(candidateIdentityKey(candidate)));
 }
 
 export async function buildDiscoveryRunRequest(
@@ -195,7 +218,22 @@ export async function synchronizeDiscoveryRun(
       errorMessage: null,
       completedAt: new Date(),
     }).where(eq(externalDiscoveryRuns.id, local.id)).returning();
-    for (const candidate of result.candidates) {
+    const portfolioIds = [...new Set(result.candidates.map((candidate) => candidate.portfolioId))];
+    const priorRejected = portfolioIds.length
+      ? await tx.select({
+        portfolioId: discoveryCandidates.portfolioId,
+        exchange: discoveryCandidates.exchange,
+        ticker: discoveryCandidates.ticker,
+      }).from(discoveryCandidates).where(and(
+        eq(discoveryCandidates.ownerId, ownerId),
+        eq(discoveryCandidates.decision, 'rejected'),
+        inArray(discoveryCandidates.portfolioId, portfolioIds),
+        ne(discoveryCandidates.runId, local.id)
+      ))
+      : [];
+    const candidatesToPersist = excludePreviouslyRejectedCandidates(result.candidates, priorRejected);
+
+    for (const candidate of candidatesToPersist) {
       await tx.insert(discoveryCandidates).values({
         ownerId,
         runId: local.id,
