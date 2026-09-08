@@ -20,6 +20,7 @@ const WORKFLOW_NAV = [
 const EXTENDED_NAV = [
   ['/portfolio-setup', 'Portfolio setup & manual holdings'],
   ['/allocation', 'Allocation'],
+  ['/governance', 'Investment control'],
   ['/risk', 'Portfolio risk'],
   ['/research-history', 'Research history'],
   ['/intelligence', 'AI Feed'],
