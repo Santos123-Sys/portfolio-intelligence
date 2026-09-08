@@ -4,7 +4,7 @@ import {
   GroundingBundle as GroundingBundleSchema,
   type GroundingBundle,
 } from '../src/lib/integrations/analysis-contract';
-import { validateGrounding, diffAnalyses } from '../src/lib/integrations/analysis-validation';
+import { validateAnalysisSemantics, validateGrounding, diffAnalyses } from '../src/lib/integrations/analysis-validation';
 
 const bundle: GroundingBundle = {
   ticker: 'NESN', companyName: 'Nestle', exchange: 'XSWX', currency: 'CHF',
@@ -24,6 +24,16 @@ const valid: AnalysisOutput = {
   keyCatalysts: ['Pricing power'], keyRisks: ['FX translation'],
   thesisBreakers: ['Sustained margin compression below 15%'],
   confidenceScore: 0.72,
+  researchFramework: {
+    coverageRationale: 'Defensive consumer-staples issuer aligned with the portfolio mandate.',
+    marketContext: [],
+    sectorDrivers: ['Pricing power'],
+    companyDrivers: ['Distribution resilience'],
+    criticalValuationDrivers: ['Margin resilience'],
+    monitoringTriggers: ['Sustained margin compression below 15%'],
+    evidenceQuality: 'sufficient',
+    scenarioReadiness: 'driver_ready',
+  },
   groundedIn: ['Sharpe', 'MaxDrawdown', 'peRatio'],
   informationGaps: ['No segment-level revenue supplied'],
 };
@@ -49,6 +59,14 @@ describe('output schema', () => {
 
   it('rejects a non-integer score', () => {
     expect(AnalysisOutput.safeParse({ ...valid, qualityScore: 88.5 }).success).toBe(false);
+  });
+
+  it('does not permit a driver-ready model when the analysis says DCF is locked', () => {
+    expect(() => validateAnalysisSemantics({
+      ...valid,
+      researchFramework: { ...valid.researchFramework, scenarioReadiness: 'driver_ready' },
+      informationGaps: ['Structured financial statements unavailable; DCF locked'],
+    })).toThrow(/driver_ready scenarios/);
   });
 });
 
