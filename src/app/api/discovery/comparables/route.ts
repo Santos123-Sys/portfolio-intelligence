@@ -15,12 +15,21 @@ const peerSchema = z.object({
   ticker: z.string().trim().min(1).max(30),
   marketCapitalization: z.number().positive(),
   netDebt: z.number().finite(),
+  totalDebt: z.number().finite().optional(),
   minorityInterest: z.number().finite().optional(),
   preferredStock: z.number().finite().optional(),
   revenue: z.number().finite().optional(),
   ebitda: z.number().finite().optional(),
   netIncome: z.number().finite().optional(),
+  grossProfit: z.number().finite().optional(),
+  operatingIncome: z.number().finite().optional(),
+  totalEquity: z.number().finite().optional(),
+  interestExpense: z.number().finite().optional(),
+  ntmRevenue: z.number().finite().optional(),
+  ntmEbitda: z.number().finite().optional(),
+  ntmNetIncome: z.number().finite().optional(),
   sourceUrl: z.string().url(),
+  forecastSourceUrl: z.string().url().optional(),
 }).strict();
 
 const requestSchema = z.object({
@@ -113,7 +122,7 @@ export async function POST(req: Request) {
       status: 'human_confirmed',
       assumptionsJson: { target: data.target, peers: parsed.data.peers, dataAsOf: data.dataAsOf },
       resultJson: result,
-      sourceReferences: parsed.data.peers.map((peer) => peer.sourceUrl),
+      sourceReferences: parsed.data.peers.flatMap((peer) => [peer.sourceUrl, peer.forecastSourceUrl].filter((url): url is string => Boolean(url))),
       approvedBy: session.auth.email,
     }).returning();
     return NextResponse.json({ scenario, result }, { status: 201 });
