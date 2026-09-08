@@ -384,7 +384,29 @@ export const decisionLog = pgTable('decision_log', {
   outcome: text('outcome'),
   relatedSecurityId: uuid('related_security_id').references(() => securities.id),
   relatedPortfolioId: uuid('related_portfolio_id').references(() => portfolios.id),
+  /** Immutable provenance snapshot; legacy rows can remain null. */
+  metadata: jsonb('metadata').$type<{
+    thesisVersionId?: string;
+    analysisId?: string;
+    valuationScenarioId?: string;
+    evidenceAsOf?: string;
+    journalVersion?: number;
+  }>(),
 });
+
+/** Owner-controlled baseline guardrails for review, never automated trade rules. */
+export const governancePolicies = pgTable('governance_policies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  maxPositionWeight: real('max_position_weight').notNull().default(0.15),
+  maxSectorWeight: real('max_sector_weight').notNull().default(0.35),
+  maxCountryWeight: real('max_country_weight').notNull().default(0.40),
+  minimumHoldings: integer('minimum_holdings').notNull().default(5),
+  stalePriceDays: integer('stale_price_days').notNull().default(7),
+  staleResearchDays: integer('stale_research_days').notNull().default(90),
+  reviewIntervalDays: integer('review_interval_days').notNull().default(30),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ ownerIdx: uniqueIndex('governance_policies_owner_idx').on(t.ownerId) }));
 
 /**
  * ADDITION. Distributed lock, replacing the Postgres advisory lock the Replit
