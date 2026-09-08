@@ -20,6 +20,9 @@ export interface ComparablePeerResearch extends ComparablePeerIdentity {
   operatingIncome?: number;
   totalEquity?: number;
   interestExpense?: number;
+  cashAndEquivalents?: number;
+  incomeTaxExpense?: number;
+  preTaxIncome?: number;
   ntmRevenue?: number;
   ntmEbitda?: number;
   ntmNetIncome?: number;
@@ -136,6 +139,9 @@ export async function researchComparablePeer(identity: ComparablePeerIdentity): 
     output.operatingIncome = filing.fundamentals.operating_income;
     output.totalEquity = filing.fundamentals.total_equity;
     output.interestExpense = filing.fundamentals.interest_expense;
+    output.cashAndEquivalents = filing.fundamentals.cash_and_equivalents;
+    output.incomeTaxExpense = filing.fundamentals.income_tax_expense;
+    output.preTaxIncome = filing.fundamentals.pre_tax_income;
     const debt = filing.fundamentals.total_debt;
     const cash = filing.fundamentals.cash_and_equivalents;
     output.totalDebt = debt;
@@ -168,6 +174,9 @@ export async function researchComparablePeer(identity: ComparablePeerIdentity): 
       output.operatingIncome ??= finite(fundamentals.operating_income);
       output.totalEquity ??= finite(fundamentals.total_equity);
       output.interestExpense ??= finite(fundamentals.interest_expense);
+      output.cashAndEquivalents ??= finite(fundamentals.cash_and_equivalents);
+      output.incomeTaxExpense ??= finite(fundamentals.income_tax_expense);
+      output.preTaxIncome ??= finite(fundamentals.pre_tax_income);
       const debt = finite(fundamentals.total_debt);
       const cash = finite(fundamentals.cash_and_equivalents);
       if (output.netDebt == null && debt != null && cash != null) output.netDebt = debt - cash;
