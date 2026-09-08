@@ -38,6 +38,17 @@ interface RiskMetric {
   caveat: string | null;
 }
 
+interface ResearchFramework {
+  coverageRationale: string;
+  marketContext: string[];
+  sectorDrivers: string[];
+  companyDrivers: string[];
+  criticalValuationDrivers: string[];
+  monitoringTriggers: string[];
+  evidenceQuality: 'limited' | 'developing' | 'sufficient';
+  scenarioReadiness: 'not_ready' | 'qualitative_only' | 'driver_ready';
+}
+
 interface Candidate {
   id: string;
   runId: string;
@@ -81,6 +92,7 @@ interface Candidate {
     keyCatalysts: string[] | null;
     keyRisks: string[] | null;
     thesisBreakers: string[] | null;
+    researchFramework: ResearchFramework | null;
     groundedIn: string[] | null;
     informationGaps: string[] | null;
   } | null;
@@ -135,6 +147,10 @@ function friendlyRiskMetric(metricName: string): string {
     VaR_95_1d_Parametric: '1-day VaR (parametric, 95%)',
   };
   return labels[metricName] ?? metricName.replaceAll('_', ' ');
+}
+
+function frameworkLabel(value: string): string {
+  return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 /**
@@ -528,6 +544,26 @@ export default function AIStockDiscoveryPage() {
                     <p className="caveat"><strong>Principal risks:</strong> {(candidate.analysis.keyRisks ?? []).join(' · ')}</p>
                     <p className="caveat"><strong>Thesis breakers:</strong> {(candidate.analysis.thesisBreakers ?? []).join(' · ')}</p>
                     <p className="note"><strong>Information gaps:</strong> {(candidate.analysis.informationGaps ?? []).join(' · ') || 'None recorded'}</p>
+                    {candidate.analysis.researchFramework && <section className="research-framework" aria-label="Research framework">
+                      <div className="research-framework-heading">
+                        <div>
+                          <h4>Research framework</h4>
+                          <p>How this security fits the coverage process and what must be monitored next.</p>
+                        </div>
+                        <div className="research-framework-badges">
+                          <span className="badge">Evidence: {frameworkLabel(candidate.analysis.researchFramework.evidenceQuality)}</span>
+                          <span className="badge">Scenarios: {frameworkLabel(candidate.analysis.researchFramework.scenarioReadiness)}</span>
+                        </div>
+                      </div>
+                      <p><strong>Coverage rationale:</strong> {candidate.analysis.researchFramework.coverageRationale}</p>
+                      <div className="research-framework-grid">
+                        <div><strong>Market context</strong><p>{candidate.analysis.researchFramework.marketContext.join(' · ') || 'Not evidenced in the current research pack.'}</p></div>
+                        <div><strong>Sector drivers</strong><p>{candidate.analysis.researchFramework.sectorDrivers.join(' · ') || 'Not evidenced in the current research pack.'}</p></div>
+                        <div><strong>Company drivers</strong><p>{candidate.analysis.researchFramework.companyDrivers.join(' · ') || 'Not evidenced in the current research pack.'}</p></div>
+                        <div><strong>Valuation drivers</strong><p>{candidate.analysis.researchFramework.criticalValuationDrivers.join(' · ') || 'Not ready without further validated financial evidence.'}</p></div>
+                      </div>
+                      <p className="note"><strong>Monitoring triggers:</strong> {candidate.analysis.researchFramework.monitoringTriggers.join(' · ')}</p>
+                    </section>}
                     {candidate.reportUrl && <div className="analysis-report-cta">
                       <div>
                         <strong>Professional investment report</strong>
