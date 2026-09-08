@@ -354,6 +354,11 @@ export async function rejectOrWatchCandidate(
       alternativesConsidered: journal ? decisionJournalAuditText(journal) : null,
       outcome: decision === 'rejected' ? 'Excluded from future discovery outputs for this portfolio.' : 'Kept for later review.',
       relatedPortfolioId: row.portfolio.id,
+      metadata: {
+        thesisVersionId: row.run.thesisVersionId,
+        evidenceAsOf: row.candidate.updatedAt.toISOString(),
+        journalVersion: journal ? 1 : undefined,
+      },
     });
     return updated;
   });
@@ -400,6 +405,11 @@ export async function approveCandidateForAnalysis(ownerId: string, candidateId: 
       alternativesConsidered: decisionJournalAuditText(journal),
       outcome: 'Financial analysis and valuation preparation requested.',
       relatedPortfolioId: row.portfolio.id,
+      metadata: {
+        thesisVersionId: row.run.thesisVersionId,
+        evidenceAsOf: row.candidate.updatedAt.toISOString(),
+        journalVersion: 1,
+      },
     });
     return { candidate };
   });
