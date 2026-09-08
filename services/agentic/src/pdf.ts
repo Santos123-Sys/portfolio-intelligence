@@ -282,6 +282,18 @@ export async function renderReportPdf(
         eyebrow,
         { size: 9 }
       );
+      doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('BUSINESS ACTIVITIES', margin, doc.y);
+      bullets(
+        analysis.researchFramework.companyDrivers,
+        eyebrow,
+        'The supplied research did not document the company\'s activities, products, services, customers, or revenue model.'
+      );
+      doc.font('ReportBold').fontSize(8).fillColor(palette.navy).text('MARKET CONTEXT', margin, doc.y);
+      bullets(
+        [...analysis.researchFramework.marketContext, ...analysis.researchFramework.sectorDrivers],
+        eyebrow,
+        'The supplied research did not document the relevant market, customer environment, or sector economics.'
+      );
       if (evidence?.analysisMode === 'limited_research_risk') {
         paragraph('Research scope: limited-data research and price-risk assessment. Structured financial statements were not supplied, so DCF valuation is intentionally locked.', eyebrow, { muted: true, size: 8.8 });
       }

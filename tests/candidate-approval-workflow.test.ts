@@ -42,4 +42,9 @@ describe('candidate approval to analysis workflow', () => {
     expect(page).not.toContain('`Run: ${candidate.externalAnalysisRunId}');
     expect(route).toContain('/api/integrations/agentic/reports?externalRunId=');
   });
+
+  it('removes rejected candidates from the active review surface while retaining history', () => {
+    expect(page).toContain("setCandidates((current) => current.filter((candidate) => candidate.id !== candidateId))");
+    expect(route).toContain("ne(discoveryCandidates.decision, 'rejected')");
+  });
 });

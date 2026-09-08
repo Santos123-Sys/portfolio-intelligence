@@ -1,5 +1,5 @@
 import { after, NextResponse } from 'next/server';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import { assertSameOrigin } from '@/lib/auth';
 import { authenticateRequest } from '@/lib/api-auth';
@@ -54,6 +54,9 @@ export async function GET(req: Request) {
     .where(and(
       eq(discoveryCandidates.ownerId, session.auth.userId),
       eq(discoveryCandidates.runId, parsedRunId.data),
+      // Rejected ideas remain available in Research history for auditability,
+      // but should not pollute the active human-review surface.
+      ne(discoveryCandidates.decision, 'rejected'),
       isNull(thesisVersions.excludedAt)
     ))
     .orderBy(desc(discoveryCandidates.createdAt));

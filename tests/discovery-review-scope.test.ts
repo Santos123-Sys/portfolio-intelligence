@@ -12,6 +12,7 @@ describe('run-scoped candidate review', () => {
     expect(candidateRoute).toContain("searchParams.get('runId')");
     expect(candidateRoute).toContain("error: 'A valid discovery runId is required'");
     expect(candidateRoute).toContain('eq(discoveryCandidates.runId, parsedRunId.data)');
+    expect(candidateRoute).toContain("ne(discoveryCandidates.decision, 'rejected')");
   });
 
   it('loads candidates only after the user chooses a specific discovery run', () => {
