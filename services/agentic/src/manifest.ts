@@ -6,8 +6,32 @@ import {
   validateManifestAgainstRequest,
   type AgenticRunRequest,
   type AnalysisOutput,
+  type GroundingBundle,
   type ReportSynthesisOutput,
 } from '@portfolio-intelligence/agentic-contract';
+
+function readerEvidence(bundle: GroundingBundle) {
+  const sourceUrls = [...new Set(Object.values(bundle.researchEvidence ?? {})
+    .flatMap((value) => value.split('|').map((item) => item.trim()))
+    .filter((value) => /^https?:\/\//.test(value)))];
+  const latestClose = Object.entries(bundle.computedMetrics)
+    .find(([key]) => key.startsWith('marketPrice:close:'))?.[1];
+  const riskMetrics = Object.entries(bundle.computedMetrics)
+    .filter(([key]) => key.startsWith('securityRiskMetric:'))
+    .map(([key, value]) => ({ name: key.split(':')[1] ?? key, value }));
+  return {
+    ticker: bundle.ticker,
+    exchange: bundle.exchange,
+    currency: bundle.currency,
+    sector: bundle.sector,
+    country: bundle.country,
+    dataAsOf: bundle.dataAsOf,
+    analysisMode: bundle.analysisMode,
+    ...(latestClose == null ? {} : { latestClose }),
+    riskMetrics,
+    sourceUrls,
+  };
+}
 
 export function createExternalId(kind: 'run' | 'extraction' | 'discovery', now = new Date()): string {
   const timestamp = now.toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
@@ -38,6 +62,9 @@ export function buildManifest(
         baseCurrency: portfolio.baseCurrency,
         analyses: result.analyses,
         synthesis: result.synthesis,
+        evidence: request.groundingBundles
+          .filter((item) => item.portfolioId === portfolio.id)
+          .map((item) => readerEvidence(item.bundle)),
       };
     }),
   });
