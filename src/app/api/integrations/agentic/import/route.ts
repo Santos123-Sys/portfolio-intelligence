@@ -217,6 +217,7 @@ export async function POST(req: Request) {
               keyRisks: output.keyRisks,
               thesisBreakers: output.thesisBreakers,
               confidenceScore: output.confidenceScore,
+              researchFramework: output.researchFramework,
               groundedIn: output.groundedIn,
               informationGaps: output.informationGaps,
               externalRunId: run.id,
