@@ -145,6 +145,13 @@ describe('synthesis and manifest integrity', () => {
     const second = buildManifest(runRequest, [{ portfolioId, analyses: [analysis], synthesis }], generatedAt);
     expect(first).toEqual(second);
     expect(hashManifest(first)).toBe(hashManifest(second));
+    expect(first.portfolios[0].evidence).toMatchObject([{
+      ticker: 'NESN',
+      exchange: 'XSWX',
+      currency: 'CHF',
+      riskMetrics: [],
+      sourceUrls: [],
+    }]);
     expect(hashManifest({ ...second, thesisVersion: 2 })).not.toBe(hashManifest(second));
   });
 });
