@@ -266,7 +266,11 @@ export default function AIStockDiscoveryPage() {
       });
       const body = await response.json().catch(() => ({})) as { candidate?: Partial<Candidate> & { id: string }; error?: string };
       if (!response.ok) throw new Error(body.error ?? `Candidate decision failed (${response.status})`);
-      if (body.candidate) {
+      if (decision === 'rejected') {
+        // Rejected candidates are intentionally removed from the active
+        // review list immediately. They remain auditable in Research history.
+        setCandidates((current) => current.filter((candidate) => candidate.id !== candidateId));
+      } else if (body.candidate) {
         setCandidates((current) => current.map((candidate) =>
           candidate.id === candidateId ? { ...candidate, ...body.candidate } : candidate
         ));
@@ -394,13 +398,13 @@ export default function AIStockDiscoveryPage() {
         <div className="section-heading candidate-review-heading">
           <div>
             <h2 className="section-title">2. Human candidate review</h2>
-            {selectedRun && <p className="note">Showing only the {selectedRun.candidateCount} candidates found by the run requested {new Date(selectedRun.requestedAt).toLocaleString()}.</p>}
+            {selectedRun && <p className="note">Showing the candidates found by the run requested {new Date(selectedRun.requestedAt).toLocaleString()}. Rejected ideas are hidden here and remain available in Research history.</p>}
           </div>
           {selectedRunId && <button className="action-button" type="button" onClick={() => setSelectedRunId(null)}>Hide candidates</button>}
         </div>
         {!selectedRunId ? <div className="card"><p className="note">Candidate results are hidden. Review the latest run above to open its shortlist.</p></div>
           : candidateListLoading ? <div className="card"><p className="note">Loading this run&apos;s candidates…</p></div>
-          : candidates.length === 0 ? <div className="card"><p className="note">This market-research run returned no candidates.</p></div> : (
+          : candidates.length === 0 ? <div className="card"><p className="note">No active candidates remain in this run. Rejected ideas are hidden from this screen and retained in Research history.</p></div> : (
           <div className="candidate-list">{candidates.map((candidate) => {
             const discovery = candidate.discoveryJson;
             const canDecide = candidate.decision === 'pending' || candidate.decision === 'watchlist';
