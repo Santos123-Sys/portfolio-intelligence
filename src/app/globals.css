@@ -184,6 +184,14 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
 .confirmation-row { display: flex; gap: 0.55rem; align-items: flex-start; color: var(--muted); font-size: 0.75rem; }
 .confirmation-row input { margin-top: 0.2rem; }
 .valuation-result { margin-top: 0.8rem; padding: 0.8rem; border: 1px solid var(--accent); border-radius: 7px; }
+.valuation-panel > h4, .comps-panel > h4 { margin: 1.1rem 0 0.35rem; font-size: 0.9rem; }
+.comps-panel { margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.dcf-unavailable { margin-top: 1rem; padding: 0.8rem; border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--border)); border-radius: 7px; }
+.primary-source-cta { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 0.9rem; padding: 0.8rem; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); }
+.primary-source-cta p { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.78rem; }
+.comps-input-table input { min-width: 92px; width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 5px; color: var(--text); padding: 0.45rem; }
+.comps-input-table td:last-child input { min-width: 180px; }
+.secondary-button { margin: 0.75rem 0.5rem 0.15rem 0; padding: 0.5rem 0.7rem; background: transparent; color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; cursor: pointer; }
 .sensitivity-table { margin-top: 1rem; }
 .sensitivity-table h4 { margin: 0 0 0.5rem; font-size: 0.8rem; }
 .sensitivity-table td, .sensitivity-table th { text-align: right; }
@@ -527,6 +535,11 @@ textarea {
   }
 
   .research-pipeline-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .primary-source-cta {
     align-items: stretch;
     flex-direction: column;
   }

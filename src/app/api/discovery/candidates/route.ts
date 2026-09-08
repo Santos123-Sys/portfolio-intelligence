@@ -9,6 +9,7 @@ import {
   discoveryCandidates,
   externalAgenticRuns,
   externalDiscoveryRuns,
+  marketDataObservations,
   securityRiskSnapshots,
   valuationScenarios,
 } from '@/lib/db/workflow-schema';
@@ -73,6 +74,7 @@ export async function GET(req: Request) {
     : [];
   const analysisByRunId = new Map(analyses.map((analysis) => [analysis.externalRunId!, analysis]));
   const candidateIds = rows.map((row) => row.candidate.id);
+  const securityIds = rows.flatMap((row) => row.candidate.securityId ? [row.candidate.securityId] : []);
   const [riskRows, valuationRows] = candidateIds.length ? await Promise.all([
     db.select().from(securityRiskSnapshots).where(and(
       eq(securityRiskSnapshots.ownerId, session.auth.userId),
@@ -83,6 +85,21 @@ export async function GET(req: Request) {
       inArray(valuationScenarios.candidateId, candidateIds)
     )).orderBy(desc(valuationScenarios.createdAt)),
   ]) : [[], []];
+  const primarySourceRows = securityIds.length ? await db.select({
+    securityId: marketDataObservations.securityId,
+    metricName: marketDataObservations.metricName,
+  }).from(marketDataObservations).where(and(
+    inArray(marketDataObservations.securityId, securityIds),
+    eq(marketDataObservations.observationType, 'fundamental'),
+    eq(marketDataObservations.status, 'OK'),
+    eq(marketDataObservations.provider, 'investor-relations')
+  )) : [];
+  const primaryMetricsBySecurity = new Map<string, Set<string>>();
+  for (const row of primarySourceRows) {
+    const metrics = primaryMetricsBySecurity.get(row.securityId) ?? new Set<string>();
+    metrics.add(row.metricName);
+    primaryMetricsBySecurity.set(row.securityId, metrics);
+  }
 
   const candidates = rows.map((row) => {
     const run = row.candidate.externalAnalysisRunId
@@ -96,7 +113,9 @@ export async function GET(req: Request) {
       : row.candidate.decision === 'approved'
         ? LIMITED_RESEARCH_RISK_MODE
         : null;
-    const dcfLocked = isDcfLocked(analysisMode);
+    const primaryDcfReady = row.candidate.securityId != null && ['free_cash_flow', 'total_debt', 'cash_and_equivalents', 'shares_outstanding']
+      .every((metric) => primaryMetricsBySecurity.get(row.candidate.securityId!)?.has(metric));
+    const dcfLocked = isDcfLocked(analysisMode) && !primaryDcfReady;
     return {
       ...row.candidate,
       portfolioName: row.portfolioName,

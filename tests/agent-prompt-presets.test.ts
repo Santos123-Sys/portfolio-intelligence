@@ -19,8 +19,10 @@ describe('source-derived reasoning policies', () => {
   it('keeps DCF and risk as deterministic engine policies rather than LLM agent kinds', () => {
     expect(DETERMINISTIC_ENGINE_POLICIES.map((policy) => policy.sourceFile)).toEqual([
       '02_dcf_prompt (1).md',
+      'user-supplied comparable-company prompt',
       '05_risk_engine_prompt.md',
     ]);
+    expect(DETERMINISTIC_ENGINE_POLICIES[1].policy).toContain('six to ten peers');
     expect(AgentKind.options).not.toContain('valuation_engine');
     expect(AgentKind.options).not.toContain('risk_engine');
   });
