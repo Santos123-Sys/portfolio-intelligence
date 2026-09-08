@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
@@ -42,7 +42,8 @@ export async function GET(req: Request) {
     .innerJoin(portfolios, eq(discoveryCandidates.portfolioId, portfolios.id))
     .where(and(
       eq(discoveryCandidates.ownerId, session.auth.userId),
-      eq(discoveryCandidates.runId, latestRun.id)
+      eq(discoveryCandidates.runId, latestRun.id),
+      ne(discoveryCandidates.decision, 'rejected')
     ))
     .orderBy(desc(discoveryCandidates.createdAt));
 
