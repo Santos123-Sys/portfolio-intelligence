@@ -77,6 +77,15 @@ interface Candidate {
     provider: string;
     sourceUrl: string | null;
   } | null;
+  decisionJournal: DecisionJournalDraft | null;
+  evidenceScorecard: {
+    assessment: 'sufficient' | 'developing' | 'limited';
+    verifiedSourceCount: number;
+    groundedFactCount: number;
+    informationGapCount: number;
+    marketPriceStatus: 'available' | 'unavailable';
+    summary: string;
+  };
   discoveryJson: {
     thesisAlignmentScore: number;
     rationale: string;
@@ -105,6 +114,33 @@ interface Candidate {
     informationGaps: string[] | null;
   } | null;
   valuation: { resultJson: { currency: string; fairValuePerShare?: number } } | null;
+}
+
+interface DecisionJournalDraft {
+  decisionReason: string;
+  expectedHoldingPeriod: string;
+  valuationView: string;
+  principalRisk: string;
+  invalidationTrigger: string;
+}
+
+interface DiscoveryPreflight {
+  ready: boolean;
+  checkedAt: string;
+  provider: string | null;
+  checks: Array<{ label: string; detail: string; status: 'ready' | 'blocked' }>;
+}
+
+const emptyDecisionJournal = (): DecisionJournalDraft => ({
+  decisionReason: '',
+  expectedHoldingPeriod: '',
+  valuationView: '',
+  principalRisk: '',
+  invalidationTrigger: '',
+});
+
+function journalIsComplete(journal: DecisionJournalDraft): boolean {
+  return Object.values(journal).every((value) => value.trim().length >= 8);
 }
 
 function friendlyAnalysisStatus(candidate: Candidate): {
@@ -184,6 +220,9 @@ export default function AIStockDiscoveryPage() {
   const [error, setError] = useState<string | null>(null);
   const [candidateErrors, setCandidateErrors] = useState<Record<string, string>>({});
   const [valuationCandidateId, setValuationCandidateId] = useState<string | null>(null);
+  const [preflight, setPreflight] = useState<DiscoveryPreflight | null>(null);
+  const [preflightBusy, setPreflightBusy] = useState(false);
+  const [journalDrafts, setJournalDrafts] = useState<Record<string, DecisionJournalDraft>>({});
 
   const loadRuns = useCallback(async (signal?: AbortSignal) => {
     const runResponse = await fetch('/api/discovery/runs', { signal });
@@ -249,6 +288,25 @@ export default function AIStockDiscoveryPage() {
     };
   }, [hasActiveWork, loadCandidates, loadRuns, selectedRunId]);
 
+  async function checkDiscoveryReadiness() {
+    setPreflightBusy(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/discovery/preflight', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ maxCandidatesPerPortfolio: Number(candidateLimit) }),
+      });
+      const body = await response.json().catch(() => ({})) as { preflight?: DiscoveryPreflight; error?: string };
+      if (!body.preflight) throw new Error(body.error ?? `Readiness check failed (${response.status})`);
+      setPreflight(body.preflight);
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setPreflightBusy(false);
+    }
+  }
+
   async function startDiscovery() {
     setBusy('start');
     setError(null);
@@ -270,7 +328,25 @@ export default function AIStockDiscoveryPage() {
     }
   }
 
-  async function decide(candidateId: string, decision: 'approved' | 'rejected' | 'watchlist') {
+  function journalFor(candidate: Candidate): DecisionJournalDraft {
+    return journalDrafts[candidate.id] ?? candidate.decisionJournal ?? emptyDecisionJournal();
+  }
+
+  function updateJournal(candidateId: string, field: keyof DecisionJournalDraft, value: string) {
+    setJournalDrafts((current) => ({
+      ...current,
+      [candidateId]: { ...(current[candidateId] ?? emptyDecisionJournal()), [field]: value },
+    }));
+  }
+
+  async function decide(candidate: Candidate, decision: 'approved' | 'rejected' | 'watchlist') {
+    const candidateId = candidate.id;
+    const journal = journalFor(candidate);
+    if (decision === 'approved' && !journalIsComplete(journal)) {
+      const message = 'Complete the five decision-journal fields before approving a candidate for analysis.';
+      setCandidateErrors((current) => ({ ...current, [candidateId]: message }));
+      return;
+    }
     setBusy(candidateId);
     setError(null);
     setCandidateErrors((current) => {
@@ -282,7 +358,7 @@ export default function AIStockDiscoveryPage() {
       const response = await fetch('/api/discovery/candidates', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ candidateId, decision }),
+        body: JSON.stringify({ candidateId, decision, journal: journalIsComplete(journal) ? journal : undefined }),
       });
       const body = await response.json().catch(() => ({})) as { candidate?: Partial<Candidate> & { id: string }; error?: string };
       if (!response.ok) throw new Error(body.error ?? `Candidate decision failed (${response.status})`);
@@ -383,10 +459,31 @@ export default function AIStockDiscoveryPage() {
           <input type="number" min="1" max="7" value={candidateLimit} onChange={(event) => setCandidateLimit(event.target.value)} />
           <span>Applied separately to every eligible portfolio, not to the combined run.</span>
         </label>
-        <button className="action-button" type="button" onClick={() => void startDiscovery()} disabled={busy !== null}>
-          {busy === 'start' ? 'Starting research…' : 'Find thesis-matched stocks'}
-        </button>
+        <div className="discovery-actions">
+          <button className="secondary-button" type="button" onClick={() => void checkDiscoveryReadiness()} disabled={busy !== null || preflightBusy}>
+            {preflightBusy ? 'Checking readiness…' : 'Check readiness'}
+          </button>
+          <button className="action-button" type="button" onClick={() => void startDiscovery()} disabled={busy !== null || preflightBusy}>
+            {busy === 'start' ? 'Starting research…' : 'Find thesis-matched stocks'}
+          </button>
+        </div>
       </section>
+
+      {preflight && <section className={`card discovery-preflight ${preflight.ready ? 'preflight-ready' : 'preflight-blocked'}`} aria-live="polite">
+        <div className="section-heading">
+          <div>
+            <h2>{preflight.ready ? 'Discovery is ready' : 'Discovery needs attention'}</h2>
+            <p className="note">Checked {new Date(preflight.checkedAt).toLocaleString()}{preflight.provider ? ` · Provider: ${preflight.provider}` : ''}</p>
+          </div>
+          <span className={`badge ${preflight.ready ? 'ok' : 'breach'}`}>{preflight.ready ? 'Ready to run' : 'Blocked'}</span>
+        </div>
+        <div className="preflight-checks">
+          {preflight.checks.map((check) => <div key={`${check.status}:${check.label}`}>
+            <strong>{check.label}</strong>
+            <p>{check.detail}</p>
+          </div>)}
+        </div>
+      </section>}
 
       <section className="card">
         <div className="section-heading">
@@ -440,16 +537,52 @@ export default function AIStockDiscoveryPage() {
               </div>
               <p>{discovery.rationale}</p>
               {candidate.latestPrice && <p className="note"><strong>Latest market close:</strong> {formatLatestPrice(candidate.latestPrice)} · as of {candidate.latestPrice.asOf} · {candidate.latestPrice.provider}</p>}
+              <section className="evidence-scorecard" aria-label="Research evidence quality">
+                <div className="evidence-scorecard-heading">
+                  <strong>Research evidence</strong>
+                  <span className={`badge ${candidate.evidenceScorecard.assessment === 'sufficient' ? 'ok' : candidate.evidenceScorecard.assessment === 'developing' ? 'watch' : 'breach'}`}>
+                    {candidate.evidenceScorecard.assessment}
+                  </span>
+                </div>
+                <div className="evidence-scorecard-grid">
+                  <span>{candidate.evidenceScorecard.verifiedSourceCount} sources</span>
+                  <span>{candidate.evidenceScorecard.groundedFactCount} grounded facts</span>
+                  <span>{candidate.evidenceScorecard.informationGapCount} open gaps</span>
+                  <span>Market price {candidate.evidenceScorecard.marketPriceStatus}</span>
+                </div>
+                <p>{candidate.evidenceScorecard.summary}</p>
+              </section>
               <p className="note"><strong>Matched:</strong> {discovery.matchedCriteria.join(' · ') || 'None evidenced'}</p>
               {discovery.violatedCriteria.length > 0 && <p className="caveat"><strong>Conflicts:</strong> {discovery.violatedCriteria.join(' · ')}</p>}
               {discovery.informationGaps.length > 0 && <p className="note"><strong>Gaps:</strong> {discovery.informationGaps.join(' · ')}</p>}
               <p className="note"><strong>Sources:</strong> {discovery.sourceUrls.map((url, index) => <span key={url}>{index ? ' · ' : ''}<a className="text-link" href={url} target="_blank" rel="noreferrer">source {index + 1}</a></span>)}</p>
+              {canDecide && <details className="decision-journal" open>
+                <summary>Decision journal <span>Required before approval</span></summary>
+                <p>Capture the decision context once, so the later analysis and audit trail remain understandable without internal run IDs.</p>
+                <div className="decision-journal-grid">
+                  <label>Why does this fit the thesis?
+                    <textarea value={journalFor(candidate).decisionReason} onChange={(event) => updateJournal(candidate.id, 'decisionReason', event.target.value)} placeholder="Specific reason this opportunity merits deeper work" />
+                  </label>
+                  <label>Expected holding period
+                    <input value={journalFor(candidate).expectedHoldingPeriod} onChange={(event) => updateJournal(candidate.id, 'expectedHoldingPeriod', event.target.value)} placeholder="e.g. 3–5 years" />
+                  </label>
+                  <label>Current valuation view
+                    <textarea value={journalFor(candidate).valuationView} onChange={(event) => updateJournal(candidate.id, 'valuationView', event.target.value)} placeholder="What must be tested in valuation and why" />
+                  </label>
+                  <label>Principal risk
+                    <textarea value={journalFor(candidate).principalRisk} onChange={(event) => updateJournal(candidate.id, 'principalRisk', event.target.value)} placeholder="Most material downside risk" />
+                  </label>
+                  <label>What would invalidate the view?
+                    <textarea value={journalFor(candidate).invalidationTrigger} onChange={(event) => updateJournal(candidate.id, 'invalidationTrigger', event.target.value)} placeholder="Observable trigger that would change the decision" />
+                  </label>
+                </div>
+              </details>}
               <div className="candidate-actions">
                 <span className={`badge ${candidate.decision === 'rejected' ? 'breach' : candidate.decision === 'approved' ? 'ok' : 'watch'}`}>{candidate.decision}</span>
                 {canDecide && <>
-                  <button type="button" onClick={() => void decide(candidate.id, 'approved')} disabled={isWorking}>{isWorking ? 'Approving…' : 'Approve & analyze'}</button>
-                  <button type="button" onClick={() => void decide(candidate.id, 'watchlist')} disabled={isWorking}>Watchlist</button>
-                  <button type="button" className="danger-outline" onClick={() => void decide(candidate.id, 'rejected')} disabled={isWorking}>Reject</button>
+                  <button type="button" onClick={() => void decide(candidate, 'approved')} disabled={isWorking || !journalIsComplete(journalFor(candidate))}>{isWorking ? 'Approving…' : 'Approve & analyze'}</button>
+                  <button type="button" onClick={() => void decide(candidate, 'watchlist')} disabled={isWorking}>Watchlist</button>
+                  <button type="button" className="danger-outline" onClick={() => void decide(candidate, 'rejected')} disabled={isWorking}>Reject</button>
                 </>}
                 {isWorking && <span className="note">Preparing source-backed research and validated price history…</span>}
                 {candidateErrors[candidate.id] && <p className="caveat" role="alert">{candidateErrors[candidate.id]}</p>}
@@ -470,7 +603,7 @@ export default function AIStockDiscoveryPage() {
                     <p>This assessment combines source-backed company research with EODHD price-risk metrics. Structured financial statements are not included, so DCF valuation remains locked.</p>
                   </div>}
                   {candidate.workflowStatus === 'analysis_failed' && <p className="caveat" role="alert">{candidate.analysisErrorMessage ?? candidate.analysisRunError ?? 'Analysis failed. Retry from this candidate card.'}</p>}
-                  {candidate.workflowStatus === 'analysis_failed' && !candidate.externalAnalysisRunId && <button className="action-button" type="button" onClick={() => void decide(candidate.id, 'approved')} disabled={busy !== null}>
+                  {candidate.workflowStatus === 'analysis_failed' && !candidate.externalAnalysisRunId && <button className="action-button" type="button" onClick={() => void decide(candidate, 'approved')} disabled={busy !== null || !journalIsComplete(journalFor(candidate))}>
                     {busy === candidate.id ? 'Retrying preparation…' : 'Retry analysis preparation'}
                   </button>}
                   {candidate.analysisRunStatus === 'failed' && candidate.externalAnalysisRunId && <button className="action-button" type="button" onClick={() => void retryAnalysis(candidate.externalAnalysisRunId!)} disabled={busy !== null}>

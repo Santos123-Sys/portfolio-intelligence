@@ -1,0 +1,1 @@
+ALTER TABLE "discovery_candidates" ADD COLUMN "decision_journal" jsonb;

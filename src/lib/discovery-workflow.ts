@@ -12,10 +12,11 @@ import {
   type GroundingBundle,
 } from '@portfolio-intelligence/agentic-contract';
 import { getActiveAgentCustomization } from './agent-config';
+import { decisionJournalAuditText, type DecisionJournal } from './decision-journal';
 import { getPriceProvider } from './connectors';
 import { loadDiscoveryUniverse } from './discovery-provider';
 import { db } from './db';
-import { aiAnalyses, portfolios, priceHistory, securities, thesisVersions } from './db/schema';
+import { aiAnalyses, decisionLog, portfolios, priceHistory, securities, thesisVersions } from './db/schema';
 import {
   discoveryCandidates,
   externalAgenticRuns,
@@ -150,6 +151,43 @@ export async function buildDiscoveryRunRequest(
     agentConfig,
   });
   return { request, provider: [...new Set(loaded.map((result) => `${result.provider}${result.cached ? ':cached' : ''}`))].join(', '), thesisVersionId: thesis.id };
+}
+
+export async function preflightDiscoveryForOwner(ownerId: string, maxCandidatesPerPortfolio = 6) {
+  try {
+    const built = await buildDiscoveryRunRequest(ownerId, maxCandidatesPerPortfolio);
+    const universeByExchange = new Map<string, number>();
+    for (const record of built.request.universe) {
+      universeByExchange.set(record.exchange, (universeByExchange.get(record.exchange) ?? 0) + 1);
+    }
+    return {
+      ready: true as const,
+      checkedAt: new Date().toISOString(),
+      provider: built.provider,
+      thesisVersionId: built.thesisVersionId,
+      checks: [
+        { label: 'Confirmed thesis', detail: `Version ${built.request.thesis.criteria.version} is active`, status: 'ready' as const },
+        { label: 'Portfolio mandates', detail: `${built.request.portfolios.length} eligible portfolio${built.request.portfolios.length === 1 ? '' : 's'} aligned to the thesis`, status: 'ready' as const },
+        ...[...universeByExchange.entries()].map(([exchange, count]) => ({
+          label: exchange === 'BVMF' ? 'Brazilian B3 universe' : exchange === 'XSWX' ? 'Swiss SIX universe' : `${exchange} universe`,
+          detail: `${count} tradable securities available for research`,
+          status: 'ready' as const,
+        })),
+      ],
+    };
+  } catch (error) {
+    return {
+      ready: false as const,
+      checkedAt: new Date().toISOString(),
+      provider: null,
+      thesisVersionId: null,
+      checks: [{
+        label: 'Discovery readiness',
+        detail: error instanceof Error ? error.message : 'Unknown discovery preflight failure',
+        status: 'blocked' as const,
+      }],
+    };
+  }
 }
 
 export async function startDiscoveryRunForOwner(input: {
@@ -293,19 +331,32 @@ export async function rejectOrWatchCandidate(
   ownerId: string,
   candidateId: string,
   decision: 'rejected' | 'watchlist',
-  rationale: string | undefined
+  journal: DecisionJournal | undefined
 ) {
   const row = await ownedCandidate(ownerId, candidateId);
   if (!row) throw new Error('Discovery candidate not found');
   if (row.candidate.decision === 'approved') throw new Error('An approved candidate cannot be downgraded while its analysis is active');
-  const [updated] = await db.update(discoveryCandidates).set({
-    decision,
-    rationale,
-    decidedAt: new Date(),
-    workflowStatus: decision,
-    updatedAt: new Date(),
-  }).where(eq(discoveryCandidates.id, candidateId)).returning();
-  return updated;
+  const rationale = journal?.decisionReason;
+  return db.transaction(async (tx) => {
+    const [updated] = await tx.update(discoveryCandidates).set({
+      decision,
+      rationale,
+      decisionJournal: journal,
+      decidedAt: new Date(),
+      workflowStatus: decision,
+      updatedAt: new Date(),
+    }).where(eq(discoveryCandidates.id, candidateId)).returning();
+    await tx.insert(decisionLog).values({
+      ownerId,
+      title: `${row.candidate.companyName} (${row.candidate.ticker}) — ${decision}`,
+      decision,
+      reasoning: rationale ?? null,
+      alternativesConsidered: journal ? decisionJournalAuditText(journal) : null,
+      outcome: decision === 'rejected' ? 'Excluded from future discovery outputs for this portfolio.' : 'Kept for later review.',
+      relatedPortfolioId: row.portfolio.id,
+    });
+    return updated;
+  });
 }
 
 /**
@@ -315,7 +366,7 @@ export async function rejectOrWatchCandidate(
  * An approved candidate whose preparation failed can re-enter this state, but
  * a candidate with an external run must use the external-run retry path.
  */
-export async function approveCandidateForAnalysis(ownerId: string, candidateId: string, decidedBy: string) {
+export async function approveCandidateForAnalysis(ownerId: string, candidateId: string, decidedBy: string, journal: DecisionJournal) {
   const row = await ownedCandidate(ownerId, candidateId);
   if (!row) throw new Error('Discovery candidate not found');
   if (row.candidate.externalAnalysisRunId) throw new Error('This candidate already has an analysis run; use Retry analysis if it failed');
@@ -324,22 +375,34 @@ export async function approveCandidateForAnalysis(ownerId: string, candidateId: 
     throw new Error('Only pending or watchlist candidates can be approved');
   }
 
-  const [candidate] = await db.update(discoveryCandidates).set({
-    decision: 'approved',
-    rationale: `Approved by ${decidedBy}`,
-    decidedAt: row.candidate.decidedAt ?? new Date(),
-    workflowStatus: 'analysis_preparing',
-    analysisErrorMessage: null,
-    updatedAt: new Date(),
-  }).where(and(
-    eq(discoveryCandidates.id, candidateId),
-    eq(discoveryCandidates.ownerId, ownerId),
-    eq(discoveryCandidates.decision, row.candidate.decision),
-    eq(discoveryCandidates.workflowStatus, row.candidate.workflowStatus),
-    isNull(discoveryCandidates.externalAnalysisRunId)
-  )).returning();
-  if (!candidate) throw new Error('Candidate approval changed concurrently; refresh before trying again');
-  return { candidate };
+  return db.transaction(async (tx) => {
+    const [candidate] = await tx.update(discoveryCandidates).set({
+      decision: 'approved',
+      rationale: journal.decisionReason,
+      decisionJournal: journal,
+      decidedAt: row.candidate.decidedAt ?? new Date(),
+      workflowStatus: 'analysis_preparing',
+      analysisErrorMessage: null,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(discoveryCandidates.id, candidateId),
+      eq(discoveryCandidates.ownerId, ownerId),
+      eq(discoveryCandidates.decision, row.candidate.decision),
+      eq(discoveryCandidates.workflowStatus, row.candidate.workflowStatus),
+      isNull(discoveryCandidates.externalAnalysisRunId)
+    )).returning();
+    if (!candidate) throw new Error('Candidate approval changed concurrently; refresh before trying again');
+    await tx.insert(decisionLog).values({
+      ownerId,
+      title: `${row.candidate.companyName} (${row.candidate.ticker}) — approved for analysis`,
+      decision: 'approved',
+      reasoning: journal.decisionReason,
+      alternativesConsidered: decisionJournalAuditText(journal),
+      outcome: 'Financial analysis and valuation preparation requested.',
+      relatedPortfolioId: row.portfolio.id,
+    });
+    return { candidate };
+  });
 }
 
 /** Complete the slow provider and agentic handoff after approval is visible. */
