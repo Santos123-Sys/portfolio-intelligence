@@ -85,6 +85,13 @@
       "when": 1788899323441,
       "tag": "0011_furry_photon",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788913792330,
+      "tag": "0012_sparkling_pyro",
+      "breakpoints": true
     }
   ]
 }
