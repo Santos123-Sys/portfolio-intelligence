@@ -303,6 +303,8 @@ export async function synchronizeDiscoveryRun(
         currency: candidate.currency,
         country: candidate.country,
         sector: candidate.sector,
+        industry: candidate.industry,
+        classificationSource: candidate.classificationSource,
         discoveryJson: candidate,
       }).onConflictDoNothing();
     }
@@ -441,6 +443,7 @@ export async function startApprovedCandidateAnalysis(
     exchange: row.candidate.exchange,
     currency: row.candidate.currency,
     sector: row.candidate.sector,
+    industry: row.candidate.industry,
     country: row.candidate.country,
   }).onConflictDoUpdate({
     target: [securities.ticker, securities.exchange],
@@ -448,6 +451,7 @@ export async function startApprovedCandidateAnalysis(
       companyName: row.candidate.companyName,
       currency: row.candidate.currency,
       sector: row.candidate.sector,
+      industry: row.candidate.industry,
       country: row.candidate.country,
     },
   }).returning();
