@@ -32,6 +32,7 @@ export const holdingCreateSchema = z.object({
   exchange: upperCode('Exchange MIC', 4),
   currency: upperCode('Security currency', 3),
   sector: z.string().trim().max(100).optional(),
+  industry: z.string().trim().max(100).optional(),
   country: z.string().trim().transform((value) => value.toUpperCase())
     .pipe(z.string().regex(/^[A-Z]{2}$/, 'Country must be a two-letter code')).optional(),
   quantity: positiveNumber('Quantity'),
