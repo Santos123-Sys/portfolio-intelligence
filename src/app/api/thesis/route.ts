@@ -6,13 +6,14 @@ import {
 } from '@portfolio-intelligence/agentic-contract';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { thesisVersions } from '@/lib/db/schema';
+import { portfolios, thesisVersions } from '@/lib/db/schema';
 import { externalThesisExtractions, thesisMutationAudit } from '@/lib/db/workflow-schema';
 import { assertSameOrigin } from '@/lib/auth';
 import { authenticateRequest } from '@/lib/api-auth';
 import { excludeThesisVersion, ThesisVersionNotFoundError } from '@/lib/services/thesis-exclusion';
 import { startDiscoveryAfterThesisConfirmation } from '@/lib/thesis-discovery-transition';
 import { normalizeThesisCriteriaCurrencies } from '@/lib/thesis-currency';
+import { portfoliosRequiredByThesis } from '@/lib/thesis-portfolios';
 
 export const runtime = 'nodejs';
 
@@ -90,6 +91,18 @@ export async function POST(req: Request) {
         criteriaJson,
         rawDocument: parsed.data.rawDocument,
       }).returning();
+      const existingPortfolios = await tx.select({ portfolioType: portfolios.portfolioType })
+        .from(portfolios)
+        .where(eq(portfolios.ownerId, session.auth.userId));
+      const existingRoles = new Set(existingPortfolios.map((portfolio) => portfolio.portfolioType));
+      const requiredPortfolios = portfoliosRequiredByThesis(criteriaJson)
+        .filter((portfolio) => !existingRoles.has(portfolio.portfolioType));
+      if (requiredPortfolios.length) {
+        await tx.insert(portfolios).values(requiredPortfolios.map((portfolio) => ({
+          ownerId: session.auth.userId,
+          ...portfolio,
+        })));
+      }
       await tx.insert(thesisMutationAudit).values({
         thesisVersionId: created.id,
         ownerId: session.auth.userId,
