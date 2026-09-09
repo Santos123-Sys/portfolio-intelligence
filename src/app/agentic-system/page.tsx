@@ -125,7 +125,7 @@ export default function AgenticSystemPage() {
             <>
               <p className="caveat">Existing-holdings analysis prerequisites are incomplete.</p>
               <ul className="note">{readiness.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
-              <Link className="text-link" href="/portfolio-setup">Record existing holdings</Link>
+              <Link className="text-link" href="/positions#add-position">Record existing holdings</Link>
             </>
           ) : <p className="note">Checking analysis readiness…</p>}
           {actionError && <p className="login-error" role="alert">{actionError}</p>}
