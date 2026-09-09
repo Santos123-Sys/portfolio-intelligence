@@ -669,3 +669,22 @@ textarea {
 .comps-input-table input + input { margin-top: 0.4rem; }
 .peer-research-note { max-width: 20rem; margin: 0.4rem 0 0; font-size: 0.78rem; }
 .comparability-guide { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+
+/* Thesis review is a decision surface, not a developer payload. */
+.thesis-summary { display: grid; gap: 1rem; margin: 1rem 0; }
+.thesis-mandate,
+.thesis-global-constraints { border: 1px solid var(--border); border-radius: 10px; padding: 1rem; background: color-mix(in srgb, var(--card) 84%, var(--bg)); }
+.thesis-mandate-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.thesis-mandate-heading h3 { margin: 0; text-transform: capitalize; }
+.thesis-currency-field { display: grid; gap: 0.3rem; color: var(--muted); font-size: 0.78rem; min-width: 12rem; }
+.thesis-currency-field input { width: 100%; }
+.thesis-summary-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; margin-top: 0.85rem; }
+.thesis-summary ul { margin: 0.45rem 0 0; padding-left: 1.1rem; color: var(--muted); }
+.thesis-summary li { margin: 0.28rem 0; line-height: 1.45; }
+.thesis-global-constraints { color: var(--muted); }
+.thesis-global-constraints strong { color: var(--text); }
+@media (max-width: 640px) {
+  .thesis-mandate-heading,
+  .thesis-summary-columns { grid-template-columns: 1fr; display: grid; }
+  .thesis-currency-field { min-width: 0; }
+}
