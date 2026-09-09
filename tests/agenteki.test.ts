@@ -126,4 +126,15 @@ describe('analysis diffing', () => {
   it('returns nothing when the analysis is unchanged', () => {
     expect(diffAnalyses(valid, { ...valid })).toHaveLength(0);
   });
+
+  it('explains a changed narrative while ignoring rehydrated but identical arrays', () => {
+    const sameCollections = {
+      ...valid,
+      keyCatalysts: [...valid.keyCatalysts],
+      researchFramework: structuredClone(valid.researchFramework),
+    };
+    expect(diffAnalyses(valid, sameCollections)).toHaveLength(0);
+    const changedNarrative = { ...valid, investmentThesis: 'Affirmative case: Revised. Strongest counter-case: Revised.' };
+    expect(diffAnalyses(valid, changedNarrative).map((item) => item.field)).toContain('investmentThesis');
+  });
 });
