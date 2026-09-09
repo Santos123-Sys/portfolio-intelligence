@@ -41,7 +41,7 @@ describe('positions empty-state behavior', () => {
     expect(positionsPage).toContain('No positions have been recorded. Approving a research candidate does not add a holding automatically.');
     expect(positionsPage).toContain('No positions match the current filters.');
     expect(positionsPage).toContain('onClick={resetFilters}');
-    expect(positionsPage).toContain('href="/portfolio-setup#add-position"');
+    expect(positionsPage).toContain('Record a holding');
   });
 
   it('keeps position reads and writes owner-scoped and rejects duplicates', () => {

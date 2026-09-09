@@ -39,6 +39,8 @@ export async function GET(req: Request) {
     companyName: discoveryCandidates.companyName,
     country: discoveryCandidates.country,
     sector: discoveryCandidates.sector,
+    industry: discoveryCandidates.industry,
+    classificationSource: discoveryCandidates.classificationSource,
     decision: discoveryCandidates.decision,
     workflowStatus: discoveryCandidates.workflowStatus,
     discoveryJson: discoveryCandidates.discoveryJson,

@@ -18,7 +18,6 @@ const WORKFLOW_NAV = [
 ] as const;
 
 const EXTENDED_NAV = [
-  ['/portfolio-setup', 'Portfolio setup & manual holdings'],
   ['/allocation', 'Allocation'],
   ['/governance', 'Investment control'],
   ['/risk', 'Portfolio risk'],

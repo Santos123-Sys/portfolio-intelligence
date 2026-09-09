@@ -138,6 +138,7 @@ export async function POST(req: Request) {
           exchange: parsed.data.exchange,
           currency: parsed.data.currency,
           sector: parsed.data.sector || null,
+          industry: parsed.data.industry || null,
           country: parsed.data.country || null,
         }).onConflictDoNothing({
           target: [securities.ticker, securities.exchange],

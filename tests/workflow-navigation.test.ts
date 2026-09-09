@@ -2,14 +2,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const setupPage = readFileSync('src/app/portfolio-setup/page.tsx', 'utf8');
+const positionsPage = readFileSync('src/app/positions/page.tsx', 'utf8');
 const header = readFileSync('src/components/header.tsx', 'utf8');
 
 describe('discovery-first workflow', () => {
   it('does not make a position a prerequisite for discovery', () => {
-    expect(setupPage).toContain('Positions are not required for market research.');
-    expect(setupPage).toContain('Do not add a position at this stage.');
-    expect(setupPage).not.toContain('Add at least one position.</li>');
-    expect(setupPage).not.toContain('Add a position to {portfolio.name}.');
+    expect(setupPage).toContain("redirect('/positions#add-position')");
+    expect(positionsPage).toContain('Approving a research candidate does not add a holding automatically.');
+    expect(positionsPage).toContain('Record a holding');
   });
 
   it('puts the investment workflow, rather than internal tables, in primary navigation', () => {

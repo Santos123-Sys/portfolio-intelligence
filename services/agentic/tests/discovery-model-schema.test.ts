@@ -63,6 +63,8 @@ describe('the derived candidate schema does not drift from the contract', () => 
       currency: 'CHF',
       country: 'CH',
       sector: null,
+      industry: null,
+      classificationSource: 'unclassified',
       thesisAlignmentScore: 80,
       rationale: 'Meets the stated inclusion criteria.',
       matchedCriteria: ['Listed on SIX'],

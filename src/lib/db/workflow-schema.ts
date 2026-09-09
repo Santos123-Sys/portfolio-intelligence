@@ -109,6 +109,8 @@ export const discoveryCandidates = pgTable(
     currency: text('currency').notNull(),
     country: text('country'),
     sector: text('sector'),
+    industry: text('industry'),
+    classificationSource: text('classification_source').notNull().default('unclassified'),
     discoveryJson: jsonb('discovery_json').notNull(),
     decision: text('decision').notNull().default('pending'),
     rationale: text('decision_rationale'),

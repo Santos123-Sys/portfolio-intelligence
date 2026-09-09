@@ -13,7 +13,7 @@ import OpenAI, {
 } from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z, ZodError } from 'zod';
-import { researchCompany, type WebResearchConfig } from './web-research.js';
+import { researchCompany, type WebResearchConfig, type WebResearchEvidence } from './web-research.js';
 import {
   AGENT_REASONING_PROMPTS,
   AnalysisOutput,
@@ -127,6 +127,8 @@ const DiscoveryCandidateModelOutput = z.object({
   currency: z.string().min(1),
   country: z.string().nullable(),
   sector: z.string().nullable(),
+  industry: z.string().nullable(),
+  classificationSource: z.enum(['provider', 'web_research', 'unclassified']),
   thesisAlignmentScore: z.number().int().min(0).max(100),
   rationale: z.string().min(1),
   matchedCriteria: z.array(z.string()),
@@ -174,13 +176,19 @@ function pinMarketMandateIdentity(
  */
 function pinCandidateIdentity(
   candidates: z.infer<typeof MarketDiscoveryModelOutput>['candidates'],
-  request: z.infer<typeof DiscoveryRunRequest>
+  request: z.infer<typeof DiscoveryRunRequest>,
+  webEvidence: Map<string, WebResearchEvidence>
 ) {
   const universeBySecurity = new Map(
     request.universe.map((record) => [`${record.exchange}:${record.ticker}`, record])
   );
   return candidates.map((candidate) => {
     const record = universeBySecurity.get(`${candidate.exchange.trim()}:${candidate.ticker.trim()}`);
+    const evidence = webEvidence.get(`${candidate.exchange.trim()}:${candidate.ticker.trim()}`);
+    // A model may not manufacture a classification merely because one sounds
+    // plausible. If the provider did not supply it, retain it only where the
+    // web-research step actually returned citable sources.
+    const canUseWebClassification = (evidence?.urls.length ?? 0) > 0;
     return record
       ? {
           ...candidate,
@@ -189,7 +197,13 @@ function pinCandidateIdentity(
           companyName: record.companyName,
           currency: record.currency,
           country: record.country,
-          sector: record.sector,
+          sector: record.sector ?? (canUseWebClassification ? candidate.sector : null),
+          industry: record.industry ?? (canUseWebClassification ? candidate.industry : null),
+          classificationSource: record.sector || record.industry
+            ? 'provider' as const
+            : canUseWebClassification && (candidate.sector || candidate.industry)
+              ? 'web_research' as const
+              : 'unclassified' as const,
         }
       : candidate;
   });
@@ -285,6 +299,7 @@ Absolute rules:
 10. Return at most maxCandidatesPerPortfolio candidates for each portfolio. Zero candidates is valid when evidence is insufficient. The intended combined shortlist is 5–15, not a broad universe.
 11. Do not value securities, calculate volatility, recommend trades, or alter holdings. Human approval is required before financial analysis.
 12. Return a security identity (exchange plus ticker) at most once across the combined candidate output.
+13. For sector and industry, copy the structured-universe classification exactly when it is supplied. When it is absent, classify only when the supplied web-research evidence explicitly supports the classification; otherwise return null. Never use memory or a plausible-sounding label.
 
 Prefer decision-useful gaps over generic caveats. A concise, evidence-bound shortlist is better than a long speculative list.`;
 
@@ -720,7 +735,7 @@ export class OpenAIAgenticPipeline {
       const output = MarketDiscoveryOutput.parse({
         ...response.output_parsed,
         marketMandates: pinMarketMandateIdentity(response.output_parsed.marketMandates, request),
-        candidates: deduplicateCandidateIdentities(pinCandidateIdentity(response.output_parsed.candidates, request)),
+        candidates: deduplicateCandidateIdentities(pinCandidateIdentity(response.output_parsed.candidates, request, webEvidence)),
         limitations: [
           ...new Set([
             ...response.output_parsed.limitations,

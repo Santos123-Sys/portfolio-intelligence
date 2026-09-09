@@ -5,7 +5,7 @@
  * across all portfolios (filterable down to one). Row click navigates to the
  * Security Detail page.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -35,6 +35,8 @@ interface ResearchCandidateRow {
   companyName: string;
   country: string | null;
   sector: string | null;
+  industry: string | null;
+  classificationSource: 'provider' | 'web_research' | 'unclassified';
   portfolioName: string;
   decision: string;
   workflowStatus: string;
@@ -62,6 +64,12 @@ interface LatestResearch {
   candidates: ResearchCandidateRow[];
 }
 
+interface PortfolioOption {
+  id: string;
+  name: string;
+  baseCurrency: string;
+}
+
 type SortKey = 'ticker' | 'portfolioName' | 'quantity' | 'avgCost' | 'marketValueNative' | 'weight' | 'dayChangePct' | 'aiScore' | 'thesisAlignment';
 
 function riskFlag(row: PositionRow): { label: string; className: string } {
@@ -74,6 +82,7 @@ export default function PositionsPage() {
   const router = useRouter();
   const [rows, setRows] = useState<PositionRow[]>([]);
   const [research, setResearch] = useState<LatestResearch>({ latestRun: null, candidates: [] });
+  const [portfolios, setPortfolios] = useState<PortfolioOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,6 +92,9 @@ export default function PositionsPage() {
   const [portfolioFilter, setPortfolioFilter] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('weight');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [addingPosition, setAddingPosition] = useState(false);
+  const [positionBusy, setPositionBusy] = useState(false);
+  const [positionMessage, setPositionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,11 +107,16 @@ export default function PositionsPage() {
         if (!res.ok) throw new Error(`Research API returned ${res.status}`);
         return res.json() as Promise<LatestResearch>;
       }),
+      fetch('/api/portfolios').then((res) => {
+        if (!res.ok) throw new Error(`Portfolios API returned ${res.status}`);
+        return res.json() as Promise<{ portfolios: PortfolioOption[] }>;
+      }),
     ])
-      .then(([positionsData, researchData]) => {
+      .then(([positionsData, researchData, portfolioData]) => {
         if (cancelled) return;
         setRows(positionsData.positions);
         setResearch(researchData);
+        setPortfolios(portfolioData.portfolios);
       })
       .catch((e) => {
         if (!cancelled) setError((e as Error).message);
@@ -111,6 +128,36 @@ export default function PositionsPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (window.location.hash === '#add-position') setAddingPosition(true);
+  }, []);
+
+  async function addPosition(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPositionBusy(true);
+    setPositionMessage(null);
+    const form = new FormData(event.currentTarget);
+    const response = await fetch('/api/positions', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        portfolioId: form.get('portfolioId'), ticker: form.get('ticker'), companyName: form.get('companyName'),
+        exchange: form.get('exchange'), currency: form.get('currency'), country: form.get('country') || undefined,
+        sector: form.get('sector') || undefined, industry: form.get('industry') || undefined,
+        quantity: form.get('quantity'), avgCost: form.get('avgCost'),
+      }),
+    }).catch(() => null);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => ({})) as { error?: string } | undefined;
+      setPositionMessage(body?.error ?? 'Unable to add the position.');
+      setPositionBusy(false);
+      return;
+    }
+    setPositionMessage('Position recorded.');
+    setAddingPosition(false);
+    window.location.hash = '';
+    window.location.reload();
+  }
 
   const sectors = useMemo(() => [...new Set(rows.map((r) => r.sector).filter(Boolean))] as string[], [rows]);
   const countries = useMemo(() => [...new Set(rows.map((r) => r.country).filter(Boolean))] as string[], [rows]);
@@ -197,6 +244,23 @@ export default function PositionsPage() {
       <h1>Positions</h1>
       <p className="sub">Every row is a single portfolio&apos;s holding. Values stay in that portfolio&apos;s native currency.</p>
 
+      <section className="card" id="add-position">
+        <div className="section-heading">
+          <div><h2>Record a holding</h2><p className="note">Use this only after an investment decision, or to record an existing holding.</p></div>
+          <button className="action-button" type="button" onClick={() => setAddingPosition((open) => !open)}>{addingPosition ? 'Close' : 'Add a position'}</button>
+        </div>
+        {addingPosition && <form className="setup-form" onSubmit={(event) => void addPosition(event)}>
+          <label>Portfolio<select name="portfolioId" required>{portfolios.map((portfolio) => <option key={portfolio.id} value={portfolio.id}>{portfolio.name} ({portfolio.baseCurrency})</option>)}</select></label>
+          <div className="setup-form-row"><label>Ticker<input name="ticker" required placeholder="NESN" /></label><label>Exchange MIC<input name="exchange" required placeholder="XSWX" /></label></div>
+          <label>Company name<input name="companyName" required placeholder="Nestlé S.A." /></label>
+          <div className="setup-form-row"><label>Currency<input name="currency" required placeholder="CHF" /></label><label>Country<input name="country" placeholder="CH" /></label></div>
+          <div className="setup-form-row"><label>Sector<input name="sector" placeholder="Consumer Staples" /></label><label>Industry<input name="industry" placeholder="Packaged Foods" /></label></div>
+          <div className="setup-form-row"><label>Quantity<input name="quantity" type="number" min="0.00000001" step="any" required /></label><label>Average cost<input name="avgCost" type="number" min="0" step="any" required /></label></div>
+          {positionMessage && <p className="note" role="status">{positionMessage}</p>}
+          <button type="submit" disabled={positionBusy || portfolios.length === 0}>{positionBusy ? 'Recording…' : 'Record position'}</button>
+        </form>}
+      </section>
+
       <div className="filter-bar">
         <input
           type="search"
@@ -244,7 +308,8 @@ export default function PositionsPage() {
               {research.candidates.map((candidate) => <div className="research-candidate" key={candidate.id}>
                 <div><strong>{candidate.companyName}</strong><span>{candidate.ticker} · {candidate.portfolioName}</span></div>
                 <span className={`badge ${candidate.decision === 'rejected' || candidate.workflowStatus === 'analysis_failed' ? 'breach' : candidate.decision === 'approved' || candidate.workflowStatus === 'analysis_complete' ? 'ok' : 'watch'}`}>{researchState(candidate)}</span>
-                          <p>{candidate.sector ?? 'Sector not classified'} · {candidate.country ?? 'Country not classified'}{candidate.thesisAlignmentScore == null ? '' : ` · ${candidate.thesisAlignmentScore}/100 thesis fit`}</p>
+                          <p>{candidate.sector ?? 'Sector not verified'} · {candidate.industry ?? 'Industry not verified'} · {candidate.country ?? 'Country not verified'}{candidate.thesisAlignmentScore == null ? '' : ` · ${candidate.thesisAlignmentScore}/100 thesis fit`}</p>
+                          <p className="note">Classification: {candidate.classificationSource === 'provider' ? 'market-data provider' : candidate.classificationSource === 'web_research' ? 'web research; review sources' : 'not yet verified'}</p>
                           {candidate.latestPrice && <p className="note">Latest market close: {formatLatestResearchPrice(candidate.latestPrice)} · {candidate.latestPrice.asOf}</p>}
               </div>)}
             </div>
@@ -259,7 +324,7 @@ export default function PositionsPage() {
           {rows.length === 0 ? (
             <>
               <p className="note">No positions have been recorded. Approving a research candidate does not add a holding automatically.</p>
-              <Link className="action-button inline-action" href="/portfolio-setup#add-position">Add a position</Link>
+              <button className="action-button inline-action" type="button" onClick={() => setAddingPosition(true)}>Add a position</button>
             </>
           ) : (
             <>
