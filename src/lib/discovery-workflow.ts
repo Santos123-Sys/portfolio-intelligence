@@ -16,7 +16,7 @@ import { decisionJournalAuditText, type DecisionJournal } from './decision-journ
 import { getPriceProvider } from './connectors';
 import { loadDiscoveryUniverse } from './discovery-provider';
 import { db } from './db';
-import { aiAnalyses, decisionLog, portfolios, priceHistory, securities, thesisVersions } from './db/schema';
+import { accounts, aiAnalyses, decisionLog, portfolios, priceHistory, securities, thesisVersions } from './db/schema';
 import {
   discoveryCandidates,
   externalAgenticRuns,
@@ -519,7 +519,11 @@ export async function startApprovedCandidateAnalysis(
     getActiveAgentCustomization(ownerId, 'security_analysis'),
     getActiveAgentCustomization(ownerId, 'portfolio_synthesis'),
   ]);
+  const [account] = await db.select({ id: accounts.id }).from(accounts)
+    .where(eq(accounts.ownerUserId, ownerId)).limit(1);
+  if (!account) throw new Error('No account is available for this candidate analysis');
   const request = AgenticRunRequest.parse({
+    accountId: account.id,
     thesis: { versionId: row.run.thesisVersionId, criteria: thesis },
     securities: [{ ticker: security.ticker, exchange: security.exchange, portfolioId: row.portfolio.id }],
     portfolios: [{
@@ -536,6 +540,7 @@ export async function startApprovedCandidateAnalysis(
   const remote = await startExternalAgenticRun(request);
   const [run] = await db.insert(externalAgenticRuns).values({
     ownerId,
+    accountId: account.id,
     externalRunId: remote.externalRunId,
     status: remote.status,
     thesisVersion: String(thesis.version),

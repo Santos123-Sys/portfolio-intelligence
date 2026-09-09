@@ -50,6 +50,13 @@ export async function POST(req: Request) {
     );
   }
 
+  // A shared service credential authenticates the worker, but it never grants
+  // the worker authority to choose a client. The dashboard bound this run to
+  // one account before dispatch; the callback must match that exact binding.
+  if (parsed.status === 'completed' && existing.accountId !== parsed.manifest.accountId) {
+    return NextResponse.json({ error: 'Manifest account does not match the dashboard-created run' }, { status: 422 });
+  }
+
   if (parsed.status === 'failed') {
     if (existing.importedAt) {
       return NextResponse.json(

@@ -10,6 +10,7 @@ export const runtime = 'nodejs';
 export async function GET(req: Request) {
   const session = await authenticateRequest(req);
   if (!session.ok) return session.response;
+  if (!session.auth.isPlatformAdmin) return NextResponse.json({ error: 'Research history is restricted to the platform administrator' }, { status: 403 });
   const [extractions, discoveries, analyses] = await Promise.all([
     db.select({ status: externalThesisExtractions.status, sourceFileName: externalThesisExtractions.sourceFileName, requestedAt: externalThesisExtractions.requestedAt, completedAt: externalThesisExtractions.completedAt, errorMessage: externalThesisExtractions.errorMessage, confirmedAt: externalThesisExtractions.confirmedAt, dismissedAt: externalThesisExtractions.dismissedAt })
       .from(externalThesisExtractions).where(eq(externalThesisExtractions.ownerId, session.auth.userId)).orderBy(desc(externalThesisExtractions.requestedAt)).limit(30),

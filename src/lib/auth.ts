@@ -2,6 +2,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { and, eq, gt, isNull, ne } from 'drizzle-orm';
 import { db } from './db';
 import { users, userSessions } from './db/schema';
+import { ensureOwnedAccount, resolveAccountMembership } from './account-scope';
 import { getEnv } from './env';
 import { digestSessionPayload, SESSION_COOKIE, signSessionPayload, verifySessionToken } from './session-token';
 import { validateMutationOrigin } from './request-security';
@@ -11,11 +12,22 @@ export const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 7;
 export const SESSION_IDLE_SECONDS = 60 * 60 * 8;
 
 export interface AuthContext {
+  /** The signed-in human. Use this for authentication-security operations. */
+  actorUserId: string;
+  /**
+   * Compatibility tenant key. Existing portfolio and workflow records remain
+   * keyed by this account owner's user id during the staged migration.
+   */
   userId: string;
   email: string;
   displayName: string;
   role: string;
+  /** Platform administrators may switch to every client account. */
+  isPlatformAdmin: boolean;
   sessionId: string;
+  accountId: string;
+  accountName: string;
+  accountType: string;
 }
 
 function requestCookie(req: Request, name: string): string | null {
@@ -89,8 +101,27 @@ export async function getOptionalSession(req: Request): Promise<AuthContext | nu
     .limit(1);
 
   if (!row || row.tokenHash !== (await digestSessionPayload(verified.payload))) return null;
+  await ensureOwnedAccount(row.userId, row.displayName);
+  // `users.role` is retained only as the platform-admin bootstrap flag.  All
+  // ordinary authorization comes from the selected account membership.
+  const isPlatformAdmin = row.role === 'platform_admin';
+  const membership = await resolveAccountMembership(
+    row.userId,
+    requestCookie(req, 'portfolio_account'),
+    isPlatformAdmin
+  );
+  if (!membership) return null;
   await db.update(userSessions).set({ lastSeenAt: new Date() }).where(eq(userSessions.id, row.sessionId));
-  return row;
+  return {
+    ...row,
+    actorUserId: row.userId,
+    userId: membership.ownerUserId,
+    role: membership.role,
+    isPlatformAdmin,
+    accountId: membership.accountId,
+    accountName: membership.accountName,
+    accountType: membership.accountType,
+  };
 }
 
 export async function requireSession(req: Request): Promise<AuthContext> {

@@ -18,6 +18,7 @@ export const runtime = 'nodejs';
 export async function GET(req: Request) {
   const session = await authenticateRequest(req);
   if (!session.ok) return session.response;
+  if (!session.auth.isPlatformAdmin) return NextResponse.json({ error: 'Decision Log is restricted to the platform administrator' }, { status: 403 });
   const url = new URL(req.url);
   const q = url.searchParams.get('q')?.trim();
 

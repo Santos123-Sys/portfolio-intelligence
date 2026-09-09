@@ -35,7 +35,8 @@ export const users = pgTable(
     displayName: text('display_name').notNull(),
     passwordHash: text('password_hash').notNull(),
     passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }).defaultNow().notNull(),
-    role: text('role').notNull().default('owner'),
+    /** platform_admin | member. Account permissions live in memberships. */
+    role: text('role').notNull().default('member'),
     /** AES-256-GCM ciphertext. The encryption key remains in Railway secrets. */
     mfaSecretEncrypted: text('mfa_secret_encrypted'),
     /** Setup secrets do not become login factors until a valid TOTP confirms them. */
@@ -49,6 +50,56 @@ export const users = pgTable(
     disabledAt: timestamp('disabled_at', { withTimezone: true }),
   },
   (t) => ({ emailIdx: uniqueIndex('users_email_idx').on(t.email) })
+);
+
+/**
+ * A client-facing data boundary.  Accounts intentionally remain separate from
+ * login identities: an adviser can belong to several client accounts while a
+ * client normally belongs only to their own account.
+ *
+ * `ownerUserId` is the compatibility bridge for the existing single-tenant
+ * data model.  Until every historic `owner_id` column has been renamed, it is
+ * the effective tenant key used by existing portfolio/research records.
+ */
+export const accounts = pgTable(
+  'accounts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    /** personal | advisory_client */
+    accountType: text('account_type').notNull().default('advisory_client'),
+    ownerUserId: uuid('owner_user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ ownerUserIdx: uniqueIndex('accounts_owner_user_idx').on(t.ownerUserId) })
+);
+
+/**
+ * Authorization is per account, never a global UI-only user role.  Roles are
+ * checked on the server before mutations; viewers can only read their own
+ * account's information.
+ */
+export const memberships = pgTable(
+  'memberships',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    accountId: uuid('account_id')
+      .references(() => accounts.id, { onDelete: 'cascade' })
+      .notNull(),
+    /** owner | analyst | viewer */
+    role: text('role').notNull(),
+    invitedAt: timestamp('invited_at', { withTimezone: true }).defaultNow().notNull(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  },
+  (t) => ({
+    userAccountIdx: uniqueIndex('memberships_user_account_idx').on(t.userId, t.accountId),
+    accountUserIdx: index('memberships_account_user_idx').on(t.accountId, t.userId),
+  })
 );
 
 /** Revocable, server-side sessions. Only a SHA-256 token digest is persisted. */

@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, timestamp, numeric, jsonb, index, uniqueIndex, integer, boolean } from 'drizzle-orm/pg-core';
-import { aiAnalyses, portfolios, securities, thesisVersions, users } from './schema';
+import { accounts, aiAnalyses, portfolios, securities, thesisVersions, users } from './schema';
 
 /**
  * A provider-independent, reusable discovery universe. This is not a source of
@@ -228,6 +228,8 @@ export const externalAgenticRuns = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    /** Immutable account binding for authenticated agentic callbacks. */
+    accountId: uuid('account_id').references(() => accounts.id, { onDelete: 'cascade' }).notNull(),
     externalRunId: text('external_run_id').notNull().unique(),
     status: text('status').notNull().default('queued'),
     thesisVersion: text('thesis_version'),
@@ -243,6 +245,7 @@ export const externalAgenticRuns = pgTable(
   },
   (t) => ({
     statusIdx: index('external_agentic_runs_status_idx').on(t.status, t.requestedAt),
+    accountStatusIdx: index('external_agentic_runs_account_status_idx').on(t.accountId, t.status, t.requestedAt),
     hashIdx: index('external_agentic_runs_manifest_hash_idx').on(t.manifestHash),
   })
 );

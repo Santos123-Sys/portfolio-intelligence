@@ -9,6 +9,7 @@ import type {
 
 export const portfolioId = '550e8400-e29b-41d4-a716-446655440000';
 export const thesisVersionId = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+export const accountId = '8c9e6679-7425-40de-944b-e07fc1f90ae7';
 
 export const thesis: ThesisCriteria = {
   version: 1,
@@ -85,6 +86,7 @@ export const synthesis: ReportSynthesisOutput = {
 };
 
 export const runRequest: AgenticRunRequest = {
+  accountId,
   thesis: { versionId: thesisVersionId, criteria: thesis },
   securities: [{ ticker: 'NESN', exchange: 'XSWX', portfolioId }],
   portfolios: [{
@@ -98,6 +100,7 @@ export const runRequest: AgenticRunRequest = {
 
 export const manifest: PortfolioAnalysisManifest = {
   schemaVersion: '1.0',
+  accountId,
   generatedAt: '2026-08-26T12:00:00.000Z',
   thesisVersion: 1,
   portfolios: [{

@@ -22,7 +22,7 @@ async function main() {
     email: config.email,
     displayName: config.displayName,
     passwordHash: await hashPassword(config.password),
-    role: 'owner',
+    role: 'platform_admin',
   }).returning({ id: users.id });
   console.log(`Created initial administrator (${user.id}).`);
 }

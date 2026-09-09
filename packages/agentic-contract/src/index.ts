@@ -199,6 +199,8 @@ export const PortfolioManifest = z.object({
 
 export const PortfolioAnalysisManifest = z.object({
   schemaVersion: z.literal(MANIFEST_SCHEMA_VERSION),
+  /** Bound by the dashboard when the run is created; never inferred on import. */
+  accountId: z.string().uuid(),
   generatedAt: z.string().datetime(),
   thesisVersion: z.number().int().positive(),
   portfolios: z.array(PortfolioManifest).min(1),
@@ -206,6 +208,8 @@ export const PortfolioAnalysisManifest = z.object({
 export type PortfolioAnalysisManifest = z.infer<typeof PortfolioAnalysisManifest>;
 
 export const AgenticRunRequest = z.object({
+  /** The dashboard-selected account receiving this run. */
+  accountId: z.string().uuid(),
   thesis: z.object({
     versionId: z.string().uuid(),
     criteria: ThesisCriteria,
@@ -629,6 +633,9 @@ export function validateManifestAgainstRequest(
   manifest: PortfolioAnalysisManifest,
   request: AgenticRunRequest
 ): void {
+  if (manifest.accountId !== request.accountId) {
+    throw new ContractValidationError('Manifest account does not match the run request');
+  }
   if (manifest.thesisVersion !== request.thesis.criteria.version) {
     throw new ContractValidationError('Manifest thesis version does not match the run request');
   }

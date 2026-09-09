@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { requireSession, type AuthContext } from './auth';
+import { accountCanEdit } from './account-scope';
 import { db } from './db';
 import { aiAnalyses, portfolios, positions } from './db/schema';
 
@@ -10,7 +11,15 @@ export type AuthenticationResult =
 
 export async function authenticateRequest(req: Request): Promise<AuthenticationResult> {
   try {
-    return { ok: true, auth: await requireSession(req) };
+    const auth = await requireSession(req);
+    const pathname = new URL(req.url).pathname;
+    const businessMutation = !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
+      && !pathname.startsWith('/api/auth/')
+      && pathname !== '/api/accounts';
+    if (businessMutation && !accountCanEdit(auth.role)) {
+      return { ok: false, response: NextResponse.json({ error: 'This account is read-only' }, { status: 403 }) };
+    }
+    return { ok: true, auth };
   } catch {
     return {
       ok: false,

@@ -37,10 +37,16 @@ export async function GET(req: Request) {
   return NextResponse.json({
     authenticated: true,
     user: {
-      id: session.userId,
+      id: session.actorUserId,
       email: session.email,
       displayName: session.displayName,
       role: session.role,
+    },
+    account: {
+      id: session.accountId,
+      name: session.accountName,
+      type: session.accountType,
+      isPlatformAdmin: session.isPlatformAdmin,
     },
   }, { headers: NO_STORE_HEADERS });
 }
@@ -170,7 +176,7 @@ export async function DELETE(req: Request) {
     await recordAuthenticationEvent({
       req,
       email: session.email,
-      userId: session.userId,
+      userId: session.actorUserId,
       eventType: 'logout',
       outcome: 'success',
     }).catch(() => undefined);

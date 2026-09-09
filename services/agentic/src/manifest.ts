@@ -51,6 +51,7 @@ export function buildManifest(
   const byPortfolio = new Map(results.map((result) => [result.portfolioId, result]));
   const manifest = PortfolioAnalysisManifest.parse({
     schemaVersion: MANIFEST_SCHEMA_VERSION,
+    accountId: request.accountId,
     generatedAt: generatedAt.toISOString(),
     thesisVersion: request.thesis.criteria.version,
     portfolios: request.portfolios.map((portfolio) => {

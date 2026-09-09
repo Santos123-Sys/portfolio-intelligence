@@ -8,9 +8,11 @@ import {
 
 const portfolioId = '11111111-1111-4111-8111-111111111111';
 const thesisId = '22222222-2222-4222-8222-222222222222';
+const accountId = '33333333-3333-4333-8333-333333333333';
 
 function request(analysisMode?: 'limited_research_risk') {
   return AgenticRunRequest.parse({
+    accountId,
     thesis: {
       versionId: thesisId,
       criteria: {

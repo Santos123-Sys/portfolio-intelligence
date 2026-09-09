@@ -132,7 +132,8 @@ export async function getAgenticReadiness(ownerId: string): Promise<AgenticReadi
 
 export async function buildAgenticRunRequest(
   ownerId: string,
-  input: AgenticRunSelection
+  input: AgenticRunSelection,
+  accountId: string
 ): Promise<AgenticRunRequest> {
   const selection = AgenticRunSelection.parse(input);
   const [thesis] = await db
@@ -223,6 +224,7 @@ export async function buildAgenticRunRequest(
   ]);
 
   const request = AgenticRunRequest.parse({
+    accountId,
     thesis: { versionId: thesis.id, criteria },
     portfolios: ownerPortfolios.map((portfolio) => ({
       id: portfolio.id,
