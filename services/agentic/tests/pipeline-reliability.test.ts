@@ -392,6 +392,8 @@ describe('schema failures name the field that failed', () => {
         currency: 'Swiss franc',
         country: 'Switzerland',
         sector: 'Industrials',
+        industry: null,
+        classificationSource: 'web_research',
         thesisAlignmentScore: 80,
         rationale: 'The supplied evidence supports the quality mandate.',
         matchedCriteria: ['Established competitive position'],
