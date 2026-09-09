@@ -26,6 +26,7 @@ import {
 import { startExternalAgenticRun, startExternalDiscoveryRun } from './integrations/agentic-client';
 import { computeStandaloneSecurityRisk } from './quant/security-risk';
 import { recordPriceObservation } from './services/provenance';
+import { isUnspecifiedThesisMandateCurrency, normalizeThesisMandateCurrency } from './thesis-currency';
 
 const ROLE_EXCHANGE: Partial<Record<PortfolioRole, string>> = {
   swiss_quality: 'XSWX',
@@ -114,13 +115,13 @@ export async function buildDiscoveryRunRequest(
     if (!role.success || !ROLE_EXCHANGE[role.data]) return [];
     const mandate = criteriaByRole.get(role.data);
     if (!mandate) return [];
-    const thesisCurrency = mandate.currency.trim().toUpperCase();
+    const thesisCurrency = normalizeThesisMandateCurrency(mandate.currency);
     if (
-      !['NOT SPECIFIED', 'UNSPECIFIED', 'ANY', 'N/A'].includes(thesisCurrency) &&
+      !isUnspecifiedThesisMandateCurrency(thesisCurrency) &&
       thesisCurrency !== portfolio.baseCurrency.toUpperCase()
     ) {
       throw new Error(
-        `${portfolio.name} uses ${portfolio.baseCurrency}, but the confirmed ${role.data} thesis mandate requires ${mandate.currency}`
+        `${portfolio.name} uses ${portfolio.baseCurrency}, but the confirmed ${role.data} thesis mandate specifies ${thesisCurrency}`
       );
     }
     return [{
