@@ -98,6 +98,7 @@ describe('browser security policy', () => {
 describe('external agentic integration contract', () => {
   it('accepts the dashboard run-request shape', () => {
     const parsed = AgenticRunRequest.parse({
+      accountId: '8c9e6679-7425-40de-944b-e07fc1f90ae7',
       thesis: {
         versionId: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
         criteria: {

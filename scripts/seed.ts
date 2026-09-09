@@ -35,7 +35,7 @@ async function main() {
       email,
       displayName,
       passwordHash: await hashPassword(password),
-      role: 'owner',
+      role: 'platform_admin',
     }).returning();
   }
 

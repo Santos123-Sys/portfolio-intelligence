@@ -162,12 +162,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const canonicalRequest = await buildAgenticRunRequest(session.auth.userId, parsed.data);
+    const canonicalRequest = await buildAgenticRunRequest(session.auth.userId, parsed.data, session.auth.accountId);
     const remote = await startExternalAgenticRun(canonicalRequest);
     const [run] = await db
       .insert(externalAgenticRuns)
       .values({
         ownerId: session.auth.userId,
+        accountId: session.auth.accountId,
         externalRunId: remote.externalRunId,
         status: remote.status,
         thesisVersion: String(canonicalRequest.thesis.criteria.version),

@@ -27,6 +27,7 @@ const updateSchema = z.object({
 export async function GET(req: Request) {
   const session = await authenticateRequest(req);
   if (!session.ok) return session.response;
+  if (!session.auth.isPlatformAdmin) return NextResponse.json({ error: 'Agent settings are restricted to the platform administrator' }, { status: 403 });
   const kinds = AgentKind.options;
   const configurations = await Promise.all(kinds.map(async (kind) => ({
     ...(await getActiveAgentCustomization(session.auth.userId, kind)),
@@ -44,6 +45,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await authenticateRequest(req);
   if (!session.ok) return session.response;
+  if (!session.auth.isPlatformAdmin) return NextResponse.json({ error: 'Agent settings are restricted to the platform administrator' }, { status: 403 });
   try {
     assertSameOrigin(req);
   } catch {

@@ -87,10 +87,74 @@ function LogoutButton() {
   );
 }
 
+type AccessibleAccount = { accountId: string; accountName: string; accountType: string; role: string };
+
+/** Account context is chosen server-side and persisted in an httpOnly cookie. */
+function AccountSwitcher() {
+  const router = useRouter();
+  const [accounts, setAccounts] = useState<AccessibleAccount[]>([]);
+  const [activeAccountId, setActiveAccountId] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/accounts').then((response) => response.ok ? response.json() : null)
+      .then((data: { accounts?: AccessibleAccount[]; activeAccountId?: string } | null) => {
+        if (cancelled || !data) return;
+        setAccounts(data.accounts ?? []);
+        setActiveAccountId(data.activeAccountId ?? '');
+      }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  if (accounts.length < 2) return null;
+  return (
+    <label className="account-switcher">
+      <span className="sr-only">Active client account</span>
+      <select
+        value={activeAccountId}
+        disabled={busy}
+        onChange={async (event) => {
+          const accountId = event.target.value;
+          setBusy(true);
+          const response = await fetch('/api/accounts', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ accountId }),
+          }).catch(() => null);
+          if (response?.ok) {
+            setActiveAccountId(accountId);
+            router.refresh();
+            window.location.reload();
+          }
+          setBusy(false);
+        }}
+      >
+        {accounts.map((account) => <option key={account.accountId} value={account.accountId}>
+          {account.accountName}
+        </option>)}
+      </select>
+    </label>
+  );
+}
+
 export function Header() {
   const pathname = usePathname();
   const { viewing } = usePortfolioBreadcrumb();
   const [extendedOpen, setExtendedOpen] = useState(false);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/session').then((response) => response.ok ? response.json() : null)
+      .then((data) => { if (!cancelled) setIsPlatformAdmin(Boolean(data?.account?.isPlatformAdmin)); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  const extendedNav = EXTENDED_NAV.filter(([href]) =>
+    isPlatformAdmin || !['/research-history', '/decisions', '/agent-settings'].includes(href)
+  );
 
   return (
     <header className="app-header">
@@ -121,7 +185,7 @@ export function Header() {
             </button>
             {extendedOpen && (
               <div className="nav-more-panel">
-                {EXTENDED_NAV.map(([href, label]) => (
+                {extendedNav.map(([href, label]) => (
                   <Link key={href} href={href} className="nav-link" onClick={() => setExtendedOpen(false)}>
                     {label}
                   </Link>
@@ -132,6 +196,7 @@ export function Header() {
         </nav>
 
         <div className="header-actions">
+          <AccountSwitcher />
           <ThemeToggle />
           <LogoutButton />
         </div>
