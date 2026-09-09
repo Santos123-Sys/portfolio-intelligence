@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { ThesisExtractionResult } from '@portfolio-intelligence/agentic-contract';
+import type { ThesisCriteria, ThesisExtractionResult } from '@portfolio-intelligence/agentic-contract';
 import { canDismissThesisExtraction } from '@/lib/thesis-extraction-lifecycle';
+import { normalizeThesisMandateCurrency } from '@/lib/thesis-currency';
 
 interface ThesisVersionRow {
   id: string;
@@ -44,7 +45,7 @@ export default function InvestmentThesisPage() {
   const [versions, setVersions] = useState<ThesisVersionRow[]>([]);
   const [extractions, setExtractions] = useState<ExtractionRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [criteriaDraft, setCriteriaDraft] = useState('');
+  const [criteriaDraft, setCriteriaDraft] = useState<ThesisCriteria | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transitionNotice, setTransitionNotice] = useState<string | null>(null);
@@ -97,7 +98,7 @@ export default function InvestmentThesisPage() {
 
   useEffect(() => {
     if (selected?.status === 'completed' && selected.resultJson && !criteriaDraft) {
-      setCriteriaDraft(JSON.stringify(selected.resultJson.criteria, null, 2));
+      setCriteriaDraft(structuredClone(selected.resultJson.criteria));
     }
   }, [selected, criteriaDraft]);
 
@@ -124,7 +125,7 @@ export default function InvestmentThesisPage() {
       if (!response.ok || !body.extraction) throw new Error(body.error ?? `Upload failed (${response.status})`);
       setExtractions((current) => [body.extraction!, ...current]);
       setSelectedId(body.extraction.id);
-      setCriteriaDraft('');
+      setCriteriaDraft(null);
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
@@ -134,7 +135,7 @@ export default function InvestmentThesisPage() {
 
   function review(extraction: ExtractionRow) {
     setSelectedId(extraction.id);
-    setCriteriaDraft(extraction.resultJson ? JSON.stringify(extraction.resultJson.criteria, null, 2) : '');
+    setCriteriaDraft(extraction.resultJson ? structuredClone(extraction.resultJson.criteria) : null);
     setError(null);
   }
 
@@ -144,11 +145,11 @@ export default function InvestmentThesisPage() {
     setError(null);
     setTransitionNotice(null);
     try {
-      const criteriaJson = JSON.parse(criteriaDraft) as unknown;
+      if (!criteriaDraft) throw new Error('No extracted criteria are available to confirm');
       const response = await fetch('/api/thesis', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ externalExtractionId: selected.externalExtractionId, criteriaJson }),
+        body: JSON.stringify({ externalExtractionId: selected.externalExtractionId, criteriaJson: criteriaDraft }),
       });
       const body = await response.json().catch(() => ({})) as {
         error?: string;
@@ -161,7 +162,7 @@ export default function InvestmentThesisPage() {
       };
       if (!response.ok) throw new Error(body.error ?? `Confirmation failed (${response.status})`);
       setSelectedId(null);
-      setCriteriaDraft('');
+      setCriteriaDraft(null);
       if (body.discoveryTransition?.status === 'started' || body.discoveryTransition?.status === 'existing') {
         router.push('/ai-stock-discovery');
       } else {
@@ -172,7 +173,7 @@ export default function InvestmentThesisPage() {
         await load();
       }
     } catch (cause) {
-      setError(cause instanceof SyntaxError ? 'Criteria must be valid JSON' : (cause as Error).message);
+      setError((cause as Error).message);
     } finally {
       setBusy(false);
     }
@@ -217,7 +218,7 @@ export default function InvestmentThesisPage() {
       }
       if (selectedId === extraction.id) {
         setSelectedId(null);
-        setCriteriaDraft('');
+        setCriteriaDraft(null);
       }
       await load();
     } catch (cause) {
@@ -243,7 +244,7 @@ export default function InvestmentThesisPage() {
         throw new Error(body.error ?? `Thesis exclusion failed (${response.status})`);
       }
       setSelectedId(null);
-      setCriteriaDraft('');
+      setCriteriaDraft(null);
       await load();
     } catch (cause) {
       setError((cause as Error).message);
@@ -318,7 +319,7 @@ export default function InvestmentThesisPage() {
       {selected?.resultJson && (
         <section className="card">
           <h2>3. Human confirmation</h2>
-          <p className="note">Extraction confidence: {(selected.resultJson.extractionConfidence * 100).toFixed(0)}%. Edit the criteria if needed, then confirm. Market research starts only after this human gate.</p>
+          <p className="note">Extraction confidence: {(selected.resultJson.extractionConfidence * 100).toFixed(0)}%. Review the source-derived mandate below, then confirm. Market research starts only after this human gate.</p>
           {selected.resultJson.ambiguousPoints.length > 0 && (
             <div className="caveat">
               <strong>Ambiguities requiring judgment</strong>
@@ -330,14 +331,13 @@ export default function InvestmentThesisPage() {
           {selected.resultJson.unmappedContent.length > 0 && (
             <p className="note">Unmapped content: {selected.resultJson.unmappedContent.join(' · ')}</p>
           )}
-          <label htmlFor="criteria-json"><strong>Canonical criteria JSON</strong></label>
-          <textarea
-            id="criteria-json"
-            value={criteriaDraft}
-            onChange={(event) => setCriteriaDraft(event.target.value)}
-            rows={24}
-            style={{ width: '100%', marginTop: '0.75rem', fontFamily: 'monospace' }}
-          />
+          {criteriaDraft && <ThesisSummary criteria={criteriaDraft} editable onCurrencyChange={(index, currency) => {
+            setCriteriaDraft((current) => current && {
+              ...current,
+              portfolios: current.portfolios.map((portfolio, portfolioIndex) => portfolioIndex === index ? { ...portfolio, currency } : portfolio),
+            });
+          }} />}
+          <p className="note">“Unspecified” means the source document imposed no currency restriction. Discovery then uses the selected portfolio&apos;s native currency (CHF for Swiss Quality; BRL for Brazilian Growth).</p>
           <button className="action-button" type="button" onClick={() => void confirm()} disabled={busy || !criteriaDraft}>
             Confirm thesis version {selected.requestedVersion} &amp; start market research
           </button>
@@ -361,13 +361,56 @@ export default function InvestmentThesisPage() {
               >
                 Exclude version
               </button>
-              <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem', color: 'var(--muted)', fontSize: '0.75rem' }}>
-                {JSON.stringify(thesis.criteriaJson, null, 2)}
-              </pre>
+              <ThesisSummary criteria={thesis.criteriaJson as ThesisCriteria} />
             </article>
           ))}</div>
         )}
       </section>
     </main>
+  );
+}
+
+function roleLabel(role: string): string {
+  return role === 'swiss_quality' ? 'Swiss quality' : role === 'brazilian_growth' ? 'Brazilian growth' : role.replaceAll('_', ' ');
+}
+
+function ThesisSummary({
+  criteria,
+  editable = false,
+  onCurrencyChange,
+}: {
+  criteria: ThesisCriteria;
+  editable?: boolean;
+  onCurrencyChange?: (index: number, value: string) => void;
+}) {
+  return (
+    <div className="thesis-summary" aria-label="Thesis criteria summary">
+      {criteria.portfolios.map((portfolio, index) => (
+        <article className="thesis-mandate" key={`${portfolio.role}-${index}`}>
+          <div className="thesis-mandate-heading">
+            <h3>{roleLabel(portfolio.role)}</h3>
+            {editable ? (
+              <label className="thesis-currency-field">Source currency
+                <input
+                  value={portfolio.currency}
+                  onChange={(event) => onCurrencyChange?.(index, event.target.value)}
+                  aria-label={`${roleLabel(portfolio.role)} source currency`}
+                  placeholder="Unspecified or CHF"
+                />
+              </label>
+            ) : <span className="badge watch">Source currency: {normalizeThesisMandateCurrency(portfolio.currency) === 'Unspecified' ? 'Not specified' : normalizeThesisMandateCurrency(portfolio.currency)}</span>}
+          </div>
+          <p><strong>Objective</strong><br />{portfolio.objective}</p>
+          <div className="thesis-summary-columns">
+            <div><strong>What qualifies</strong>{portfolio.inclusionCriteria.length ? <ul>{portfolio.inclusionCriteria.map((item) => <li key={item}>{item}</li>)}</ul> : <p className="note">No specific inclusion criteria extracted.</p>}</div>
+            <div><strong>What disqualifies</strong>{portfolio.exclusionCriteria.length ? <ul>{portfolio.exclusionCriteria.map((item) => <li key={item}>{item}</li>)}</ul> : <p className="note">No specific exclusion criteria extracted.</p>}</div>
+          </div>
+          {portfolio.targetMetrics && Object.keys(portfolio.targetMetrics).length > 0 && (
+            <p className="note"><strong>Target metrics:</strong> {Object.entries(portfolio.targetMetrics).map(([key, value]) => `${key}: ${value}`).join(' · ')}</p>
+          )}
+        </article>
+      ))}
+      {criteria.globalConstraints.length > 0 && <div className="thesis-global-constraints"><strong>Portfolio-wide constraints</strong><ul>{criteria.globalConstraints.map((item) => <li key={item}>{item}</li>)}</ul></div>}
+    </div>
   );
 }
