@@ -12,6 +12,7 @@ import { assertSameOrigin } from '@/lib/auth';
 import { authenticateRequest } from '@/lib/api-auth';
 import { excludeThesisVersion, ThesisVersionNotFoundError } from '@/lib/services/thesis-exclusion';
 import { startDiscoveryAfterThesisConfirmation } from '@/lib/thesis-discovery-transition';
+import { normalizeThesisCriteriaCurrencies } from '@/lib/thesis-currency';
 
 export const runtime = 'nodejs';
 
@@ -44,6 +45,7 @@ export async function POST(req: Request) {
 
   const parsed = thesisMutationSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  const criteriaJson = normalizeThesisCriteriaCurrencies(parsed.data.criteriaJson);
 
   try {
     const version = await db.transaction(async (tx) => {
@@ -57,7 +59,7 @@ export async function POST(req: Request) {
         isNull(thesisVersions.supersededAt)
       )).orderBy(desc(thesisVersions.versionNumber)).limit(1);
       const nextVersion = (latest?.versionNumber ?? 0) + 1;
-      if (parsed.data.criteriaJson.version !== nextVersion) {
+      if (criteriaJson.version !== nextVersion) {
         throw new ConfirmationError(`Confirmed criteria must be thesis version ${nextVersion}`);
       }
 
@@ -85,7 +87,7 @@ export async function POST(req: Request) {
       const [created] = await tx.insert(thesisVersions).values({
         ownerId: session.auth.userId,
         versionNumber: nextVersion,
-        criteriaJson: parsed.data.criteriaJson,
+        criteriaJson,
         rawDocument: parsed.data.rawDocument,
       }).returning();
       await tx.insert(thesisMutationAudit).values({
