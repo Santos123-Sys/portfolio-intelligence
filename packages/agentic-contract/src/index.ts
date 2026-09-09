@@ -301,6 +301,9 @@ export const DiscoveryCandidate = z.object({
   currency: z.string().trim().min(1),
   country: z.string().nullable(),
   sector: z.string().nullable(),
+  industry: z.string().nullable().default(null),
+  /** Provider classification is authoritative; web research is labelled as such. */
+  classificationSource: z.enum(['provider', 'web_research', 'unclassified']).default('unclassified'),
   thesisAlignmentScore: score,
   rationale: z.string().trim().min(1),
   matchedCriteria: z.array(z.string()),
