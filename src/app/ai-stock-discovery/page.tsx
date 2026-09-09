@@ -59,6 +59,8 @@ interface Candidate {
   currency: string;
   country: string | null;
   sector: string | null;
+  industry: string | null;
+  classificationSource: 'provider' | 'web_research' | 'unclassified';
   portfolioName: string;
   decision: string;
   workflowStatus: string;
@@ -428,13 +430,8 @@ export default function AIStockDiscoveryPage() {
         <h2>Before you start</h2>
         <ol className="prerequisite-list">
           <li>
-            <strong>Create your portfolios.</strong> Discovery needs at least one Swiss
-            Quality or Brazilian Growth portfolio.{' '}
-            <a className="text-link" href="/portfolio-setup">Portfolio setup</a>
-          </li>
-          <li>
-            <strong>Confirm your investment thesis.</strong> The thesis defines the criteria
-            candidates are matched against, and its mandates must cover the portfolios above.{' '}
+            <strong>Confirm your thesis.</strong> Confirmation creates the Swiss Quality
+            and/or Brazilian Growth portfolio destinations stated in the thesis.{' '}
             <a className="text-link" href="/investment-thesis">Investment thesis</a>
           </li>
           <li>
@@ -531,7 +528,8 @@ export default function AIStockDiscoveryPage() {
               <div className="candidate-heading">
                 <div>
                   <h3>{candidate.companyName} <span className="note">{candidate.ticker} · {candidate.exchange}</span></h3>
-                  <p className="note">{candidate.portfolioName} · {candidate.country ?? '—'} · {candidate.sector ?? '—'} · {candidate.currency}</p>
+                  <p className="note">{candidate.portfolioName} · {candidate.country ?? 'Country not verified'} · {candidate.sector ?? 'Sector not verified'} · {candidate.industry ?? 'Industry not verified'} · {candidate.currency}</p>
+                  <p className="note">Classification: {candidate.classificationSource === 'provider' ? 'market-data provider' : candidate.classificationSource === 'web_research' ? 'web research; review sources' : 'not yet verified'}</p>
                 </div>
                 <div className="candidate-score"><strong>{discovery.thesisAlignmentScore}</strong><span>thesis fit</span></div>
               </div>
