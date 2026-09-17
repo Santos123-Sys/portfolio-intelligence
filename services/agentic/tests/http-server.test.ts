@@ -54,7 +54,7 @@ describe('agentic HTTP API', () => {
     expect(repository.jobs.size).toBe(0);
   });
 
-  it('requires JSON and rejects active PDF content before persistence', async () => {
+  it('requires JSON, permits passive initial PDF views, and rejects active PDF content before persistence', async () => {
     const wrongType = await fetch(`${baseUrl}/v1/analysis-runs`, authenticated({
       method: 'POST',
       headers: { 'content-type': 'text/plain' },
@@ -62,8 +62,22 @@ describe('agentic HTTP API', () => {
     }));
     expect(wrongType.status).toBe(415);
 
-    const activePdf = Buffer.from('%PDF-1.4\n/OpenAction 1 0 R\n%%EOF').toString('base64');
-    const response = await fetch(`${baseUrl}/v1/thesis-extractions`, authenticated({
+    const passivePdf = Buffer.from('%PDF-1.4\n/OpenAction [1 0 R /XYZ null null 0]\n%%EOF').toString('base64');
+    const passiveResponse = await fetch(`${baseUrl}/v1/thesis-extractions`, authenticated({
+      method: 'POST',
+      body: JSON.stringify({
+        document: {
+          version: 1,
+          fileName: 'office-export.pdf',
+          mimeType: 'application/pdf',
+          contentBase64: passivePdf,
+        },
+      }),
+    }));
+    expect(passiveResponse.status).toBe(202);
+
+    const activePdf = Buffer.from('%PDF-1.4\n/OpenAction << /S /JavaScript /JS (alert(1)) >>\n%%EOF').toString('base64');
+    const activeResponse = await fetch(`${baseUrl}/v1/thesis-extractions`, authenticated({
       method: 'POST',
       body: JSON.stringify({
         document: {
@@ -74,8 +88,8 @@ describe('agentic HTTP API', () => {
         },
       }),
     }));
-    expect(response.status).toBe(400);
-    expect(repository.jobs.size).toBe(0);
+    expect(activeResponse.status).toBe(400);
+    expect(repository.jobs.size).toBe(1);
   });
 
   it('returns failed state and requeues the same logical run for retry', async () => {
