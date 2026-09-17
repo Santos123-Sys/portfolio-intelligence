@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { aiAnalyses, securities } from '@/lib/db/schema';
+import { aiAnalyses, decisionLog, securities } from '@/lib/db/schema';
 import { candidateDecisions } from '@/lib/db/workflow-schema';
 import { assertSameOrigin } from '@/lib/auth';
 import { authenticateRequest } from '@/lib/api-auth';
@@ -58,17 +58,31 @@ export async function POST(req: Request) {
     .where(and(eq(aiAnalyses.id, parsed.data.analysisId), eq(aiAnalyses.ownerId, session.auth.userId))).limit(1);
   if (!analysis) return NextResponse.json({ error: 'AI analysis not found' }, { status: 404 });
 
-  const [decision] = await db
-    .insert(candidateDecisions)
-    .values({
+  const [security] = await db.select({ ticker: securities.ticker, companyName: securities.companyName })
+    .from(securities).where(eq(securities.id, analysis.securityId)).limit(1);
+  const [decision] = await db.transaction(async (tx) => {
+    const created = await tx.insert(candidateDecisions).values({
       analysisId: parsed.data.analysisId,
       ownerId: session.auth.userId,
       decision: parsed.data.decision,
       rationale: parsed.data.rationale,
       decidedBy: session.auth.email,
       metadata: parsed.data.metadata,
-    })
-    .returning();
+    }).returning();
+    await tx.insert(decisionLog).values({
+      ownerId: session.auth.userId,
+      title: `${security?.companyName ?? 'Candidate'} (${security?.ticker ?? 'unknown'}) — analyst ${parsed.data.decision}`,
+      decision: parsed.data.decision,
+      reasoning: parsed.data.rationale ?? null,
+      outcome: parsed.data.decision === 'reanalysis_requested'
+        ? 'Reanalysis requested; no investment action was taken.'
+        : 'Human review verdict recorded; no investment action was taken.',
+      relatedSecurityId: analysis.securityId,
+      relatedPortfolioId: analysis.portfolioId,
+      metadata: { analysisId: analysis.id, thesisVersionId: analysis.thesisVersionId, evidenceAsOf: analysis.dataTimestamp?.toISOString() },
+    });
+    return created;
+  });
 
   return NextResponse.json({
     decision,

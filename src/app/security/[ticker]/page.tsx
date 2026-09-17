@@ -8,7 +8,10 @@
  */
 import { useEffect, useState } from 'react';
 import { use as usePromise } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { usePortfolioBreadcrumb } from '@/lib/portfolio-context';
+import { diffAnalyses } from '@/lib/integrations/analysis-validation';
 
 interface PositionDetail {
   id: string;
@@ -63,6 +66,9 @@ interface Analysis {
   } | null;
   confidenceScore: number;
   groundedIn: string[] | null;
+  informationGaps: string[] | null;
+  externalRunId: string | null;
+  supersedesId: string | null;
   analysisTimestamp: string;
   dataTimestamp: string | null;
   thesisVersionId: string;
@@ -79,6 +85,7 @@ interface FundamentalObservation {
 
 export default function SecurityDetailPage({ params }: { params: Promise<{ ticker: string }> }) {
   const { ticker } = usePromise(params);
+  const searchParams = useSearchParams();
   const { setViewing } = usePortfolioBreadcrumb();
 
   const [position, setPosition] = useState<PositionDetail | null>(null);
@@ -88,6 +95,7 @@ export default function SecurityDetailPage({ params }: { params: Promise<{ ticke
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [viewerMode, setViewerMode] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,10 +118,11 @@ export default function SecurityDetailPage({ params }: { params: Promise<{ ticke
         setPosition(pos);
         setViewing({ id: pos.portfolioId, name: pos.portfolioName, currency: pos.currency });
 
-        const [riskRes, analysisRes, obsRes] = await Promise.all([
+        const [riskRes, analysisRes, obsRes, authRes] = await Promise.all([
           fetch(`/api/risk?portfolioId=${pos.portfolioId}`),
           fetch(`/api/analysis?securityId=${pos.securityId}`),
           fetch(`/api/market-observations?securityId=${pos.securityId}`),
+          fetch('/api/auth/session'),
         ]);
         if (cancelled) return;
 
@@ -127,6 +136,10 @@ export default function SecurityDetailPage({ params }: { params: Promise<{ ticke
               (o) => o.observationType === 'fundamental'
             )
           );
+        }
+        if (authRes.ok) {
+          const auth = await authRes.json() as { user?: { role?: string } };
+          setViewerMode(auth.user?.role === 'viewer');
         }
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
@@ -178,7 +191,11 @@ export default function SecurityDetailPage({ params }: { params: Promise<{ ticke
     );
   }
 
-  const latestAnalysis = analyses[0] ?? null;
+  const requestedAnalysisId = searchParams.get('analysis');
+  const latestAnalysis = analyses.find((analysis) => analysis.id === requestedAnalysisId) ?? analyses[0] ?? null;
+  const previousAnalysis = latestAnalysis?.supersedesId
+    ? analyses.find((analysis) => analysis.id === latestAnalysis.supersedesId) ?? null
+    : null;
 
   return (
     <main>
@@ -213,15 +230,15 @@ export default function SecurityDetailPage({ params }: { params: Promise<{ ticke
           )}
         </div>
 
-        {/* Region 2: Position */}
-        <div className="card">
+        {/* Region 2: Position — client viewers receive a clean research report instead. */}
+        {!viewerMode && <div className="card">
           <h2>Position</h2>
           <table>
             <tbody>
               <tr><td>Portfolio</td><td className="num">{position.portfolioName}</td></tr>
               <tr><td>Quantity</td><td className="num">{Number(position.quantity).toLocaleString()}</td></tr>
-              <tr><td>Avg Cost</td><td className="num">{Number(position.avgCost).toFixed(2)}<span className="cur">{position.currency}</span></td></tr>
-              <tr><td>Market Value</td><td className="num">{position.marketValueNative == null ? '—' : Number(position.marketValueNative).toLocaleString(undefined, { maximumFractionDigits: 2 })}<span className="cur">{position.currency}</span></td></tr>
+              <tr><td>Avg Cost</td><td className="num">{formatNativeCurrency(position.avgCost, position.currency)}</td></tr>
+              <tr><td>Market Value</td><td className="num">{position.marketValueNative == null ? '—' : formatNativeCurrency(position.marketValueNative, position.currency)}</td></tr>
               <tr><td>Weight</td><td className="num">{position.weight == null ? '—' : `${(position.weight * 100).toFixed(2)}%`}</td></tr>
             </tbody>
           </table>
@@ -233,31 +250,35 @@ export default function SecurityDetailPage({ params }: { params: Promise<{ ticke
                   {metrics.map((m) => (
                     <tr key={m.id}>
                       <td>{m.metricName}</td>
-                      <td className="num">{m.value.toFixed(3)}<span className="cur">{m.currency}</span></td>
+                      <td className="num">{m.currency} {m.value.toFixed(3)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </>
           )}
-        </div>
+        </div>}
 
         {/* Region 3: AI Analysis */}
         <div className="card">
-          <h2>AI Analysis</h2>
+          <h2>{viewerMode ? 'Investment research' : 'AI Analysis'}</h2>
           {!latestAnalysis ? (
             <p className="note">No imported analysis yet. Start an external run from the Agentic System workspace.</p>
           ) : (
             <>
+              <div className={`analysis-confidence confidence-${confidenceBand(latestAnalysis.confidenceScore)}`}>
+                <strong>{confidenceLabel(latestAnalysis.confidenceScore)}</strong>
+                <span>{Math.round(latestAnalysis.confidenceScore * 100)}% evidence confidence</span>
+              </div>
               <p className="note">
-                {latestAnalysis.portfolioRole} · Investment score {latestAnalysis.investmentScore}/100 · Thesis
-                alignment {latestAnalysis.thesisAlignmentScore}/100
+                {latestAnalysis.portfolioRole} · Investment score {latestAnalysis.investmentScore}/100 · Thesis alignment {latestAnalysis.thesisAlignmentScore}/100
               </p>
-              <p>{latestAnalysis.investmentThesis}</p>
+              {latestAnalysis.thesisAlignmentScore < 50 && <div className="thesis-gate" role="note"><strong>Thesis-fit gate active</strong><span>This analysis is capped by weak thesis alignment. Review the stated thesis breakers before treating the score as a recommendation.</span></div>}
+              <p className="analysis-thesis">{latestAnalysis.investmentThesis}</p>
               <p className="note">Quality {latestAnalysis.qualityScore ?? '—'} · Growth {latestAnalysis.growthScore ?? '—'} · Risk {latestAnalysis.riskScore ?? '—'} · Dividend {latestAnalysis.dividendScore ?? '—'}</p>
               <p className="note">Catalysts: {(latestAnalysis.keyCatalysts ?? []).join(' · ') || '—'}</p>
               <p className="note">Risks: {(latestAnalysis.keyRisks ?? []).join(' · ') || '—'}</p>
-              <p className="caveat">Thesis breakers: {(latestAnalysis.thesisBreakers ?? []).join(' · ') || 'none'}</p>
+              <p className="caveat"><strong>Thesis breakers:</strong> {(latestAnalysis.thesisBreakers ?? []).join(' · ') || 'No thesis breaker was supplied.'}</p>
               {latestAnalysis.researchFramework && <div className="research-framework">
                 <div className="research-framework-heading">
                   <div>
@@ -274,33 +295,77 @@ export default function SecurityDetailPage({ params }: { params: Promise<{ ticke
                 <p className="note"><strong>Company drivers:</strong> {latestAnalysis.researchFramework.companyDrivers.join(' · ') || 'Not evidenced'}</p>
                 <p className="note"><strong>Monitoring triggers:</strong> {latestAnalysis.researchFramework.monitoringTriggers.join(' · ')}</p>
               </div>}
-              <p className="note">Confidence: {(latestAnalysis.confidenceScore * 100).toFixed(0)}%</p>
+              {previousAnalysis && <AnalysisChanges previous={previousAnalysis} current={latestAnalysis} />}
+              {!viewerMode && <AnalysisVerdict analysisId={latestAnalysis.id} />}
+              <div className="analysis-report-links">
+                {latestAnalysis.externalRunId && <a className="action-button inline-action" href={`/api/integrations/agentic/reports?externalRunId=${encodeURIComponent(latestAnalysis.externalRunId)}`} target="_blank" rel="noreferrer">Open PDF snapshot</a>}
+                <Link className="text-link" href={`/security/${encodeURIComponent(ticker)}?analysis=${latestAnalysis.id}`}>Open this live analysis</Link>
+              </div>
               <p className="note">Analyzed: {new Date(latestAnalysis.analysisTimestamp).toLocaleString()}</p>
               <p className="note">Thesis version: {latestAnalysis.thesisVersionId}</p>
             </>
           )}
         </div>
 
-        {/* Region 4: Grounding — the audit trail */}
+        {/* Region 4: Grounding — the audit trail. Viewer mode keeps only the report-facing explanation. */}
         <div className="card">
           <h2>Grounding</h2>
           {!latestAnalysis || (latestAnalysis.groundedIn ?? []).length === 0 ? (
             <p className="caveat">No grounding recorded — an analysis citing nothing should not be trusted.</p>
           ) : (
-            <table>
-              <thead><tr><th>Metric</th><th className="num">Data as of</th></tr></thead>
-              <tbody>
-                {(latestAnalysis.groundedIn ?? []).map((metricName) => (
-                  <tr key={metricName}>
-                    <td>{metricName}</td>
-                    <td className="num">{latestAnalysis.dataTimestamp ? new Date(latestAnalysis.dataTimestamp).toLocaleString() : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <>
+              <p className="note">Each item below is a retained evidence reference for this version. Source-to-sentence citation mapping is added only where the agent supplies it explicitly.</p>
+              <div className="evidence-chips">{(latestAnalysis.groundedIn ?? []).map((metricName) => <details key={metricName} className="evidence-chip"><summary>{metricName}</summary><p>Data as of: {latestAnalysis.dataTimestamp ? new Date(latestAnalysis.dataTimestamp).toLocaleString() : 'timestamp unavailable'}</p></details>)}</div>
+            </>
           )}
+          {latestAnalysis?.informationGaps?.length ? <div className="information-gaps"><h3>Information still missing</h3><p className="note">These are explicit limits on the conclusion, not zeros or implied negatives.</p><ul>{latestAnalysis.informationGaps.map((gap) => <li key={gap}>{gap}</li>)}</ul></div> : <p className="note">No material information gap was reported for this analysis.</p>}
         </div>
       </div>
     </main>
   );
+}
+
+function formatNativeCurrency(value: string | number, currency: string) {
+  return `${currency} ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function confidenceBand(score: number) {
+  if (score < 0.5) return 'thin';
+  if (score < 0.75) return 'moderate';
+  return 'strong';
+}
+
+function confidenceLabel(score: number) {
+  if (score < 0.5) return 'Thin data';
+  if (score < 0.75) return 'Qualified evidence';
+  return 'Well-supported evidence';
+}
+
+function AnalysisChanges({ previous, current }: { previous: Analysis; current: Analysis }) {
+  const changes = diffAnalyses(previous as never, current as never);
+  if (!changes.length) return null;
+  return <section className="analysis-changes"><h3>What changed since the prior analysis</h3><ul>{changes.map((change) => <li key={change.field}><strong>{humanize(change.field)}:</strong> {formatChange(change.from)} → {formatChange(change.to)}</li>)}</ul></section>;
+}
+
+function humanize(field: string) { return field.replace(/([A-Z])/g, ' $1').replace(/^./, (value) => value.toUpperCase()); }
+function formatChange(value: unknown) {
+  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : `${Math.round(value * 100)}%`;
+  if (typeof value === 'boolean') return value ? 'eligible' : 'not eligible';
+  if (value == null) return 'not available';
+  if (Array.isArray(value)) return value.join(' · ') || 'none recorded';
+  return typeof value === 'object' ? 'research framework revised' : String(value);
+}
+
+function AnalysisVerdict({ analysisId }: { analysisId: string }) {
+  const [rationale, setRationale] = useState('');
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function submit(decision: 'accepted' | 'watchlist' | 'reanalysis_requested') {
+    setBusy(true); setStatus(null);
+    const response = await fetch('/api/candidates', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ analysisId, decision, rationale: rationale || undefined }) }).catch(() => null);
+    const body = await response?.json().catch(() => ({})) as { error?: string } | undefined;
+    setStatus(response?.ok ? (decision === 'accepted' ? 'Agreement recorded in the decision log.' : decision === 'watchlist' ? 'Flagged for monitoring.' : 'Reanalysis request recorded.') : body?.error ?? 'Unable to record the review verdict.');
+    setBusy(false);
+  }
+  return <section className="analysis-verdict"><h3>Human review</h3><p className="note">Record a verdict on this analysis. This is not an order or an automatic portfolio change.</p><input value={rationale} onChange={(event) => setRationale(event.target.value)} placeholder="Optional rationale for the record" aria-label="Optional review rationale" maxLength={1000} /><div><button type="button" onClick={() => void submit('accepted')} disabled={busy}>Agree</button><button type="button" className="secondary-action" onClick={() => void submit('reanalysis_requested')} disabled={busy}>Override / reanalyse</button><button type="button" className="secondary-action" onClick={() => void submit('watchlist')} disabled={busy}>Flag for monitoring</button></div>{status && <p className="note" role="status">{status}</p>}</section>;
 }
