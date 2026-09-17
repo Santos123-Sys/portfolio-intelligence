@@ -40,7 +40,7 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(secureUrl, 308);
   }
 
-  if (req.nextUrl.pathname === '/login') return nextWithNonce(req);
+  if (req.nextUrl.pathname === '/login' || req.nextUrl.pathname === '/register') return nextWithNonce(req);
 
   const secret = process.env.SESSION_SECRET;
   const token = req.cookies.get(SESSION_COOKIE)?.value;
