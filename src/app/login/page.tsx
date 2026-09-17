@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import Link from 'next/link';
 import { safeLocalReturnPath } from '@/lib/request-security';
 
 export default function LoginPage() {
@@ -76,6 +77,7 @@ export default function LoginPage() {
             {submitting ? 'Verifying…' : mfaRequired ? 'Verify and sign in' : 'Sign in'}
           </button>
         </form>
+        <p className="login-help">New client? <Link href="/register">Create an account</Link></p>
       </section>
     </main>
   );
