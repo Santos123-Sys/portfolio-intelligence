@@ -86,8 +86,10 @@ function validateThesisDocumentContent(document: ThesisDocument): void {
     if (content.subarray(0, 5).toString('ascii') !== '%PDF-') throw new HttpError(400, 'PDF signature is invalid');
     const trailer = content.subarray(Math.max(0, content.length - 4096)).toString('latin1');
     if (!trailer.includes('%%EOF')) throw new HttpError(400, 'PDF document is incomplete');
-    if (/\/(?:JavaScript|JS|Launch|EmbeddedFile|OpenAction|AA|Encrypt)\b/i.test(content.toString('latin1'))) {
-      throw new HttpError(400, 'Encrypted PDFs and PDFs containing active or embedded content are not accepted');
+    // A passive /OpenAction destination is emitted by common office exporters
+    // to set the opening page or zoom. It is not an executable action.
+    if (/\/(?:JavaScript|JS|Launch|URI|GoToR|SubmitForm|ImportData|ResetForm|EmbeddedFile|Filespec|RichMedia|XFA|AA|Encrypt)\b/i.test(content.toString('latin1'))) {
+      throw new HttpError(400, 'PDFs with executable actions, embedded files, forms, or encryption are not accepted');
     }
     return;
   }
