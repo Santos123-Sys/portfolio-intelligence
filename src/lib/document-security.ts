@@ -51,8 +51,12 @@ function validatePdf(bytes: Buffer): void {
     throw new DocumentValidationError('Uploaded PDF is incomplete');
   }
   const source = bytes.toString('latin1');
-  if (/\/(?:JavaScript|JS|Launch|EmbeddedFile|OpenAction|AA|Encrypt)\b/i.test(source)) {
-    throw new DocumentValidationError('Encrypted PDFs and PDFs containing active or embedded content are not accepted');
+  // /OpenAction is also used by ordinary office exports to select the initial
+  // page/zoom. It is not executable by itself, so rejecting its mere presence
+  // incorrectly blocks safe, static PDFs. Reject only features that carry an
+  // executable action, external launch, embedded payload, form, or encryption.
+  if (/\/(?:JavaScript|JS|Launch|URI|GoToR|SubmitForm|ImportData|ResetForm|EmbeddedFile|Filespec|RichMedia|XFA|AA|Encrypt)\b/i.test(source)) {
+    throw new DocumentValidationError('PDFs with executable actions, embedded files, forms, or encryption are not accepted');
   }
 }
 
