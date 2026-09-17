@@ -21,7 +21,15 @@ describe('thesis document security boundary', () => {
     expect(result.fileName).toBe('investment-thesis.pdf');
   });
 
-  it('rejects mislabeled, incomplete and active-content PDFs', () => {
+  it('accepts a passive PDF with an initial view destination', () => {
+    expect(() => validateThesisDocument({
+      fileName: 'office-export.pdf',
+      mimeType: 'application/pdf',
+      contentBase64: encoded('%PDF-1.4\n/OpenAction [1 0 R /XYZ null null 0]\n%%EOF'),
+    })).not.toThrow();
+  });
+
+  it('rejects mislabeled, incomplete, encrypted, and active-content PDFs', () => {
     expect(() => validateThesisDocument({
       fileName: 'fake.pdf',
       mimeType: 'application/pdf',
@@ -30,8 +38,13 @@ describe('thesis document security boundary', () => {
     expect(() => validateThesisDocument({
       fileName: 'active.pdf',
       mimeType: 'application/pdf',
-      contentBase64: encoded('%PDF-1.4\n/OpenAction 1 0 R\n%%EOF'),
-    })).toThrow(/active or embedded/);
+      contentBase64: encoded('%PDF-1.4\n/OpenAction << /S /JavaScript /JS (alert(1)) >>\n%%EOF'),
+    })).toThrow(/executable actions/);
+    expect(() => validateThesisDocument({
+      fileName: 'encrypted.pdf',
+      mimeType: 'application/pdf',
+      contentBase64: encoded('%PDF-1.4\n/Encrypt 1 0 R\n%%EOF'),
+    })).toThrow(/encryption/);
   });
 
   it('rejects path-like names, malformed base64 and non-UTF-8 text', () => {

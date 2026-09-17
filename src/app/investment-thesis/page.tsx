@@ -263,7 +263,7 @@ export default function InvestmentThesisPage() {
 
       <section className="card">
         <h2>1. Submit source document</h2>
-        <p className="note">PDF up to 10 MB, or UTF-8 plain text/Markdown up to 2 MB. Active PDF content is rejected. Extraction never becomes canonical automatically.</p>
+        <p className="note">PDF up to 10 MB, or UTF-8 plain text/Markdown up to 2 MB. Static office exports are supported; executable actions, embedded files, forms, and encrypted PDFs are rejected. Extraction never becomes canonical automatically.</p>
         <label className="action-button" style={{ display: 'inline-block', cursor: busy ? 'wait' : 'pointer' }}>
           {busy ? 'Working…' : 'Choose thesis document'}
           <input
