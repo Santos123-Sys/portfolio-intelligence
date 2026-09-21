@@ -104,10 +104,14 @@ export async function buildDiscoveryRunRequest(
 
   const criteriaByRole = new Map<PortfolioRole, ThesisCriteria['portfolios'][number]>();
   for (const mandate of criteria.portfolios) {
-    if (criteriaByRole.has(mandate.role)) {
+    const supportedRole = PortfolioRole.safeParse(mandate.role);
+    // Preserve broader mandates in the thesis and portfolio records, while
+    // only dispatching roles for which a provider universe is configured.
+    if (!supportedRole.success) continue;
+    if (criteriaByRole.has(supportedRole.data)) {
       throw new Error(`Confirmed thesis contains duplicate ${mandate.role} mandates`);
     }
-    criteriaByRole.set(mandate.role, mandate);
+    criteriaByRole.set(supportedRole.data, mandate);
   }
 
   const equityPortfolios = ownerPortfolios.flatMap((portfolio) => {
@@ -133,7 +137,7 @@ export async function buildDiscoveryRunRequest(
     }];
   });
   if (!equityPortfolios.length) {
-    throw new Error('Create a Swiss Quality or Brazilian Growth portfolio that is present in the confirmed thesis before stock discovery');
+    throw new Error('This thesis was confirmed, but none of its portfolio mandates has a configured equity-discovery market yet');
   }
 
   const exchanges = [...new Set(equityPortfolios.map((portfolio) => ROLE_EXCHANGE[portfolio.role]!))];

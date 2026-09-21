@@ -430,8 +430,8 @@ export default function AIStockDiscoveryPage() {
         <h2>Before you start</h2>
         <ol className="prerequisite-list">
           <li>
-            <strong>Confirm your thesis.</strong> Confirmation creates the Swiss Quality
-            and/or Brazilian Growth portfolio destinations stated in the thesis.{' '}
+            <strong>Confirm your thesis.</strong> Confirmation creates every portfolio destination
+            stated in the thesis. Automated stock discovery starts only where a configured equity-market universe exists.{' '}
             <a className="text-link" href="/investment-thesis">Investment thesis</a>
           </li>
           <li>

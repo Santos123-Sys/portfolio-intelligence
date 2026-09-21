@@ -23,4 +23,11 @@ describe('thesis portfolio containers', () => {
       portfolios: [{ role: 'not_suitable', currency: 'USD', objective: 'Ignore', inclusionCriteria: [], exclusionCriteria: [] }],
     })).toEqual([]);
   });
+
+  it('creates a named destination for a source-authored mandate', () => {
+    expect(portfoliosRequiredByThesis({
+      version: 1, globalConstraints: [],
+      portfolios: [{ role: 'global_dividend_income', currency: 'usd', objective: 'Income and resilience', inclusionCriteria: [], exclusionCriteria: [] }],
+    })).toEqual([{ portfolioType: 'global_dividend_income', name: 'Global Dividend Income', baseCurrency: 'USD', investmentObjective: 'Income and resilience' }]);
+  });
 });
