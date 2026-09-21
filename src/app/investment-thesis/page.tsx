@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ThesisCriteria, ThesisExtractionResult } from '@portfolio-intelligence/agentic-contract';
 import { canDismissThesisExtraction } from '@/lib/thesis-extraction-lifecycle';
@@ -26,6 +26,24 @@ interface ExtractionRow {
   confirmedAt: string | null;
 }
 
+interface GeneratedMandateDraft { label: string; currency: string; objective: string; inclusionCriteria: string; exclusionCriteria: string; }
+interface ThesisGeneratorDraft {
+  title: string; investorName: string; purpose: string; timeHorizon: string; riskTolerance: string;
+  markets: string; globalConstraints: string; reviewCadence: string; mandates: GeneratedMandateDraft[];
+}
+const EMPTY_MANDATE: GeneratedMandateDraft = { label: '', currency: '', objective: '', inclusionCriteria: '', exclusionCriteria: '' };
+const INITIAL_GENERATOR: ThesisGeneratorDraft = {
+  title: 'My investment thesis', investorName: '', purpose: '', timeHorizon: 'Long term (five years or more)', riskTolerance: 'Moderate',
+  markets: '', globalConstraints: '', reviewCadence: 'Quarterly', mandates: [{ ...EMPTY_MANDATE }],
+};
+const listFromLines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
+
+function downloadGeneratedPdf(fileName: string, contentBase64: string): void {
+  const bytes = Uint8Array.from(atob(contentBase64), (character) => character.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  const link = document.createElement('a'); link.href = url; link.download = fileName; link.click(); URL.revokeObjectURL(url);
+}
+
 async function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -49,6 +67,7 @@ export default function InvestmentThesisPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transitionNotice, setTransitionNotice] = useState<string | null>(null);
+  const [generator, setGenerator] = useState<ThesisGeneratorDraft>(INITIAL_GENERATOR);
   const pendingExtractionIds = extractions
     .filter((item) => item.status === 'queued' || item.status === 'running')
     .map((item) => item.externalExtractionId)
@@ -131,6 +150,26 @@ export default function InvestmentThesisPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function updateMandate(index: number, field: keyof GeneratedMandateDraft, value: string) {
+    setGenerator((current) => ({ ...current, mandates: current.mandates.map((mandate, i) => i === index ? { ...mandate, [field]: value } : mandate) }));
+  }
+
+  async function generateThesis(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(null); setTransitionNotice(null);
+    try {
+      const response = await fetch('/api/thesis/generate', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+          ...generator, markets: listFromLines(generator.markets), globalConstraints: listFromLines(generator.globalConstraints),
+          mandates: generator.mandates.map((mandate) => ({ ...mandate, inclusionCriteria: listFromLines(mandate.inclusionCriteria), exclusionCriteria: listFromLines(mandate.exclusionCriteria) })),
+        }),
+      });
+      const body = await response.json().catch(() => ({})) as { extraction?: ExtractionRow; generatedDocument?: { fileName: string; contentBase64: string }; error?: string };
+      if (!response.ok || !body.extraction) throw new Error(body.error ?? `Thesis generation failed (${response.status})`);
+      if (body.generatedDocument) downloadGeneratedPdf(body.generatedDocument.fileName, body.generatedDocument.contentBase64);
+      setExtractions((current) => [body.extraction!, ...current]); setSelectedId(body.extraction.id); setCriteriaDraft(null);
+    } catch (cause) { setError((cause as Error).message); } finally { setBusy(false); }
   }
 
   function review(extraction: ExtractionRow) {
@@ -262,7 +301,43 @@ export default function InvestmentThesisPage() {
       {transitionNotice && <p className="caveat" role="status">{transitionNotice}</p>}
 
       <section className="card">
-        <h2>1. Submit source document</h2>
+        <h2>1. Build an investment thesis</h2>
+        <p className="note">Answer the questions below. Portfolio Intelligence will prepare a professional, static PDF, download a copy for you, and send that exact document to the thesis extractor. You review and confirm the resulting mandate before it is used.</p>
+        <form className="thesis-generator" onSubmit={(event) => void generateThesis(event)}>
+          <div className="grid">
+            <label>Thesis title<input value={generator.title} maxLength={120} required onChange={(event) => setGenerator((current) => ({ ...current, title: event.target.value }))} /></label>
+            <label>Investor or household name<input value={generator.investorName} maxLength={120} required onChange={(event) => setGenerator((current) => ({ ...current, investorName: event.target.value }))} /></label>
+            <label>Time horizon<input value={generator.timeHorizon} maxLength={120} required onChange={(event) => setGenerator((current) => ({ ...current, timeHorizon: event.target.value }))} /></label>
+            <label>Risk posture<select value={generator.riskTolerance} onChange={(event) => setGenerator((current) => ({ ...current, riskTolerance: event.target.value }))}><option>Conservative</option><option>Moderate</option><option>Growth-oriented</option><option>Aggressive</option></select></label>
+          </div>
+          <label>What is this capital intended to achieve?<textarea value={generator.purpose} minLength={2} maxLength={2000} required onChange={(event) => setGenerator((current) => ({ ...current, purpose: event.target.value }))} /></label>
+          <div className="grid">
+            <label>Markets or geographies <span className="note">(one per line)</span><textarea value={generator.markets} required placeholder={'Switzerland\nBrazil'} onChange={(event) => setGenerator((current) => ({ ...current, markets: event.target.value }))} /></label>
+            <label>Portfolio-wide constraints <span className="note">(one per line; optional)</span><textarea value={generator.globalConstraints} placeholder={'Avoid excessive leverage\nKeep a liquidity reserve'} onChange={(event) => setGenerator((current) => ({ ...current, globalConstraints: event.target.value }))} /></label>
+          </div>
+          <label>How often should this thesis be reviewed?<input value={generator.reviewCadence} maxLength={120} required onChange={(event) => setGenerator((current) => ({ ...current, reviewCadence: event.target.value }))} /></label>
+          <div className="thesis-generator-mandates">
+            <div className="section-row"><h3>Portfolio destinations</h3><p className="note">Create one destination for every distinct strategy in your thesis.</p></div>
+            {generator.mandates.map((mandate, index) => <article className="thesis-mandate" key={index}>
+              <div className="grid">
+                <label>Portfolio name<input value={mandate.label} maxLength={100} required placeholder="Swiss quality" onChange={(event) => updateMandate(index, 'label', event.target.value)} /></label>
+                <label>Base currency<input value={mandate.currency} minLength={3} maxLength={3} required placeholder="CHF" onChange={(event) => updateMandate(index, 'currency', event.target.value.toUpperCase())} /></label>
+              </div>
+              <label>What should this portfolio achieve?<textarea value={mandate.objective} maxLength={1000} required onChange={(event) => updateMandate(index, 'objective', event.target.value)} /></label>
+              <div className="grid">
+                <label>What qualifies? <span className="note">(one criterion per line)</span><textarea value={mandate.inclusionCriteria} onChange={(event) => updateMandate(index, 'inclusionCriteria', event.target.value)} /></label>
+                <label>What disqualifies? <span className="note">(one criterion per line)</span><textarea value={mandate.exclusionCriteria} onChange={(event) => updateMandate(index, 'exclusionCriteria', event.target.value)} /></label>
+              </div>
+              {generator.mandates.length > 1 && <button className="secondary-button" type="button" onClick={() => setGenerator((current) => ({ ...current, mandates: current.mandates.filter((_, i) => i !== index) }))}>Remove destination</button>}
+            </article>)}
+            {generator.mandates.length < 8 && <button className="secondary-button" type="button" onClick={() => setGenerator((current) => ({ ...current, mandates: [...current.mandates, { ...EMPTY_MANDATE }] }))}>Add another destination</button>}
+          </div>
+          <button className="action-button" type="submit" disabled={busy}>{busy ? 'Creating and extracting…' : 'Create thesis PDF and extract it'}</button>
+        </form>
+      </section>
+
+      <section className="card">
+        <h2>2. Or submit an existing thesis</h2>
         <p className="note">PDF up to 10 MB, or UTF-8 plain text/Markdown up to 2 MB. Static office exports are supported; executable actions, embedded files, forms, and encrypted PDFs are rejected. Extraction never becomes canonical automatically.</p>
         <label className="action-button" style={{ display: 'inline-block', cursor: busy ? 'wait' : 'pointer' }}>
           {busy ? 'Working…' : 'Choose thesis document'}
@@ -277,7 +352,7 @@ export default function InvestmentThesisPage() {
       </section>
 
       <section className="card">
-        <h2>2. Extraction review queue</h2>
+        <h2>3. Extraction review queue</h2>
         {extractions.length === 0 ? <p className="note">No extraction submitted yet.</p> : (
           <div className="table-scroll">
             <table>
@@ -318,8 +393,8 @@ export default function InvestmentThesisPage() {
 
       {selected?.resultJson && (
         <section className="card">
-          <h2>3. Human confirmation</h2>
-          <p className="note">Extraction confidence: {(selected.resultJson.extractionConfidence * 100).toFixed(0)}%. Review the source-derived mandate below, then confirm. Market research starts only after this human gate.</p>
+          <h2>4. Human confirmation</h2>
+          <p className="note">Extraction confidence: {(selected.resultJson.extractionConfidence * 100).toFixed(0)}%. Review the source-derived mandate below, then confirm. Only markets supported by configured discovery providers can start automated market research.</p>
           {selected.resultJson.ambiguousPoints.length > 0 && (
             <div className="caveat">
               <strong>Ambiguities requiring judgment</strong>
@@ -337,7 +412,7 @@ export default function InvestmentThesisPage() {
               portfolios: current.portfolios.map((portfolio, portfolioIndex) => portfolioIndex === index ? { ...portfolio, currency } : portfolio),
             });
           }} />}
-          <p className="note">“Unspecified” means the source document imposed no currency restriction. Discovery then uses the selected portfolio&apos;s native currency (CHF for Swiss Quality; BRL for Brazilian Growth).</p>
+          <p className="note">Every portfolio destination needs a native three-letter currency. Swiss Quality and Brazilian Growth use CHF and BRL respectively; for every other mandate, set the source currency here before confirmation.</p>
           <button className="action-button" type="button" onClick={() => void confirm()} disabled={busy || !criteriaDraft}>
             Confirm thesis version {selected.requestedVersion} &amp; start market research
           </button>
@@ -371,7 +446,7 @@ export default function InvestmentThesisPage() {
 }
 
 function roleLabel(role: string): string {
-  return role === 'swiss_quality' ? 'Swiss quality' : role === 'brazilian_growth' ? 'Brazilian growth' : role.replaceAll('_', ' ');
+  return role.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function ThesisSummary({

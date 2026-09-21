@@ -69,7 +69,9 @@ const ExtractionModelOutput = z.object({
   criteria: z.object({
     version: z.number().int().positive(),
     portfolios: z.array(z.object({
-      role: z.enum(['swiss_quality', 'brazilian_growth', 'fixed_income', 'not_suitable']),
+      // Thesis extraction preserves source-authored sleeves. Discovery later
+      // accepts only explicitly configured equity-market roles.
+      role: z.string().regex(/^[a-z][a-z0-9_]*$/),
       currency: z.string().min(1),
       objective: z.string().min(1),
       inclusionCriteria: z.array(z.string()),

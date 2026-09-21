@@ -18,6 +18,15 @@ export const PortfolioRole = z.enum([
 ]);
 export type PortfolioRole = z.infer<typeof PortfolioRole>;
 
+/**
+ * A thesis may contain sleeves beyond the equity universes currently covered
+ * by discovery providers. Keep that source-authored mandate intact at the
+ * thesis layer; downstream discovery remains deliberately bounded.
+ */
+export const ThesisPortfolioRole = z.string().trim().min(2).max(64)
+  .regex(/^[a-z][a-z0-9_]*$/, 'Portfolio role must use lowercase snake_case');
+export type ThesisPortfolioRole = z.infer<typeof ThesisPortfolioRole>;
+
 export const AgentKind = z.enum([
   'thesis_extraction',
   'market_research',
@@ -69,7 +78,7 @@ export const ResearchFramework = z.object({
 export type ResearchFramework = z.infer<typeof ResearchFramework>;
 
 export const ThesisPortfolioCriteria = z.object({
-  role: PortfolioRole,
+  role: ThesisPortfolioRole,
   currency: z.string().min(1),
   objective: z.string().min(1),
   inclusionCriteria: z.array(z.string()),

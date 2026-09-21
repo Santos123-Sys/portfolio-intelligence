@@ -13,7 +13,7 @@ import { authenticateRequest } from '@/lib/api-auth';
 import { excludeThesisVersion, ThesisVersionNotFoundError } from '@/lib/services/thesis-exclusion';
 import { startDiscoveryAfterThesisConfirmation } from '@/lib/thesis-discovery-transition';
 import { normalizeThesisCriteriaCurrencies } from '@/lib/thesis-currency';
-import { portfoliosRequiredByThesis } from '@/lib/thesis-portfolios';
+import { portfoliosRequiredByThesis, ThesisPortfolioConfigurationError } from '@/lib/thesis-portfolios';
 
 export const runtime = 'nodejs';
 
@@ -127,7 +127,7 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ version, discoveryTransition }, { status: 201 });
   } catch (error) {
-    if (error instanceof ConfirmationError) {
+    if (error instanceof ConfirmationError || error instanceof ThesisPortfolioConfigurationError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
     return NextResponse.json({ error: 'Unable to confirm thesis version' }, { status: 500 });

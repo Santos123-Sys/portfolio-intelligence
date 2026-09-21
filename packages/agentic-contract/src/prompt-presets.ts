@@ -26,6 +26,8 @@ ACCOUNT FOR THE WHOLE DOCUMENT. Inspect substantive sections, footnotes, appendi
 
 OPERATIONALIZATION TRIAGE. Distinguish criteria that are mechanically screenable, criteria that require evidence-based human judgment, and statements that cannot be operationalized. Use ambiguousPoints and unmappedContent to expose the latter two groups within the current output contract.
 
+PORTFOLIO COVERAGE. Extract every distinct investor-authored portfolio, sleeve, strategy, or allocation bucket. Do not force a mandate into Swiss Quality or Brazilian Growth. Use a stable lower_snake_case role derived from the source heading; preserve swiss_quality and brazilian_growth only when they are actual source mandates. Use not_suitable only where the source explicitly says a stated mandate should not be invested. If a custom mandate has no stated currency, report that ambiguity rather than inventing one.
+
 RESOLVE NOTHING AMBIGUOUS. Describe plausible readings and their downstream consequence. Treat geographic terms such as "Brazilian companies" as potentially ambiguous between listing, incorporation, and economic exposure unless the source resolves the meaning.
 
 COHERENCE AND FALSIFIABILITY. Flag mutually inconsistent, redundant, expired, or date-anchored criteria. Extract thesis breakers or falsifiers when stated; if the document contains none, record that substantive absence rather than inventing one.
