@@ -6,6 +6,7 @@
  * next action a user must take to move from thesis to an invested portfolio.
  */
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { usePortfolioBreadcrumb } from '@/lib/portfolio-context';
@@ -18,9 +19,6 @@ const WORKFLOW_NAV = [
 ] as const;
 
 const EXTENDED_NAV = [
-  ['/allocation', 'Allocation'],
-  ['/governance', 'Investment control'],
-  ['/risk', 'Portfolio risk'],
   ['/research-history', 'Research history'],
   ['/intelligence', 'AI Feed'],
   ['/decisions', 'Decision Log'],
@@ -30,6 +28,8 @@ const EXTENDED_NAV = [
   ['/securities', 'Securities'],
   ['/account/security', 'Account Security'],
 ] as const;
+
+const PORTFOLIO_WORKSPACE_PATHS = new Set(['/positions', '/allocation', '/risk', '/governance']);
 
 function ThemeToggle() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -160,8 +160,18 @@ export function Header() {
     <header className="app-header">
       <div className="app-header-row">
         <Link href="/" className="brand">
-          <strong>Portfolio Intelligence</strong>
-          <span>Thesis-driven investment management</span>
+          <Image
+            src="/brand/portfolio-intelligence-logo.png"
+            alt=""
+            width={44}
+            height={44}
+            className="brand-logo"
+            priority
+          />
+          <span className="brand-copy">
+            <strong>Portfolio Intelligence</strong>
+            <span>Thesis-driven investment management</span>
+          </span>
         </Link>
 
         <nav aria-label="Main navigation" className="primary-nav">
@@ -169,7 +179,7 @@ export function Header() {
             <Link
               key={href}
               href={href}
-              className={`nav-link${pathname === href ? ' active' : ''}`}
+              className={`nav-link${pathname === href || (href === '/positions' && PORTFOLIO_WORKSPACE_PATHS.has(pathname)) ? ' active' : ''}`}
             >
               {label}
             </Link>

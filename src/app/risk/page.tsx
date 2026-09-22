@@ -9,6 +9,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { PortfolioSelector, type SelectablePortfolio } from '@/components/portfolio-selector';
+import { PortfolioWorkspaceNav } from '@/components/portfolio-workspace-nav';
 import { MetricDrill, type DrillableMetric } from '@/components/metric-drill';
 import { usePortfolioBreadcrumb } from '@/lib/portfolio-context';
 
@@ -82,6 +83,7 @@ export default function RiskDetailPage() {
   if (error) {
     return (
       <main>
+        <PortfolioWorkspaceNav />
         <h1>Portfolio risk</h1>
         <div className="card">
           <p className="note">
@@ -98,6 +100,7 @@ export default function RiskDetailPage() {
 
   return (
     <main>
+      <PortfolioWorkspaceNav />
       <h1>Portfolio risk</h1>
       <p className="sub">Portfolio-level risk for recorded holdings. Candidate risk is reviewed inside the discovery workflow before a holding is added.</p>
 
