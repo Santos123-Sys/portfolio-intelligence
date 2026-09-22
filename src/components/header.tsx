@@ -19,14 +19,20 @@ const WORKFLOW_NAV = [
   ['/positions', 'nav.portfolio'],
 ] as const satisfies ReadonlyArray<readonly [string, TranslationKey]>;
 
-const EXTENDED_NAV = [
-  ['/research-history', 'nav.researchHistory'],
-  ['/intelligence', 'nav.aiFeed'],
+const REVIEW_NAV = [
   ['/decisions', 'nav.decisionLog'],
   ['/candidates', 'nav.candidateRecords'],
-  ['/agentic-system', 'nav.holdingsAnalysis'],
-  ['/agent-settings', 'nav.agentSettings'],
+  ['/agentic-system', 'nav.portfolioReview'],
+] as const satisfies ReadonlyArray<readonly [string, TranslationKey]>;
+
+const SUPPORT_NAV = [
+  ['/research-history', 'nav.researchHistory'],
+  ['/intelligence', 'nav.aiFeed'],
   ['/securities', 'nav.securities'],
+] as const satisfies ReadonlyArray<readonly [string, TranslationKey]>;
+
+const SETTINGS_NAV = [
+  ['/agent-settings', 'nav.agentSettings'],
   ['/account/security', 'nav.accountSecurity'],
 ] as const satisfies ReadonlyArray<readonly [string, TranslationKey]>;
 
@@ -146,7 +152,7 @@ export function Header() {
   const pathname = usePathname();
   const { viewing } = usePortfolioBreadcrumb();
   const { language, setLanguage, t } = useLanguage();
-  const [extendedOpen, setExtendedOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<'review' | 'more' | 'settings' | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
 
   useEffect(() => {
@@ -157,9 +163,11 @@ export function Header() {
     return () => { cancelled = true; };
   }, []);
 
-  const extendedNav = EXTENDED_NAV.filter(([href]) =>
-    isPlatformAdmin || !['/research-history', '/decisions', '/agent-settings'].includes(href)
-  );
+  const reviewNav = REVIEW_NAV.filter(([href]) => isPlatformAdmin || href !== '/decisions');
+  const supportNav = SUPPORT_NAV.filter(([href]) => isPlatformAdmin || href !== '/research-history');
+  const settingsNav = SETTINGS_NAV.filter(([href]) => isPlatformAdmin || href !== '/agent-settings');
+  const reviewActive = REVIEW_NAV.some(([href]) => pathname === href);
+  const settingsActive = SETTINGS_NAV.some(([href]) => pathname === href);
 
   return (
     <header className="app-header">
@@ -192,16 +200,54 @@ export function Header() {
           <div className="nav-more">
             <button
               type="button"
+              className={`nav-link${reviewActive ? ' active' : ''}`}
+              onClick={() => setOpenMenu((menu) => menu === 'review' ? null : 'review')}
+              aria-expanded={openMenu === 'review'}
+            >
+              {t('nav.investmentReview')}
+            </button>
+            {openMenu === 'review' && (
+              <div className="nav-more-panel">
+                {reviewNav.map(([href, labelKey]) => (
+                  <Link key={href} href={href} className="nav-link" onClick={() => setOpenMenu(null)}>
+                    {t(labelKey)}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="nav-more">
+            <button
+              type="button"
               className="nav-link"
-              onClick={() => setExtendedOpen((o) => !o)}
-              aria-expanded={extendedOpen}
+              onClick={() => setOpenMenu((menu) => menu === 'more' ? null : 'more')}
+              aria-expanded={openMenu === 'more'}
             >
               {t('nav.more')}
             </button>
-            {extendedOpen && (
+            {openMenu === 'more' && (
               <div className="nav-more-panel">
-                {extendedNav.map(([href, labelKey]) => (
-                  <Link key={href} href={href} className="nav-link" onClick={() => setExtendedOpen(false)}>
+                {supportNav.map(([href, labelKey]) => (
+                  <Link key={href} href={href} className="nav-link" onClick={() => setOpenMenu(null)}>
+                    {t(labelKey)}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="nav-more">
+            <button
+              type="button"
+              className={`nav-link${settingsActive ? ' active' : ''}`}
+              onClick={() => setOpenMenu((menu) => menu === 'settings' ? null : 'settings')}
+              aria-expanded={openMenu === 'settings'}
+            >
+              {t('nav.settings')}
+            </button>
+            {openMenu === 'settings' && (
+              <div className="nav-more-panel nav-more-panel-right">
+                {settingsNav.map(([href, labelKey]) => (
+                  <Link key={href} href={href} className="nav-link" onClick={() => setOpenMenu(null)}>
                     {t(labelKey)}
                   </Link>
                 ))}

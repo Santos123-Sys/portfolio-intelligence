@@ -81,6 +81,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
 .nav-link.active { color: var(--text); background: var(--bg); font-weight: 500; }
 .nav-more { position: relative; }
 .nav-more-panel { position: absolute; top: 100%; left: 0; margin-top: 0.25rem; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 0.35rem; display: grid; gap: 0.15rem; min-width: 180px; box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+.nav-more-panel-right { left: auto; right: 0; }
 .theme-toggle { border: 1px solid var(--border); background: var(--bg); border-radius: 6px; padding: 0.4rem 0.75rem; font-size: 0.75rem; color: var(--muted); cursor: pointer; }
 .theme-toggle:hover { color: var(--text); }
 .header-actions { display: flex; gap: 0.4rem; align-items: center; }
