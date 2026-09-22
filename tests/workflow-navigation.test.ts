@@ -5,6 +5,7 @@ const setupPage = readFileSync('src/app/portfolio-setup/page.tsx', 'utf8');
 const positionsPage = readFileSync('src/app/positions/page.tsx', 'utf8');
 const header = readFileSync('src/components/header.tsx', 'utf8');
 const portfolioWorkspaceNav = readFileSync('src/components/portfolio-workspace-nav.tsx', 'utf8');
+const i18n = readFileSync('src/lib/i18n.tsx', 'utf8');
 
 describe('discovery-first workflow', () => {
   it('does not make a position a prerequisite for discovery', () => {
@@ -14,11 +15,14 @@ describe('discovery-first workflow', () => {
   });
 
   it('puts the investment workflow in primary navigation and related portfolio tools in one workspace', () => {
-    expect(header).toContain("['/investment-thesis', '1. Thesis']");
-    expect(header).toContain("['/ai-stock-discovery', '2. Discover']");
-    expect(header).toContain("['/positions', '3. Portfolio']");
-    expect(header).toContain("['/how-it-works', 'How it works']");
-    expect(header).toContain("['/research-history', 'Research history']");
+    expect(header).toContain("['/investment-thesis', 'nav.thesis']");
+    expect(header).toContain("['/ai-stock-discovery', 'nav.discover']");
+    expect(header).toContain("['/positions', 'nav.portfolio']");
+    expect(header).toContain("['/how-it-works', 'nav.howItWorks']");
+    expect(header).toContain("['/research-history', 'nav.researchHistory']");
+    expect(i18n).toContain("'nav.thesis': '1. Thesis'");
+    expect(i18n).toContain("'nav.discover': '2. Discover'");
+    expect(i18n).toContain("'nav.portfolio': '3. Portfolio'");
     expect(portfolioWorkspaceNav).toContain("['/positions', 'Positions']");
     expect(portfolioWorkspaceNav).toContain("['/allocation', 'Allocation']");
     expect(portfolioWorkspaceNav).toContain("['/risk', 'Risk']");
