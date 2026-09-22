@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { PortfolioWorkspaceNav } from '@/components/portfolio-workspace-nav';
 
 type Severity = 'info' | 'watch' | 'breach';
 interface Policy { maxPositionWeight: number; maxSectorWeight: number; maxCountryWeight: number; minimumHoldings: number; stalePriceDays: number; staleResearchDays: number; reviewIntervalDays: number; }
@@ -56,10 +57,11 @@ export function GovernanceDashboard() {
   function updatePolicy(key: keyof Policy, value: string, percentInput = false) {
     setPolicy((current) => current ? { ...current, [key]: percentInput ? Number(value) / 100 : Number(value) } : current);
   }
-  if (loading && !data) return <main><h1>Investment control center</h1><p className="note">Loading governance evidence…</p></main>;
-  if (!data || !policy) return <main><h1>Investment control center</h1><p className="login-error">{error ?? 'Governance data is unavailable.'}</p></main>;
+  if (loading && !data) return <main><PortfolioWorkspaceNav /><h1>Investment control center</h1><p className="note">Loading governance evidence…</p></main>;
+  if (!data || !policy) return <main><PortfolioWorkspaceNav /><h1>Investment control center</h1><p className="login-error">{error ?? 'Governance data is unavailable.'}</p></main>;
 
   return <main>
+    <PortfolioWorkspaceNav />
     <h1>Investment control center</h1>
     <p className="sub">Construction, evidence freshness, valuation discipline, portfolio attribution, and review priorities. These are decision guardrails—not automated trading instructions.</p>
     {error && <p className="login-error" role="alert">{error}</p>}

@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { PortfolioSelector, type SelectablePortfolio } from '@/components/portfolio-selector';
+import { PortfolioWorkspaceNav } from '@/components/portfolio-workspace-nav';
 import { usePortfolioBreadcrumb } from '@/lib/portfolio-context';
 
 interface PositionRow {
@@ -162,6 +163,7 @@ export default function AllocationPage() {
   if (error) {
     return (
       <main>
+        <PortfolioWorkspaceNav />
         <h1>Allocation</h1>
         <div className="card">
           <p className="note">
@@ -178,6 +180,7 @@ export default function AllocationPage() {
 
   return (
     <main>
+      <PortfolioWorkspaceNav />
       <h1>Allocation</h1>
       <p className="sub">Weight breakdown by sector, country and asset class. One portfolio at a time — never blended.</p>
 

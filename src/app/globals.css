@@ -1,3 +1,32 @@
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-400.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-500.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-600.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-700.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
   --bg: #0b0d10;
   --panel: #14181d;
@@ -27,7 +56,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   font-variant-numeric: tabular-nums;
   line-height: 1.5;
 }
@@ -41,9 +70,11 @@ main { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
 /* Header (Section 5.4): logo/title, primary nav, theme toggle, breadcrumb */
 .app-header { border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 10; }
 .app-header-row { max-width: 1200px; margin: 0 auto; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; }
-.app-header .brand { display: flex; flex-direction: column; white-space: nowrap; }
-.app-header .brand strong { font-size: 0.95rem; }
-.app-header .brand span { color: var(--muted); font-size: 0.7rem; margin-top: 0.15rem; }
+.app-header .brand { display: flex; align-items: center; gap: 0.65rem; white-space: nowrap; }
+.brand-logo { width: 2.6rem; height: 2.6rem; border-radius: 0.65rem; flex: 0 0 auto; }
+.brand-copy { display: flex; flex-direction: column; }
+.app-header .brand-copy strong { font-size: 0.95rem; color: var(--text); }
+.app-header .brand-copy > span { color: var(--muted); font-size: 0.7rem; margin-top: 0.15rem; }
 .primary-nav { display: flex; flex-wrap: wrap; gap: 0.15rem; flex: 1; position: relative; }
 .nav-link { padding: 0.5rem 0.65rem; border-radius: 6px; color: var(--muted); font-size: 0.82rem; }
 .nav-link:hover { color: var(--text); background: var(--bg); }
@@ -56,6 +87,13 @@ main { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
 .account-switcher select { max-width: 13rem; border: 1px solid var(--border); background: var(--bg); border-radius: 6px; padding: 0.4rem 1.8rem 0.4rem 0.65rem; font-size: 0.75rem; color: var(--text); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .breadcrumb { max-width: 1200px; margin: 0 auto; padding: 0.5rem 1.5rem; font-size: 0.75rem; color: var(--muted); border-top: 1px solid var(--border); }
+
+.workspace-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 0 0 1.5rem; padding: 0.55rem; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); }
+.workspace-nav-label { color: var(--muted); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding-left: 0.45rem; white-space: nowrap; }
+.workspace-nav-links { display: flex; gap: 0.2rem; overflow-x: auto; }
+.workspace-nav-link { color: var(--muted); font-size: 0.8rem; padding: 0.5rem 0.7rem; border-radius: 6px; white-space: nowrap; }
+.workspace-nav-link:hover { color: var(--text); background: var(--bg); }
+.workspace-nav-link.active { color: var(--text); background: var(--bg); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
 
 h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 0.25rem; }
 h2 { margin-top: 0; }
@@ -372,6 +410,8 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
   .section-heading, .latest-run-summary { align-items: stretch; flex-direction: column; }
   .section-heading .action-button, .latest-run-summary .action-button { width: 100%; }
   .candidate-heading { align-items: center; }
+  .workspace-nav { align-items: stretch; flex-direction: column; }
+  .workspace-nav-links { width: 100%; }
 }
 
 /* ===========================================================================

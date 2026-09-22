@@ -1,0 +1,210 @@
+{
+  "generatedAt": "2026-09-22",
+  "scope": "Repository structure, component hierarchy, routing architecture, and navigation optimization",
+  "application": {
+    "name": "Portfolio Intelligence",
+    "framework": "Next.js 16 App Router",
+    "language": "TypeScript",
+    "persistence": "PostgreSQL through Drizzle ORM",
+    "deployment": "Railway standalone Next.js application with a separate agentic service",
+    "workspaces": [
+      {
+        "path": "packages/agentic-contract",
+        "purpose": "Shared agentic API schemas and protected prompt presets"
+      },
+      {
+        "path": "services/agentic",
+        "purpose": "Agentic API, worker, web research, PDF generation, callbacks, and storage"
+      }
+    ],
+    "deterministicEngines": {
+      "typescript": "src/lib/quant",
+      "python": "python/deterministic_engines.py"
+    }
+  },
+  "projectStructure": [
+    { "path": ".github/workflows", "purpose": "CI, tests, lint, build, and dependency audit gate" },
+    { "path": "docs", "purpose": "Architecture, operations, security, and generated audit records" },
+    { "path": "drizzle", "purpose": "Dashboard database migrations" },
+    { "path": "packages/agentic-contract", "purpose": "Shared contracts and prompt presets" },
+    { "path": "public/brand", "purpose": "Stable public branding assets" },
+    { "path": "python", "purpose": "Deterministic DCF, comparable-company, and risk engines" },
+    { "path": "scripts", "purpose": "Administrative, migration, provider, and deployment utilities" },
+    { "path": "services/agentic", "purpose": "Independent agentic service and worker" },
+    { "path": "src/app", "purpose": "App Router pages, layouts, and API handlers" },
+    { "path": "src/components", "purpose": "Shared interactive and presentation components" },
+    { "path": "src/lib", "purpose": "Authentication, account scope, database, workflows, integrations, research, and quantitative logic" },
+    { "path": "tests", "purpose": "Dashboard unit, contract, security, and integration tests" }
+  ],
+  "componentHierarchy": {
+    "root": {
+      "component": "RootLayout",
+      "file": "src/app/layout.tsx",
+      "children": [
+        {
+          "component": "AppShell",
+          "file": "src/components/app-shell.tsx",
+          "responsibilities": [
+            "Bypass the authenticated application shell for login",
+            "Provide active portfolio context",
+            "Render the global header and error boundary"
+          ],
+          "children": [
+            {
+              "component": "Header",
+              "file": "src/components/header.tsx",
+              "children": ["Brand", "Workflow navigation", "Admin-filtered More menu", "Account switcher", "Theme toggle", "Session logout", "Portfolio breadcrumb"]
+            },
+            {
+              "component": "Route page",
+              "children": [
+                "PortfolioWorkspaceNav",
+                "PortfolioSelector",
+                "PortfolioCard",
+                "DisplayTotal",
+                "MetricDrill",
+                "ValuationWorkbench",
+                "GovernanceDashboard"
+              ]
+            },
+            { "component": "ErrorBoundary", "file": "src/components/error-boundary.tsx" }
+          ]
+        }
+      ]
+    },
+    "sharedComponents": [
+      { "file": "src/components/display-total.tsx", "purpose": "Currency-aware display totals" },
+      { "file": "src/components/governance-dashboard.tsx", "purpose": "Portfolio construction, freshness, valuation discipline, committee records, and guardrails" },
+      { "file": "src/components/metric-drill.tsx", "purpose": "Expandable metric methodology" },
+      { "file": "src/components/portfolio-card.tsx", "purpose": "Portfolio summary card" },
+      { "file": "src/components/portfolio-selector.tsx", "purpose": "Single-portfolio selection without currency blending" },
+      { "file": "src/components/portfolio-workspace-nav.tsx", "purpose": "Contextual navigation for positions, allocation, risk, and investment control" },
+      { "file": "src/components/valuation-workbench.tsx", "purpose": "DCF and comparable-company review workspace" }
+    ]
+  },
+  "routingArchitecture": {
+    "entry": [
+      { "route": "/", "file": "src/app/page.tsx", "behavior": "Redirect to /how-it-works" },
+      { "route": "/login", "file": "src/app/login/page.tsx", "surface": "Public authentication" },
+      { "route": "/register", "file": "src/app/register/page.tsx", "surface": "Public account registration subject to capacity" }
+    ],
+    "primaryWorkflow": [
+      { "route": "/how-it-works", "purpose": "Product and workflow guidance" },
+      { "route": "/investment-thesis", "purpose": "Thesis generation, extraction, review, and confirmation" },
+      { "route": "/ai-stock-discovery", "purpose": "Market discovery, candidate review, research, risk, and valuation" },
+      { "route": "/positions", "purpose": "Recorded holdings and approved research context" }
+    ],
+    "portfolioWorkspace": [
+      { "route": "/positions", "purpose": "Holdings and position recording" },
+      { "route": "/allocation", "purpose": "Portfolio allocation by sector, country, and asset class" },
+      { "route": "/risk", "purpose": "Portfolio-level deterministic risk" },
+      { "route": "/governance", "purpose": "Investment controls, evidence freshness, attribution, and guardrails" }
+    ],
+    "researchAndOperations": [
+      { "route": "/intelligence", "purpose": "Live AI analysis feed" },
+      { "route": "/candidates", "purpose": "Candidate records" },
+      { "route": "/agentic-system", "purpose": "Existing-holdings external analysis" },
+      { "route": "/securities", "purpose": "Security master" },
+      { "route": "/security/[ticker]", "purpose": "Security detail" },
+      { "route": "/account/security", "purpose": "Password and MFA settings" }
+    ],
+    "adminOnlyNavigation": [
+      { "route": "/research-history", "purpose": "Research story and run history" },
+      { "route": "/decisions", "purpose": "Immutable decision log" },
+      { "route": "/agent-settings", "purpose": "Agent scope and addendum configuration" }
+    ],
+    "compatibilityRoutes": [
+      { "route": "/portfolio", "purpose": "Legacy server-rendered holdings table; retained for deep links" },
+      { "route": "/portfolio-setup", "purpose": "Redirect legacy setup bookmarks to position recording" },
+      { "route": "/risk-kpis", "purpose": "Legacy deterministic KPI summary; retained for deep links" },
+      { "route": "/ai-insights", "purpose": "Legacy server-rendered AI analysis view; retained for deep links" }
+    ],
+    "apiRoutes": [
+      "/api/accounts",
+      "/api/agent-configs",
+      "/api/ai-analysis",
+      "/api/alerts",
+      "/api/analysis",
+      "/api/auth/mfa",
+      "/api/auth/password",
+      "/api/auth/register",
+      "/api/auth/session",
+      "/api/candidates",
+      "/api/cron/refresh",
+      "/api/decision-log",
+      "/api/discovery/candidates",
+      "/api/discovery/comparables",
+      "/api/discovery/comparables/research",
+      "/api/discovery/comparables/suggestions",
+      "/api/discovery/investor-relations",
+      "/api/discovery/preflight",
+      "/api/discovery/runs",
+      "/api/discovery/valuations",
+      "/api/governance",
+      "/api/health",
+      "/api/integrations/agentic/import",
+      "/api/integrations/agentic/reports",
+      "/api/integrations/agentic/runs",
+      "/api/integrations/agentic/syntheses",
+      "/api/integrations/agentic/thesis-extractions",
+      "/api/kpis",
+      "/api/market-observations",
+      "/api/portfolio/research",
+      "/api/portfolios",
+      "/api/positions",
+      "/api/research-history",
+      "/api/risk",
+      "/api/securities",
+      "/api/thesis",
+      "/api/thesis/generate"
+    ]
+  },
+  "optimizationAnalysis": {
+    "findings": [
+      {
+        "id": "portfolio-navigation-fragmentation",
+        "observation": "Positions, allocation, portfolio risk, and investment control are one task domain but appeared in different top-level navigation groups.",
+        "decision": "Expose one active Portfolio workflow destination and a contextual workspace navigation shared by the four pages.",
+        "expectedGain": "Fewer competing top-level choices, clearer information scent, and faster movement between related portfolio tasks."
+      },
+      {
+        "id": "legacy-route-overlap",
+        "observation": "Legacy portfolio, risk KPI, AI insight, and setup routes overlap newer surfaces.",
+        "decision": "Preserve the routes in this patch because external bookmarks and operational workflows may still depend on them; remove them only after usage telemetry and redirect tests exist.",
+        "expectedGain": "No breaking change while the primary navigation stops advertising redundant surfaces."
+      },
+      {
+        "id": "brand-inconsistency",
+        "observation": "The header and browser metadata used text-only branding and the global font varied by operating system.",
+        "decision": "Use the supplied logo in the global header and metadata, and self-host Inter through the package bundle.",
+        "expectedGain": "Consistent identity and typography without a runtime font-network dependency."
+      }
+    ],
+    "executedPlan": [
+      "Add the supplied logo under public/brand and reference it through next/image.",
+      "Bundle Inter locally and make it the global interface typeface.",
+      "Create a reusable portfolio workspace navigation component.",
+      "Mount the workspace navigation in positions, allocation, risk, and governance, including loading and error states.",
+      "Remove duplicate portfolio workspace destinations from the More menu and keep the primary Portfolio item active across the workspace.",
+      "Preserve legacy URLs, APIs, account scoping, admin visibility, and page-specific data flows."
+    ],
+    "evaluation": {
+      "approved": true,
+      "reason": "The plan consolidates navigation without merging data models or page implementations, so it produces a measurable UX gain with a small regression surface.",
+      "breakingChanges": [],
+      "edgeCases": [
+        "Mobile navigation must remain horizontally scrollable.",
+        "Loading and failure states must retain workspace navigation.",
+        "The Portfolio primary item must remain active on all four workspace routes.",
+        "Admin-only destinations must stay filtered for non-admin accounts.",
+        "Legacy deep links must continue to resolve.",
+        "The font must be bundled locally so CI and production do not depend on Google Fonts availability."
+      ],
+      "deferred": [
+        "Deleting legacy pages before production usage data is available",
+        "Combining AI Feed, legacy AI Insights, and external holding runs because their audiences and data lifecycles differ",
+        "Combining Decision Log with Investment Control because non-admin visibility rules differ"
+      ]
+    }
+  }
+}
