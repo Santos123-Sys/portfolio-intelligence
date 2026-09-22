@@ -10,28 +10,30 @@ import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { usePortfolioBreadcrumb } from '@/lib/portfolio-context';
+import { useLanguage, type TranslationKey } from '@/lib/i18n';
 
-const WORKFLOW_NAV = [
-  ['/how-it-works', 'How it works'],
-  ['/investment-thesis', '1. Thesis'],
-  ['/ai-stock-discovery', '2. Discover'],
-  ['/positions', '3. Portfolio'],
-] as const;
+const WORKFLOW_NAV: ReadonlyArray<readonly [string, TranslationKey]> = [
+  ['/how-it-works', 'nav.howItWorks'],
+  ['/investment-thesis', 'nav.thesis'],
+  ['/ai-stock-discovery', 'nav.discover'],
+  ['/positions', 'nav.portfolio'],
+];
 
-const EXTENDED_NAV = [
-  ['/research-history', 'Research history'],
-  ['/intelligence', 'AI Feed'],
-  ['/decisions', 'Decision Log'],
-  ['/candidates', 'Candidate records'],
-  ['/agentic-system', 'Existing-holdings analysis'],
-  ['/agent-settings', 'Agent settings'],
-  ['/securities', 'Securities'],
-  ['/account/security', 'Account Security'],
-] as const;
+const EXTENDED_NAV: ReadonlyArray<readonly [string, TranslationKey]> = [
+  ['/research-history', 'nav.researchHistory'],
+  ['/intelligence', 'nav.aiFeed'],
+  ['/decisions', 'nav.decisionLog'],
+  ['/candidates', 'nav.candidateRecords'],
+  ['/agentic-system', 'nav.holdingsAnalysis'],
+  ['/agent-settings', 'nav.agentSettings'],
+  ['/securities', 'nav.securities'],
+  ['/account/security', 'nav.accountSecurity'],
+];
 
 const PORTFOLIO_WORKSPACE_PATHS = new Set(['/positions', '/allocation', '/risk', '/governance']);
 
 function ThemeToggle() {
+  const { t } = useLanguage();
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   useEffect(() => {
@@ -58,13 +60,14 @@ function ThemeToggle() {
   }
 
   return (
-    <button type="button" className="theme-toggle" onClick={toggle} aria-label="Toggle theme">
-      {theme === 'dark' ? 'Dark' : 'Light'}
+    <button type="button" className="theme-toggle" onClick={toggle} aria-label={t('actions.toggleTheme')}>
+      {theme === 'dark' ? t('actions.dark') : t('actions.light')}
     </button>
   );
 }
 
 function LogoutButton() {
+  const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const router = useRouter();
@@ -82,7 +85,7 @@ function LogoutButton() {
   }
   return (
     <button type="button" className="theme-toggle" onClick={logout} disabled={busy}>
-      {busy ? 'Signing out…' : failed ? 'Retry sign out' : 'Sign out'}
+      {busy ? t('actions.signingOut') : failed ? t('actions.retrySignOut') : t('actions.signOut')}
     </button>
   );
 }
@@ -91,6 +94,7 @@ type AccessibleAccount = { accountId: string; accountName: string; accountType: 
 
 /** Account context is chosen server-side and persisted in an httpOnly cookie. */
 function AccountSwitcher() {
+  const { t } = useLanguage();
   const router = useRouter();
   const [accounts, setAccounts] = useState<AccessibleAccount[]>([]);
   const [activeAccountId, setActiveAccountId] = useState('');
@@ -110,7 +114,7 @@ function AccountSwitcher() {
   if (accounts.length < 2) return null;
   return (
     <label className="account-switcher">
-      <span className="sr-only">Active client account</span>
+      <span className="sr-only">{t('account.activeClient')}</span>
       <select
         value={activeAccountId}
         disabled={busy}
@@ -141,6 +145,7 @@ function AccountSwitcher() {
 export function Header() {
   const pathname = usePathname();
   const { viewing } = usePortfolioBreadcrumb();
+  const { language, setLanguage, t } = useLanguage();
   const [extendedOpen, setExtendedOpen] = useState(false);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
 
@@ -175,13 +180,13 @@ export function Header() {
         </Link>
 
         <nav aria-label="Main navigation" className="primary-nav">
-          {WORKFLOW_NAV.map(([href, label]) => (
+          {WORKFLOW_NAV.map(([href, labelKey]) => (
             <Link
               key={href}
               href={href}
               className={`nav-link${pathname === href || (href === '/positions' && PORTFOLIO_WORKSPACE_PATHS.has(pathname)) ? ' active' : ''}`}
             >
-              {label}
+              {t(labelKey)}
             </Link>
           ))}
           <div className="nav-more">
@@ -191,13 +196,13 @@ export function Header() {
               onClick={() => setExtendedOpen((o) => !o)}
               aria-expanded={extendedOpen}
             >
-              More
+              {t('nav.more')}
             </button>
             {extendedOpen && (
               <div className="nav-more-panel">
-                {extendedNav.map(([href, label]) => (
+                {extendedNav.map(([href, labelKey]) => (
                   <Link key={href} href={href} className="nav-link" onClick={() => setExtendedOpen(false)}>
-                    {label}
+                    {t(labelKey)}
                   </Link>
                 ))}
               </div>
@@ -206,6 +211,19 @@ export function Header() {
         </nav>
 
         <div className="header-actions">
+          <label className="language-switcher">
+            <span className="sr-only">{t('language.label')}</span>
+            <select
+              value={language}
+              onChange={(event) => setLanguage(event.target.value as typeof language)}
+              aria-label={t('language.label')}
+            >
+              <option value="en">EN</option>
+              <option value="pt">PT</option>
+              <option value="es">ES</option>
+              <option value="de">DE</option>
+            </select>
+          </label>
           <AccountSwitcher />
           <ThemeToggle />
           <LogoutButton />
@@ -216,10 +234,10 @@ export function Header() {
         <div className="breadcrumb">
           {viewing ? (
             <>
-              Viewing: <strong>{viewing.name}</strong> <span className="cur">({viewing.currency})</span>
+              {t('portfolio.viewing')}: <strong>{viewing.name}</strong> <span className="cur">({viewing.currency})</span>
             </>
           ) : (
-            <span className="note">No portfolio selected</span>
+            <span className="note">{t('portfolio.noneSelected')}</span>
           )}
         </div>
       )}
