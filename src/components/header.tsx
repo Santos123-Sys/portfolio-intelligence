@@ -12,14 +12,14 @@ import { useEffect, useState } from 'react';
 import { usePortfolioBreadcrumb } from '@/lib/portfolio-context';
 import { useLanguage, type TranslationKey } from '@/lib/i18n';
 
-const WORKFLOW_NAV: ReadonlyArray<readonly [string, TranslationKey]> = [
+const WORKFLOW_NAV = [
   ['/how-it-works', 'nav.howItWorks'],
   ['/investment-thesis', 'nav.thesis'],
   ['/ai-stock-discovery', 'nav.discover'],
   ['/positions', 'nav.portfolio'],
-];
+] as const satisfies ReadonlyArray<readonly [string, TranslationKey]>;
 
-const EXTENDED_NAV: ReadonlyArray<readonly [string, TranslationKey]> = [
+const EXTENDED_NAV = [
   ['/research-history', 'nav.researchHistory'],
   ['/intelligence', 'nav.aiFeed'],
   ['/decisions', 'nav.decisionLog'],
@@ -28,7 +28,7 @@ const EXTENDED_NAV: ReadonlyArray<readonly [string, TranslationKey]> = [
   ['/agent-settings', 'nav.agentSettings'],
   ['/securities', 'nav.securities'],
   ['/account/security', 'nav.accountSecurity'],
-];
+] as const satisfies ReadonlyArray<readonly [string, TranslationKey]>;
 
 const PORTFOLIO_WORKSPACE_PATHS = new Set(['/positions', '/allocation', '/risk', '/governance']);
 
