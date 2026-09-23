@@ -181,7 +181,7 @@ for (const entries of Object.values(pageTranslations)) {
 }
 
 function translatedPageText(language: Language, value: string): string {
-  const match = value.match(/^(\\s*)(.*?)(\\s*)$/s);
+  const match = value.match(/^(\s*)(.*?)(\s*)$/s);
   if (!match) return value;
   const [, leading, raw, trailing] = match;
   const source = translatedToSource.get(raw) ?? raw;
