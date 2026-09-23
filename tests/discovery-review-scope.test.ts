@@ -34,6 +34,15 @@ describe('run-scoped candidate review', () => {
     expect(discoveryPage).not.toContain('Show run history');
     expect(discoveryPage).toContain('setSelectedRunId(null)');
   });
+
+  it('treats developing evidence as an initial snapshot and explains how research continues', () => {
+    expect(discoveryPage).toContain('Initial screening evidence');
+    expect(discoveryPage).toContain('Needs further research');
+    expect(discoveryPage).toContain('Approval starts research; it does not buy or add this security to your holdings.');
+    expect(discoveryPage).toContain('The current company-research status and its updated evidence assessment appear in step 3 below.');
+    expect(discoveryPage).toContain('Evidence: {frameworkLabel(candidate.analysis.researchFramework.evidenceQuality)}');
+    expect(discoveryPage).toContain('window.setInterval(() => {');
+  });
 });
 
 describe('positions empty-state behavior', () => {
