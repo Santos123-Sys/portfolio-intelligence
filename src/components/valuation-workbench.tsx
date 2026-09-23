@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { IntegratedValuationEngine } from './integrated-valuation-engine';
 
 interface ValuationSetup {
   suitability: {
@@ -409,6 +410,7 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
   if (!setup && !compsSetup && !busy && !compsBusy) return <p className="login-error" role="alert">{error ?? compsError ?? 'Valuation evidence is unavailable.'}</p>;
   return (
     <section className="valuation-panel">
+      <IntegratedValuationEngine />
       <p className="analysis-eyebrow">4. Valuation</p>
       <h3>Valuation workspace</h3>
       <p className="note">Use a DCF only with structured financial statements. Use comparable companies to triangulate value from a sourced, human-reviewed peer set. Neither output is a trade instruction.</p>

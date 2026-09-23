@@ -8,6 +8,7 @@ import { discountedCashFlow, threeCaseDiscountedCashFlow, assessDcfSuitability }
 import { computeStandaloneSecurityRisk } from '../src/lib/quant/security-risk';
 import { EodhdProvider } from '../src/lib/connectors/eodhd';
 import { dcfReportFileName, renderDcfReportPdf } from '../src/lib/dcf-report';
+import { calculateIntegratedComps, calculateIntegratedDcf, type IntegratedDcfInput, type IntegratedPeer } from '../src/lib/quant/integrated-valuation';
 
 const portfolioId = '11111111-1111-4111-8111-111111111111';
 const thesisId = '22222222-2222-4222-8222-222222222222';
@@ -233,6 +234,51 @@ describe('deterministic DCF', () => {
   it('routes financial institutions away from an automatic FCFF DCF', () => {
     expect(assessDcfSuitability('Financial Services', ['free_cash_flow']).status)
       .toBe('alternative_method_recommended');
+  });
+});
+
+describe('integrated DCF and Comps motor', () => {
+  const peers: IntegratedPeer[] = [
+    { id: '1', companyName: 'Peer One', ticker: 'ONE', sharePrice: 20, dilutedShares: 10, totalDebt: 30, cash: 5, revenue: 100, ebitda: 20, netIncome: 8, included: true },
+    { id: '2', companyName: 'Peer Two', ticker: 'TWO', sharePrice: 25, dilutedShares: 8, totalDebt: 20, cash: 4, revenue: 90, ebitda: 18, netIncome: 0, included: true },
+    { id: '3', companyName: 'Excluded Peer', ticker: 'OUT', sharePrice: 40, dilutedShares: 7, totalDebt: 10, cash: 2, revenue: 110, ebitda: -3, netIncome: -4, included: false },
+  ];
+  const dcfInput: IntegratedDcfInput = {
+    riskFreeRate: 0.04, marketRiskPremium: 0.05, beta: 1.1, costOfDebt: 0.06, taxRate: 0.2, debtToCapital: 0.25,
+    baseRevenue: 1000, baseEbitdaMargin: 0.2, daPercent: 0.04, capexPercent: 0.05, nwcPercent: 0.01,
+    revenueGrowth: [0.1, 0.09, 0.08, 0.07, 0.06], ebitdaMargin: [0.2, 0.205, 0.21, 0.21, 0.21],
+    capexPercentForecast: [0.05, 0.05, 0.05, 0.05, 0.05], nwcPercentForecast: [0.01, 0.01, 0.01, 0.01, 0.01],
+    perpetuityGrowthRate: 0.025, exitMultiple: 10, targetDebt: 120, targetCash: 40, dilutedShares: 50, targetNetIncome: 70,
+  };
+
+  it('recalculates included peer statistics and excludes invalid profitability multiples', () => {
+    const result = calculateIntegratedComps(peers);
+    expect(result.includedCount).toBe(2);
+    expect(result.rows[0]!.enterpriseValue).toBe(225);
+    expect(result.rows[2]!.evEbitda).toBeNull();
+    expect(result.rows[2]!.pe).toBeNull();
+    expect(result.evEbitda.count).toBe(2);
+    expect(result.pe.count).toBe(1);
+    expect(calculateIntegratedComps(peers.map((peer) => ({ ...peer, included: peer.id !== '1' }))).evEbitda.count).toBe(1);
+  });
+
+  it('links Comps median EV/EBITDA into the exit method without changing WACC', () => {
+    const comps = calculateIntegratedComps(peers);
+    const linked = calculateIntegratedDcf(dcfInput, comps.evEbitda.median);
+    const standalone = calculateIntegratedDcf(dcfInput, null);
+    expect(linked.wacc).toBe(standalone.wacc);
+    expect(linked.exitTerminalValue).toBeCloseTo(linked.projections[4]!.ebitda * comps.evEbitda.median!);
+    expect(linked.projections).toHaveLength(5);
+    expect(linked.sensitivities).toHaveLength(125);
+    expect(linked.perpetuityPerShare).not.toBeNull();
+    expect(linked.baseYear.ufcf).toBeCloseTo(108);
+  });
+
+  it('does not emit DCF values when WACC is non-positive', () => {
+    const invalid = calculateIntegratedDcf({ ...dcfInput, riskFreeRate: -0.1, marketRiskPremium: 0, costOfDebt: 0, debtToCapital: 0 }, null);
+    expect(invalid.wacc).toBeLessThanOrEqual(0);
+    expect(invalid.projections.every((row) => !Number.isFinite(row.presentValue))).toBe(true);
+    expect(invalid.perpetuityPerShare).toBeNull();
   });
 });
 
