@@ -165,6 +165,7 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
 .run-candidate-breakdown { margin: 0.35rem 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
 .section-title { margin: 2rem 0 1rem; font-size: 1rem; }
 .candidate-review-heading { margin-top: 2rem; }
+.candidate-review-section { scroll-margin-top: 8rem; }
 .candidate-review-heading .section-title { margin: 0 0 0.35rem; }
 .candidate-list, .agent-config-list { display: grid; gap: 1rem; }
 .candidate-card h3 { margin: 0; font-size: 1rem; }
