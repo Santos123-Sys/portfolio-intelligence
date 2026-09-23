@@ -73,6 +73,8 @@ function discoveryOutput() {
       currency: 'CHF',
       country: 'Switzerland',
       sector: 'Consumer Defensive',
+      industry: 'Packaged Foods',
+      classificationSource: 'provider',
       thesisAlignmentScore: 78,
       rationale: 'The supplied identity and dividend field support initial review.',
       matchedCriteria: ['Swiss listing'],
