@@ -535,11 +535,11 @@ export default function AIStockDiscoveryPage() {
               </div>
               <p>{discovery.rationale}</p>
               {candidate.latestPrice && <p className="note"><strong>Latest market close:</strong> {formatLatestPrice(candidate.latestPrice)} · as of {candidate.latestPrice.asOf} · {candidate.latestPrice.provider}</p>}
-              <section className="evidence-scorecard" aria-label="Research evidence quality">
+              <section className="evidence-scorecard" aria-label="Initial screening evidence">
                 <div className="evidence-scorecard-heading">
-                  <strong>Research evidence</strong>
+                  <strong>Initial screening evidence</strong>
                   <span className={`badge ${candidate.evidenceScorecard.assessment === 'sufficient' ? 'ok' : candidate.evidenceScorecard.assessment === 'developing' ? 'watch' : 'breach'}`}>
-                    {candidate.evidenceScorecard.assessment}
+                    {candidate.evidenceScorecard.assessment === 'developing' ? 'Needs further research' : candidate.evidenceScorecard.assessment === 'limited' ? 'Limited evidence' : 'Ready for human review'}
                   </span>
                 </div>
                 <div className="evidence-scorecard-grid">
@@ -549,6 +549,10 @@ export default function AIStockDiscoveryPage() {
                   <span>Market price {candidate.evidenceScorecard.marketPriceStatus}</span>
                 </div>
                 <p>{candidate.evidenceScorecard.summary}</p>
+                {candidate.decision !== 'approved' && candidate.evidenceScorecard.assessment !== 'sufficient' &&
+                  <p className="note">To continue company research, review the open gaps and complete the decision journal, then choose Approve &amp; analyze. Approval starts research; it does not buy or add this security to your holdings.</p>}
+                {candidate.decision === 'approved' &&
+                  <p className="note">This badge records the original discovery snapshot. The current company-research status and its updated evidence assessment appear in step 3 below.</p>}
               </section>
               <p className="note"><strong>Matched:</strong> {discovery.matchedCriteria.join(' · ') || 'None evidenced'}</p>
               {discovery.violatedCriteria.length > 0 && <p className="caveat"><strong>Conflicts:</strong> {discovery.violatedCriteria.join(' · ')}</p>}
