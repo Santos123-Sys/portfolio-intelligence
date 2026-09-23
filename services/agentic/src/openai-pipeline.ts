@@ -305,9 +305,9 @@ Absolute rules:
 5. sourceUrls must include the record's structured-universe source URL. It may additionally include only a URL supplied in the web-research evidence.
 6. Preserve hard thesis exclusions. A candidate with an evidenced hard exclusion must not be shortlisted.
 7. thesisAlignmentScore measures fit to the confirmed thesis, not general popularity or business quality.
-8. Produce exactly one market mandate for every supplied portfolio and no unknown portfolio.
+8. This request contains exactly one portfolio. Research that portfolio's entire supplied universe and produce exactly one market mandate for it.
 9. Copy portfolioId, role and currency for every market mandate exactly from PORTFOLIOS. A source placeholder such as "Unspecified" is an information gap, not portfolio identity.
-10. Return at most maxCandidatesPerPortfolio candidates for each portfolio. Zero candidates is valid when evidence is insufficient. The intended combined shortlist is 5–15, not a broad universe.
+10. Return at most maxCandidatesPerPortfolio candidates for the supplied portfolio. Zero candidates is valid only when the evidence does not support any eligible name; explain that outcome in limitations.
 11. Do not value securities, calculate volatility, recommend trades, or alter holdings. Human approval is required before financial analysis.
 12. Return a security identity (exchange plus ticker) at most once across the combined candidate output.
 13. For sector and industry, copy the structured-universe classification exactly when it is supplied. When it is absent, classify only when the supplied web-research evidence explicitly supports the classification; otherwise return null. Never use memory or a plausible-sounding label.
@@ -725,36 +725,79 @@ export class OpenAIAgenticPipeline {
     for (const record of request.universe) {
       webEvidence.set(`${record.exchange}:${record.ticker}`, await researchCompany(record.companyName, record.ticker, this.webResearch));
     }
-    const universe = request.universe.map((record) => ({
-      ...record,
-      groundingKeys: universeGroundingKeys(record),
-      webResearch: webEvidence.get(`${record.exchange}:${record.ticker}`),
-    }));
-    const prompt = `CONFIRMED THESIS\n${JSON.stringify(request.thesis.criteria)}\n\nPORTFOLIOS\n${JSON.stringify(request.portfolios)}\n\nMAX CANDIDATES PER PORTFOLIO\n${request.maxCandidatesPerPortfolio}\n\nSTRUCTURED UNIVERSE\n${JSON.stringify(universe)}`;
-    const verifiedWebSources = [...webEvidence.values()].flatMap((evidence) => evidence.urls);
     try {
-      const response = await this.client.responses.parse({
-        model: this.model,
-        reasoning: { effort: this.effort.discovery },
-        instructions: withOwnerCustomization(discoveryInstructions, request.agentConfig, 'market_research'),
-        input: prompt,
-        text: { format: zodTextFormat(MarketDiscoveryModelOutput, 'market_discovery') },
-      });
-      if (!response.output_parsed) {
-        throw new AgenticPipelineError('discovery', 'No structured market-discovery result was returned', true);
+      const portfolioOutputs: z.infer<typeof MarketDiscoveryOutput>[] = [];
+      for (const portfolio of request.portfolios) {
+        // Candidate caps and currencies are portfolio-specific. Giving the
+        // model every mandate in one call allowed a valid-looking combined
+        // response to spend the whole shortlist on the first market. Isolate
+        // each mandate so every eligible portfolio receives a complete pass.
+        const portfolioUniverse = request.universe.filter(
+          (record) => record.currency.toUpperCase() === portfolio.baseCurrency.toUpperCase()
+        );
+        if (!portfolioUniverse.length) {
+          throw new AgenticPipelineError(
+            'discovery',
+            `No supplied security universe matches ${portfolio.name} (${portfolio.baseCurrency})`,
+            false
+          );
+        }
+        const portfolioRequest = DiscoveryRunRequest.parse({
+          ...request,
+          portfolios: [portfolio],
+          universe: portfolioUniverse,
+        });
+        const universe = portfolioUniverse.map((record) => ({
+          ...record,
+          groundingKeys: universeGroundingKeys(record),
+          webResearch: webEvidence.get(`${record.exchange}:${record.ticker}`),
+        }));
+        const prompt = `CONFIRMED THESIS\n${JSON.stringify(request.thesis.criteria)}\n\nPORTFOLIO TO RESEARCH\n${JSON.stringify(portfolio)}\n\nMAX CANDIDATES FOR THIS PORTFOLIO\n${request.maxCandidatesPerPortfolio}\n\nSTRUCTURED UNIVERSE FOR THIS PORTFOLIO\n${JSON.stringify(universe)}`;
+        const response = await this.client.responses.parse({
+          model: this.model,
+          reasoning: { effort: this.effort.discovery },
+          instructions: withOwnerCustomization(discoveryInstructions, request.agentConfig, 'market_research'),
+          input: prompt,
+          text: { format: zodTextFormat(MarketDiscoveryModelOutput, 'market_discovery') },
+        });
+        if (!response.output_parsed) {
+          throw new AgenticPipelineError(
+            'discovery',
+            `No structured market-discovery result was returned for ${portfolio.name}`,
+            true
+          );
+        }
+        const verifiedWebSources = portfolioUniverse.flatMap(
+          (record) => webEvidence.get(`${record.exchange}:${record.ticker}`)?.urls ?? []
+        );
+        const portfolioOutput = MarketDiscoveryOutput.parse({
+          ...response.output_parsed,
+          marketMandates: pinMarketMandateIdentity(response.output_parsed.marketMandates, portfolioRequest),
+          candidates: deduplicateCandidateIdentities(
+            pinCandidateIdentity(response.output_parsed.candidates, portfolioRequest, webEvidence)
+          ),
+          limitations: [
+            ...new Set([
+              ...response.output_parsed.limitations,
+              ...(response.output_parsed.candidates.length === 0
+                ? [`${portfolio.name}: no candidates met the confirmed mandate within the supplied universe.`]
+                : []),
+              ...sourceCurrencyLimitations(portfolioRequest),
+            ]),
+          ],
+          thesisVersion: request.thesis.criteria.version,
+          verifiedWebSources,
+        });
+        validateDiscoveryOutput(portfolioOutput, portfolioRequest);
+        portfolioOutputs.push(portfolioOutput);
       }
+
       const output = MarketDiscoveryOutput.parse({
-        ...response.output_parsed,
-        marketMandates: pinMarketMandateIdentity(response.output_parsed.marketMandates, request),
-        candidates: deduplicateCandidateIdentities(pinCandidateIdentity(response.output_parsed.candidates, request, webEvidence)),
-        limitations: [
-          ...new Set([
-            ...response.output_parsed.limitations,
-            ...sourceCurrencyLimitations(request),
-          ]),
-        ],
         thesisVersion: request.thesis.criteria.version,
-        verifiedWebSources,
+        marketMandates: portfolioOutputs.flatMap((result) => result.marketMandates),
+        candidates: deduplicateCandidateIdentities(portfolioOutputs.flatMap((result) => result.candidates)),
+        verifiedWebSources: [...new Set(portfolioOutputs.flatMap((result) => result.verifiedWebSources))],
+        limitations: [...new Set(portfolioOutputs.flatMap((result) => result.limitations))],
       });
       validateDiscoveryOutput(output, request);
       return output;

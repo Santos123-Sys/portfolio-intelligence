@@ -327,6 +327,125 @@ describe('schema failures name the field that failed', () => {
     expect(output.thesisVersion).toBe(thesis.version);
   });
 
+  it('researches Swiss and Brazilian mandates independently before combining them', async () => {
+    const brazilPortfolioId = '22222222-2222-4222-8222-222222222222';
+    const multiPortfolioRequest = {
+      ...discoveryRequest,
+      thesis: {
+        ...discoveryRequest.thesis,
+        criteria: {
+          ...discoveryRequest.thesis.criteria,
+          portfolios: [
+            ...discoveryRequest.thesis.criteria.portfolios,
+            {
+              role: 'brazilian_growth', currency: 'BRL', objective: 'Growth',
+              inclusionCriteria: ['Growth'], exclusionCriteria: [],
+            },
+          ],
+        },
+      },
+      portfolios: [
+        ...discoveryRequest.portfolios,
+        {
+          id: brazilPortfolioId,
+          name: 'Brazilian growth',
+          role: 'brazilian_growth' as const,
+          baseCurrency: 'BRL',
+          investmentObjective: 'Growth',
+        },
+      ],
+      universe: [
+        ...discoveryRequest.universe,
+        {
+          ticker: 'WEGE3', exchange: 'BVMF', companyName: 'WEG S.A.', currency: 'BRL',
+          country: 'Brazil', sector: 'Industrials', industry: 'Electrical Equipment',
+          assetType: 'Common Stock', observedAt: '2026-09-23T00:00:00.000Z',
+          provider: 'eodhd', sourceUrl: 'https://example.test/universe/wege3', attributes: {},
+        },
+      ],
+    };
+    const prompts: string[] = [];
+    const client = {
+      responses: {
+        parse: async ({ input }: { input: string }) => {
+          prompts.push(input);
+          const brazilian = input.includes('WEGE3');
+          const selectedPortfolioId = brazilian ? brazilPortfolioId : portfolioId;
+          const ticker = brazilian ? 'WEGE3' : 'NESN';
+          const exchange = brazilian ? 'BVMF' : 'XSWX';
+          const currency = brazilian ? 'BRL' : 'CHF';
+          const sourceUrl = brazilian
+            ? 'https://example.test/universe/wege3'
+            : 'https://example.test/universe/nesn';
+          return {
+            output: [],
+            output_parsed: {
+              marketMandates: [{
+                portfolioId: selectedPortfolioId,
+                role: brazilian ? 'brazilian_growth' : 'swiss_quality',
+                exchanges: [exchange],
+                currency,
+                rationale: 'Matches the supplied portfolio mandate.',
+              }],
+              candidates: [{
+                portfolioId: selectedPortfolioId,
+                ticker,
+                exchange,
+                companyName: brazilian ? 'WEG S.A.' : 'Nestle S.A.',
+                currency,
+                country: brazilian ? 'Brazil' : 'CH',
+                sector: brazilian ? 'Industrials' : null,
+                industry: brazilian ? 'Electrical Equipment' : null,
+                classificationSource: brazilian ? 'provider' : 'unclassified',
+                thesisAlignmentScore: 80,
+                rationale: 'The supplied evidence supports the mandate.',
+                matchedCriteria: ['Portfolio objective'],
+                violatedCriteria: [],
+                groundedIn: ['identity:ticker'],
+                sourceUrls: [sourceUrl],
+                informationGaps: [],
+              }],
+              limitations: [],
+            },
+          };
+        },
+      },
+    } as unknown as OpenAI;
+
+    const pipeline = new OpenAIAgenticPipeline('k', 'gpt-5.6', 'medium', client);
+    const output = await pipeline.discoverSecurities(multiPortfolioRequest as never);
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toContain('NESN');
+    expect(prompts[0]).not.toContain('WEGE3');
+    expect(prompts[1]).toContain('WEGE3');
+    expect(prompts[1]).not.toContain('NESN');
+    expect(output.marketMandates.map((mandate) => mandate.portfolioId)).toEqual([
+      portfolioId,
+      brazilPortfolioId,
+    ]);
+    expect(output.candidates.map((candidate) => candidate.ticker)).toEqual(['NESN', 'WEGE3']);
+  });
+
+  it('records a portfolio-specific limitation when no candidate qualifies', async () => {
+    const pipeline = new OpenAIAgenticPipeline('k', 'gpt-5.6', 'medium', clientReturning({
+      marketMandates: [{
+        portfolioId,
+        role: 'swiss_quality',
+        exchanges: ['XSWX'],
+        currency: 'CHF',
+        rationale: 'The supplied universe was researched.',
+      }],
+      candidates: [],
+      limitations: [],
+    }));
+
+    const output = await pipeline.discoverSecurities(discoveryRequest as never);
+    expect(output.limitations).toContain(
+      'Swiss quality: no candidates met the confirmed mandate within the supplied universe.'
+    );
+  });
+
   it('pins mandate identity to the trusted portfolio when the thesis source is unspecified', async () => {
     const requestWithUnspecifiedSource = {
       ...discoveryRequest,
