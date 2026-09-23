@@ -110,6 +110,61 @@ describe('provider-grounded stock discovery', () => {
     output.candidates[0].sourceUrls.push('https://issuer.example.com/annual-report');
     expect(() => validateDiscoveryOutput(output, discoveryRequest())).not.toThrow();
   });
+
+  it('accepts verified web classification when the provider supplied none', () => {
+    const request = discoveryRequest();
+    request.universe[0] = {
+      ...request.universe[0],
+      ticker: 'ABBN',
+      companyName: 'ABB Ltd',
+      sector: null,
+      industry: null,
+      provider: 'finnhub',
+      sourceUrl: 'https://finnhub.io/docs/api/stock-symbols',
+    };
+    const output = discoveryOutput();
+    output.candidates[0] = {
+      ...output.candidates[0],
+      ticker: 'ABBN',
+      companyName: 'ABB Ltd',
+      sector: 'Industrials',
+      industry: 'Electrical Equipment',
+      classificationSource: 'web_research',
+      sourceUrls: [
+        'https://finnhub.io/docs/api/stock-symbols',
+        'https://global.abb/group/en/investors',
+      ],
+    };
+    output.verifiedWebSources = ['https://global.abb/group/en/investors'];
+
+    expect(() => validateDiscoveryOutput(output, request)).not.toThrow();
+  });
+
+  it('rejects web classification without candidate-specific verified evidence', () => {
+    const request = discoveryRequest();
+    request.universe[0] = {
+      ...request.universe[0],
+      ticker: 'ABBN',
+      companyName: 'ABB Ltd',
+      sector: null,
+      industry: null,
+      provider: 'finnhub',
+      sourceUrl: 'https://finnhub.io/docs/api/stock-symbols',
+    };
+    const output = discoveryOutput();
+    output.candidates[0] = {
+      ...output.candidates[0],
+      ticker: 'ABBN',
+      companyName: 'ABB Ltd',
+      sector: 'Industrials',
+      industry: 'Electrical Equipment',
+      classificationSource: 'web_research',
+      sourceUrls: ['https://finnhub.io/docs/api/stock-symbols'],
+    };
+
+    expect(() => validateDiscoveryOutput(output, request))
+      .toThrow(/classification changed without verified evidence for ABBN/);
+  });
 });
 
 describe('EODHD adapter', () => {
