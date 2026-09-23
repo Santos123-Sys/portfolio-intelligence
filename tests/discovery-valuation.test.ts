@@ -4,9 +4,10 @@ import {
   MarketDiscoveryOutput,
   validateDiscoveryOutput,
 } from '@portfolio-intelligence/agentic-contract';
-import { discountedCashFlow, assessDcfSuitability } from '../src/lib/quant/dcf';
+import { discountedCashFlow, threeCaseDiscountedCashFlow, assessDcfSuitability } from '../src/lib/quant/dcf';
 import { computeStandaloneSecurityRisk } from '../src/lib/quant/security-risk';
 import { EodhdProvider } from '../src/lib/connectors/eodhd';
+import { dcfReportFileName, renderDcfReportPdf } from '../src/lib/dcf-report';
 
 const portfolioId = '11111111-1111-4111-8111-111111111111';
 const thesisId = '22222222-2222-4222-8222-222222222222';
@@ -180,6 +181,53 @@ describe('deterministic DCF', () => {
       dataAsOf: '2026-08-29T00:00:00.000Z',
       sourceReferences: ['source'],
     })).toThrow(/must exceed terminal growth/);
+  });
+
+  it('keeps worst, base and optimistic cases as separate deterministic calculations', () => {
+    const common = {
+      currency: 'CHF', startingFreeCashFlow: 100, forecastYears: 5, netDebt: 50,
+      sharesOutstanding: 10, dataAsOf: '2026-08-29T00:00:00.000Z', sourceReferences: ['fundamental:source-id'],
+    };
+    const result = threeCaseDiscountedCashFlow({
+      worst_case: { ...common, annualGrowthRate: 0.01, discountRate: 0.12, terminalGrowthRate: 0.01 },
+      base_case: { ...common, annualGrowthRate: 0.05, discountRate: 0.1, terminalGrowthRate: 0.02 },
+      optimistic_case: { ...common, annualGrowthRate: 0.08, discountRate: 0.09, terminalGrowthRate: 0.025 },
+    });
+    expect(result.method).toBe('three_case_two_stage_fcff');
+    expect(result.scenarios.map((scenario) => scenario.name)).toEqual(['worst_case', 'base_case', 'optimistic_case']);
+    expect(result.scenarios[0]!.result.fairValuePerShare).toBeLessThan(result.scenarios[1]!.result.fairValuePerShare);
+    expect(result.scenarios[2]!.result.fairValuePerShare).toBeGreaterThan(result.scenarios[1]!.result.fairValuePerShare);
+  });
+
+  it('rejects source records that contradict the stated scenario order', () => {
+    const common = {
+      currency: 'CHF', startingFreeCashFlow: 100, forecastYears: 5, netDebt: 50,
+      sharesOutstanding: 10, dataAsOf: '2026-08-29T00:00:00.000Z', sourceReferences: ['fundamental:source-id'],
+    };
+    expect(() => threeCaseDiscountedCashFlow({
+      worst_case: { ...common, annualGrowthRate: 0.08, discountRate: 0.09, terminalGrowthRate: 0.025 },
+      base_case: { ...common, annualGrowthRate: 0.05, discountRate: 0.1, terminalGrowthRate: 0.02 },
+      optimistic_case: { ...common, annualGrowthRate: 0.01, discountRate: 0.12, terminalGrowthRate: 0.01 },
+    })).toThrow(/worst-case ≤ base-case ≤ optimistic-case/);
+  });
+
+  it('renders the stored three-scenario model as a native PDF', async () => {
+    const common = {
+      currency: 'CHF', startingFreeCashFlow: 100, forecastYears: 5, netDebt: 50,
+      sharesOutstanding: 10, dataAsOf: '2026-08-29T00:00:00.000Z', sourceReferences: ['fundamental:source-id'],
+    };
+    const result = threeCaseDiscountedCashFlow({
+      worst_case: { ...common, annualGrowthRate: 0.01, discountRate: 0.12, terminalGrowthRate: 0.01 },
+      base_case: { ...common, annualGrowthRate: 0.05, discountRate: 0.1, terminalGrowthRate: 0.02 },
+      optimistic_case: { ...common, annualGrowthRate: 0.08, discountRate: 0.09, terminalGrowthRate: 0.025 },
+    });
+    const pdf = await renderDcfReportPdf({
+      companyName: 'Nestle SA', ticker: 'NESN', exchange: 'XSWX', result,
+      sourceReferences: ['fundamental:free_cash_flow:source-id'],
+    });
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(pdf.length).toBeGreaterThan(1_000);
+    expect(dcfReportFileName('NESN / XSWX')).toBe('nesn-xswx-three-scenario-dcf.pdf');
   });
 
   it('routes financial institutions away from an automatic FCFF DCF', () => {
