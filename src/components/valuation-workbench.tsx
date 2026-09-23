@@ -19,14 +19,20 @@ interface ValuationSetup {
     currency: string;
     dataAsOf: string | null;
     sourceReferences: string[];
+    currentPrice: { value: number; currency: string; asOf: string; sourceUrl: string | null } | null;
   };
   automaticReadiness: {
     ready: boolean;
     missingFinancialRecords: string[];
     missingScenarioDrivers: string[];
+    missingWaccRecords: string[];
+    waccError: string | null;
+    missingComparableAnalysis: boolean;
+    staleComparableAnalysis: boolean;
     message: string;
   };
   latestScenario: { id: string; method: string; resultJson: ThreeCaseDcfResult } | null;
+  costOfCapital: { riskFreeRate: number; marketRiskPremium: number; beta: number; costOfDebt: number; taxRate: number; debtToCapital: number; costOfEquity: number; afterTaxCostOfDebt: number; wacc: number } | null;
 }
 
 interface ThreeCaseDcfResult {
@@ -40,6 +46,12 @@ interface ThreeCaseDcfResult {
   methodology: string;
   caveats: string[];
   computedAt: string;
+  currentPrice?: { value: number; currency: string; asOf: string; sourceUrl: string | null };
+  comparableCompanies?: {
+    scenarioId: string;
+    sourceReferences: string[];
+    result: ComparableResult;
+  };
 }
 
 interface DcfResult {
@@ -47,12 +59,19 @@ interface DcfResult {
   fairValuePerShare: number;
   enterpriseValue: number;
   equityValue: number;
+  projections: Array<{ year: number; freeCashFlow: number; discountFactor: number; presentValue: number }>;
   methodology: string;
   caveats: string[];
   assumptions: {
     annualGrowthRate: number;
     discountRate: number;
     terminalGrowthRate: number;
+  };
+  exitMultipleValuation?: {
+    multiple: number;
+    terminalEbitda: number;
+    fairValuePerShare: number;
+    sensitivity: Array<{ discountRate: number; exitMultiple: number; fairValuePerShare: number | null }>;
   };
   sensitivity: Array<{
     discountRate: number;
@@ -78,14 +97,16 @@ interface ComparableSetup {
 
 interface ComparableResult {
   currency: string;
-  peers: Array<{ companyName: string; ticker: string; enterpriseValue: number; evRevenue: number | null; evEbitda: number | null; pe: number | null; evNtmRevenue: number | null; evNtmEbitda: number | null; ntmPe: number | null; ebitdaMargin: number | null; netMargin: number | null; ntmRevenueGrowth: number | null; ntmEbitdaGrowth: number | null; netDebtEbitda: number | null; grossMargin: number | null; operatingMargin: number | null; returnOnEquity: number | null; priceToBook: number | null; interestCoverage: number | null; debtToEquity: number | null; roic: number | null; outlierMultiples: string[] }>;
-  statistics: Record<'evRevenue' | 'evEbitda' | 'pe' | 'evNtmRevenue' | 'evNtmEbitda' | 'ntmPe', { count: number; mean: number | null; median: number | null; percentile25: number | null; percentile75: number | null }>;
+  target: { companyName: string; currency: string; revenue?: number; ebitda?: number; netIncome?: number; netDebt?: number; sharesOutstanding?: number };
+  peers: Array<{ companyName: string; ticker: string; currency: string; sourceUrl: string; enterpriseValue: number; evRevenue: number | null; evEbitda: number | null; pe: number | null; evNtmRevenue: number | null; evNtmEbitda: number | null; ntmPe: number | null; ebitdaMargin: number | null; netMargin: number | null; ntmRevenueGrowth: number | null; ntmEbitdaGrowth: number | null; netDebtEbitda: number | null; grossMargin: number | null; operatingMargin: number | null; returnOnEquity: number | null; priceToBook: number | null; interestCoverage: number | null; debtToEquity: number | null; roic: number | null; outlierMultiples: string[] }>;
+  statistics: Record<'evRevenue' | 'evEbitda' | 'pe' | 'evNtmRevenue' | 'evNtmEbitda' | 'ntmPe', { count: number; low: number | null; high: number | null; mean: number | null; median: number | null; percentile25: number | null; percentile75: number | null }>;
   impliedValuations: Array<{ multiple: string; statistic: string; multipleValue: number; impliedEnterpriseValue: number | null; impliedEquityValue: number | null; impliedValuePerShare: number | null }>;
   methodology: string;
   caveats: string[];
 }
 
 interface PeerForm {
+  included: boolean;
   companyName: string;
   ticker: string;
   exchange: string;
@@ -138,11 +159,63 @@ interface PeerResearchResponse {
   gaps?: string[];
 }
 
+interface SummaryRange { label: string; low: number; mid: number; high: number; }
+
+function FootballField({ range, min, max, currency }: { range: SummaryRange; min: number; max: number; currency: string }) {
+  const span = Math.max(max - min, 1e-9);
+  const left = Math.max(0, Math.min(100, ((range.low - min) / span) * 100));
+  const right = Math.max(left, Math.min(100, ((range.high - min) / span) * 100));
+  const middle = Math.max(0, Math.min(100, ((range.mid - min) / span) * 100));
+  const format = (value: number) => `${currency} ${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  return <div className="sourced-football-row" aria-label={`${range.label}: ${format(range.low)} to ${format(range.high)}, midpoint ${format(range.mid)}`}>
+    <div><strong>{range.label}</strong><span>{format(range.low)} — {format(range.high)}</span></div>
+    <div className="sourced-football-track"><i style={{ left: `${left}%`, width: `${Math.max(right - left, 0.6)}%` }} /><b style={{ left: `${middle}%` }} /></div>
+  </div>;
+}
+
+function summaryRanges(dcf: ThreeCaseDcfResult | null, comps: ComparableResult | null, currentPrice: ValuationSetup['defaults']['currentPrice'], targetCurrency: string): SummaryRange[] {
+  const ranges: SummaryRange[] = [];
+  if (dcf) {
+    const byCase = (field: 'perpetuity' | 'exit') => dcf.scenarios.map(({ result }) => field === 'perpetuity'
+      ? result.fairValuePerShare : result.exitMultipleValuation?.fairValuePerShare).filter((value): value is number => value != null && Number.isFinite(value));
+    for (const [label, field] of [['DCF · Perpetuity growth', 'perpetuity'], ['DCF · Comps exit multiple', 'exit']] as const) {
+      const values = byCase(field);
+      if (values.length) ranges.push({ label, low: Math.min(...values), mid: values[1] ?? values[0]!, high: Math.max(...values) });
+    }
+  }
+  if (comps) {
+    const { target, statistics } = comps;
+    const addMultipleRange = (label: string, stats: MultipleStatistics | undefined, denominator: number | undefined, enterpriseMultiple: boolean) => {
+      if (!stats || denominator == null || denominator <= 0 || target.sharesOutstanding == null || target.sharesOutstanding <= 0) return;
+      const netDebt = enterpriseMultiple ? target.netDebt : 0;
+      if (enterpriseMultiple && netDebt == null) return;
+      const perShare = (multiple: number | null) => multiple == null ? null : (multiple * denominator - (netDebt ?? 0)) / target.sharesOutstanding!;
+      const low = perShare(stats.percentile25), mid = perShare(stats.median), high = perShare(stats.percentile75);
+      if (low != null && mid != null && high != null) ranges.push({ label, low: Math.min(low, high), mid, high: Math.max(low, high) });
+    };
+    addMultipleRange('Comps · EV / EBITDA', statistics.evEbitda, target.ebitda, true);
+    addMultipleRange('Comps · P / E', statistics.pe, target.netIncome, false);
+  }
+  if (currentPrice && currentPrice.currency === targetCurrency && Number.isFinite(currentPrice.value)) ranges.push({ label: 'Current share price', low: currentPrice.value, mid: currentPrice.value, high: currentPrice.value });
+  return ranges;
+}
+
+interface MultipleStatistics {
+  count: number;
+  low: number | null;
+  high: number | null;
+  mean: number | null;
+  median: number | null;
+  percentile25: number | null;
+  percentile75: number | null;
+}
+
 function emptyPeer(): PeerForm {
-  return { companyName: '', ticker: '', exchange: '', currency: '', marketCapitalization: '', netDebt: '', totalDebt: '', revenue: '', ebitda: '', netIncome: '', grossProfit: '', operatingIncome: '', totalEquity: '', interestExpense: '', cashAndEquivalents: '', incomeTaxExpense: '', preTaxIncome: '', ntmRevenue: '', ntmEbitda: '', ntmNetIncome: '', sourceUrl: '', forecastSourceUrl: '', researchNote: '' };
+  return { included: true, companyName: '', ticker: '', exchange: '', currency: '', marketCapitalization: '', netDebt: '', totalDebt: '', revenue: '', ebitda: '', netIncome: '', grossProfit: '', operatingIncome: '', totalEquity: '', interestExpense: '', cashAndEquivalents: '', incomeTaxExpense: '', preTaxIncome: '', ntmRevenue: '', ntmEbitda: '', ntmNetIncome: '', sourceUrl: '', forecastSourceUrl: '', researchNote: '' };
 }
 
 export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: string; onSaved: () => void }) {
+  const [activeTab, setActiveTab] = useState<'summary' | 'comps' | 'dcf' | 'sensitivity'>('summary');
   const [setup, setSetup] = useState<ValuationSetup | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -226,7 +299,7 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
     }
   }
 
-  function updatePeer(index: number, key: keyof PeerForm, value: string) {
+  function updatePeer(index: number, key: keyof PeerForm, value: string | boolean) {
     setPeers((current) => current.map((peer, peerIndex) => peerIndex === index ? { ...peer, [key]: value } : peer));
   }
 
@@ -240,9 +313,10 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
         body: JSON.stringify({
           candidateId,
           methodSuitabilityConfirmed: true,
-          peers: peers.map((peer) => ({
+          peers: peers.filter((peer) => peer.included).map((peer) => ({
             companyName: peer.companyName,
             ticker: peer.ticker,
+            currency: peer.currency.toUpperCase(),
             marketCapitalization: Number(peer.marketCapitalization),
             netDebt: Number(peer.netDebt),
             totalDebt: peer.totalDebt === '' ? undefined : Number(peer.totalDebt),
@@ -396,7 +470,7 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
       });
       const body = await response.json().catch(() => ({})) as { error?: string; importedMetrics?: string[] };
       if (!response.ok) throw new Error(body.error ?? `Primary-source retrieval failed (${response.status})`);
-      setPrimarySourceNotice(`Imported ${body.importedMetrics?.length ?? 0} primary-source metrics. The strict DCF will only run when all required financial records and source-linked scenario drivers are available.`);
+      setPrimarySourceNotice(`Imported ${body.importedMetrics?.length ?? 0} primary-source metrics. The integrated model runs only when every required financial, WACC, scenario, and Comps record is available.`);
       setReloadToken((current) => current + 1);
     } catch (cause) {
       setPrimarySourceNotice((cause as Error).message);
@@ -405,13 +479,37 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
     }
   }
 
+  const ranges = summaryRanges(automaticResult, compsResult, setup?.defaults.currentPrice ?? null, compsSetup?.target.currency ?? setup?.defaults.currency ?? '');
+  const rangeMin = ranges.length ? Math.min(...ranges.map((range) => range.low)) : 0;
+  const rangeMax = ranges.length ? Math.max(...ranges.map((range) => range.high)) : 1;
+  const baseCase = automaticResult?.scenarios.find((scenario) => scenario.name === 'base_case')?.result ?? null;
+  const baseGrowthSensitivity = baseCase?.sensitivity ?? [];
+  const sensitivityWaccs = [...new Set(baseGrowthSensitivity.map((cell) => cell.discountRate))].sort((a, b) => a - b);
+  const sensitivityGrowths = [...new Set(baseGrowthSensitivity.map((cell) => cell.terminalGrowthRate))].sort((a, b) => a - b);
+  const exitSensitivity = baseCase?.exitMultipleValuation?.sensitivity ?? [];
+  const exitSensitivityWaccs = [...new Set(exitSensitivity.map((cell) => cell.discountRate))].sort((a, b) => a - b);
+  const exitSensitivityMultiples = [...new Set(exitSensitivity.map((cell) => cell.exitMultiple))].sort((a, b) => a - b);
+  const includedPeerCount = peers.filter((peer) => peer.included).length;
+
   if (busy && !setup && compsBusy && !compsSetup) return <p className="note">Loading valuation evidence…</p>;
   if (!setup && !compsSetup && !busy && !compsBusy) return <p className="login-error" role="alert">{error ?? compsError ?? 'Valuation evidence is unavailable.'}</p>;
   return (
     <section className="valuation-panel">
       <p className="analysis-eyebrow">4. Valuation</p>
       <h3>Valuation workspace</h3>
-      <p className="note">Use a DCF only with structured financial statements. Use comparable companies to triangulate value from a sourced, human-reviewed peer set. Neither output is a trade instruction.</p>
+      <p className="note">One source-backed valuation workflow links the selected company’s financial records, a reviewed peer set, three DCF cases, and both terminal-value methods. Missing drivers stop the integrated calculation; illustrative inputs are not used.</p>
+      <div className="sourced-valuation-tabs" role="tablist" aria-label="Integrated valuation views">
+        {([['summary', 'Summary'], ['comps', 'Comps'], ['dcf', 'DCF model'], ['sensitivity', 'Sensitivity']] as const).map(([id, label]) => <button type="button" role="tab" aria-selected={activeTab === id} aria-controls="sourced-valuation-panel" className={activeTab === id ? 'active' : ''} key={id} onClick={() => setActiveTab(id)}>{label}</button>)}
+      </div>
+      {activeTab === 'summary' && <section className="sourced-summary-view" id="sourced-valuation-panel" role="tabpanel" aria-labelledby="sourced-valuation-tab-summary">
+        <h4>{compsSetup?.target.companyName ?? 'Selected company'} · sourced valuation summary</h4>
+        <p className="note">The range chart uses generated DCF case values and the reviewed Comps quartiles. A market price appears only when a retained price observation exists.</p>
+        {setup?.defaults.currentPrice && setup.defaults.currentPrice.currency !== (compsSetup?.target.currency ?? setup.defaults.currency) && <p className="caveat">The latest market-price record is in {setup.defaults.currentPrice.currency}, while the valuation is in {compsSetup?.target.currency ?? setup.defaults.currency}; it is omitted from the common-currency range.</p>}
+        {ranges.length ? <div className="sourced-football-field">{ranges.map((range) => <FootballField key={range.label} range={range} min={rangeMin} max={rangeMax} currency={compsSetup?.target.currency ?? setup?.defaults.currency ?? ''} />)}</div> : <p className="caveat">No sourced valuation output is available yet. Complete peer review and every required financial, WACC, and scenario driver before the automatic model can run.</p>}
+        {automaticResult && <div className="dcf-scenario-cards">{automaticResult.scenarios.map((scenario) => <article className="dcf-scenario-card" key={scenario.name}><p className="analysis-eyebrow">{scenario.label}</p><p className="big">Perpetuity: {automaticResult.currency} {scenario.result.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p><p className="note">Exit multiple: {scenario.result.exitMultipleValuation ? `${automaticResult.currency} ${scenario.result.exitMultipleValuation.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : 'N/A'}</p></article>)}</div>}
+        {automaticResult?.comparableCompanies && <p className="note">Comps median EV/EBITDA {automaticResult.comparableCompanies.result.statistics.evEbitda.median?.toFixed(2) ?? 'N/A'}x · {automaticResult.comparableCompanies.result.statistics.evEbitda.count} usable peers · linked to the exit method only.</p>}
+      </section>}
+      {activeTab === 'dcf' && <>
       <div className="primary-source-cta">
         <div><strong>Primary-source financials</strong><p>Retrieve available inline-XBRL annual-report or 10-K values from investor-relations or regulatory filing pages. The system retains the filing URL and will only unlock the DCF when required financial records and scenario drivers are sourced.</p></div>
         <button className="secondary-button" type="button" onClick={() => void retrievePrimarySourceFinancials()} disabled={primarySourceBusy}>{primarySourceBusy ? 'Retrieving…' : 'Retrieve financial statements'}</button>
@@ -428,10 +526,15 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
       <p className={setup.automaticReadiness.ready ? 'note' : 'caveat'}>{setup.automaticReadiness.message}</p>
       {setup.automaticReadiness.missingFinancialRecords.length > 0 && <p className="caveat">Missing primary-source financial records: {setup.automaticReadiness.missingFinancialRecords.join(', ')}.</p>}
       {setup.automaticReadiness.missingScenarioDrivers.length > 0 && <p className="caveat">Missing source-linked scenario driver records: {setup.automaticReadiness.missingScenarioDrivers.join(', ')}.</p>}
-      <p className="note">The model applies only retained evidence to a five-year FCFF forecast, WACC, and terminal growth for Worst Case, Base Case, and Optimistic Case. It does not provide editable fallback assumptions.</p>
+      {setup.automaticReadiness.missingWaccRecords.length > 0 && <p className="caveat">Missing source-linked WACC inputs: {setup.automaticReadiness.missingWaccRecords.join(', ')}.</p>}
+      {setup.automaticReadiness.waccError && <p className="caveat">Source-backed WACC inputs do not produce a valid discount rate: {setup.automaticReadiness.waccError}.</p>}
+      {setup.automaticReadiness.missingComparableAnalysis && <p className="caveat">Missing a reviewed comparable analysis with at least six valid peer EV/EBITDA multiples. Calculate Comps first; no peer multiple is inferred.</p>}
+      {setup.automaticReadiness.staleComparableAnalysis && <p className="caveat">The saved Comps target snapshot or source references no longer match the current financial records. Recalculate Comps before generating the integrated model.</p>}
+      {setup.costOfCapital && <p className="note">Sourced WACC: cost of equity {((setup.costOfCapital.costOfEquity) * 100).toFixed(2)}% × equity weight {((1 - setup.costOfCapital.debtToCapital) * 100).toFixed(1)}% + after-tax debt cost {((setup.costOfCapital.afterTaxCostOfDebt) * 100).toFixed(2)}% × debt weight {(setup.costOfCapital.debtToCapital * 100).toFixed(1)}% = WACC {(setup.costOfCapital.wacc * 100).toFixed(2)}%.</p>}
+      <p className="note">The model applies retained records to five-year FCFF projections and three independently sourced scenarios. The included-peer median EV/EBITDA is applied only to source-backed Year 5 EBITDA; it does not determine WACC or perpetuity growth.</p>
       {error && <p className="login-error" role="alert">{error}</p>}
       <button className="action-button" type="button" onClick={() => void generateAutomaticDcf()} disabled={busy || !setup.automaticReadiness.ready}>
-        {busy ? 'Generating…' : 'Generate strict three-case DCF'}
+        {busy ? 'Generating…' : 'Generate integrated sourced model'}
       </button>
       {automaticResult && (
         <div className="valuation-result">
@@ -440,15 +543,27 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
             <p className="big">{automaticResult.currency} {scenario.result.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })} <span className="cur">per share</span></p>
             <p className="note">FCF growth {(scenario.result.assumptions.annualGrowthRate * 100).toFixed(1)}% · WACC {(scenario.result.assumptions.discountRate * 100).toFixed(1)}% · Terminal growth {(scenario.result.assumptions.terminalGrowthRate * 100).toFixed(1)}%</p>
             <p className="note">Enterprise value {automaticResult.currency} {scenario.result.enterpriseValue.toLocaleString()} · Equity value {automaticResult.currency} {scenario.result.equityValue.toLocaleString()}</p>
+            {scenario.result.exitMultipleValuation && <p className="note">Comps exit method: {automaticResult.currency} {scenario.result.exitMultipleValuation.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })}/share at {scenario.result.exitMultipleValuation.multiple.toFixed(2)}x on Year 5 EBITDA.</p>}
           </article>)}</div>
+          {automaticResult.comparableCompanies && <section className="comps-linked-result"><h4>Integrated Comps cross-check</h4><p>Peer median EV/EBITDA {automaticResult.comparableCompanies.result.statistics.evEbitda.median?.toFixed(2) ?? 'N/A'}x · {automaticResult.comparableCompanies.result.statistics.evEbitda.count} usable peers.</p><p className="note">The median comes from the reviewed Comps scenario. It is used only by the exit-multiple terminal method.</p></section>}
+          <div className="table-scroll sensitivity-table"><h4>Five-year base-case DCF projection</h4><table><thead><tr><th>Year</th><th>Unlevered FCF</th><th>Discount factor</th><th>PV of FCF</th></tr></thead><tbody>{baseCase?.projections.map((projection) => <tr key={projection.year}><th>{projection.year}</th><td>{automaticResult.currency} {projection.freeCashFlow.toLocaleString()}</td><td>{projection.discountFactor.toFixed(3)}</td><td>{automaticResult.currency} {projection.presentValue.toLocaleString()}</td></tr>)}</tbody></table></div>
           <p className="note">{automaticResult.methodology}</p>
           <ul className="caveat">{automaticResult.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}</ul>
-          {automaticScenarioId && <a className="secondary-button report-download" href={`/api/discovery/valuations/${automaticScenarioId}/report`} target="_blank" rel="noreferrer">Open DCF PDF report</a>}
+          {automaticScenarioId && <a className="secondary-button report-download" href={`/api/discovery/valuations/${automaticScenarioId}/report`} target="_blank" rel="noreferrer">Open integrated DCF + Comps PDF</a>}
         </div>
       )}
       </>}
+      </>}
 
-      <section className="comps-panel">
+      {activeTab === 'sensitivity' && <section className="sourced-sensitivity-view" id="sourced-valuation-panel" role="tabpanel" aria-labelledby="sourced-valuation-tab-sensitivity">
+        <h4>Source-backed valuation sensitivities</h4>
+        {!baseCase ? <p className="caveat">Generate the integrated model after all required source records and the reviewed Comps scenario are ready.</p> : <>
+          <div className="table-scroll sensitivity-table"><h4>Base case · WACC vs. perpetual growth</h4><table><thead><tr><th>WACC \ g</th>{sensitivityGrowths.map((growth) => <th key={growth}>{(growth * 100).toFixed(2)}%</th>)}</tr></thead><tbody>{sensitivityWaccs.map((wacc) => <tr key={wacc}><th>{(wacc * 100).toFixed(2)}%</th>{sensitivityGrowths.map((growth) => { const cell = baseGrowthSensitivity.find((item) => Math.abs(item.discountRate - wacc) < 1e-10 && Math.abs(item.terminalGrowthRate - growth) < 1e-10); return <td key={growth}>{cell?.fairValuePerShare == null ? 'N/A' : `${automaticResult!.currency} ${cell.fairValuePerShare.toFixed(2)}`}</td>; })}</tr>)}</tbody></table></div>
+          {baseCase.exitMultipleValuation && <div className="table-scroll sensitivity-table"><h4>Base case · WACC vs. peer EV/EBITDA</h4><table><thead><tr><th>WACC \ multiple</th>{exitSensitivityMultiples.map((multiple) => <th key={multiple}>{multiple.toFixed(2)}x</th>)}</tr></thead><tbody>{exitSensitivityWaccs.map((rate) => <tr key={rate}><th>{(rate * 100).toFixed(2)}%</th>{exitSensitivityMultiples.map((multiple) => { const cell = exitSensitivity.find((item) => item.exitMultiple === multiple && Math.abs(item.discountRate - rate) < 1e-10); return <td key={multiple}>{cell?.fairValuePerShare == null ? 'N/A' : `${automaticResult!.currency} ${cell.fairValuePerShare.toFixed(2)}`}</td>; })}</tr>)}</tbody></table></div>}
+        </>}
+      </section>}
+
+      {activeTab === 'comps' && <section className="comps-panel" id="sourced-valuation-panel" role="tabpanel" aria-labelledby="sourced-valuation-tab-comps">
         <h4>Comparable-company analysis</h4>
         {compsBusy && !compsSetup ? <p className="note">Checking target financial data…</p> : compsError && !compsSetup ? <p className="caveat">{compsError}</p> : compsSetup && <>
           <p className="note">Target: <strong>{compsSetup.target.companyName}</strong> · {compsSetup.target.currency} · data as of {compsSetup.dataAsOf ? new Date(compsSetup.dataAsOf).toLocaleDateString() : 'unknown'}.</p>
@@ -461,8 +576,9 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
           {peerSuggestionNotice && <p className="note">{peerSuggestionNotice}</p>}
           <div className="table-scroll comps-input-table">
             <table>
-              <thead><tr><th>Peer company</th><th>Ticker</th><th>Exchange</th><th>Currency</th><th>Market cap</th><th>Net debt</th><th>LTM revenue</th><th>LTM EBITDA</th><th>LTM net income</th><th>NTM revenue</th><th>NTM EBITDA</th><th>NTM net income</th><th>Sources / selection rationale</th></tr></thead>
+              <thead><tr><th>Use</th><th>Peer company</th><th>Ticker</th><th>Exchange</th><th>Currency</th><th>Market cap</th><th>Net debt</th><th>LTM revenue</th><th>LTM EBITDA</th><th>LTM net income</th><th>NTM revenue</th><th>NTM EBITDA</th><th>NTM net income</th><th>Sources / selection rationale</th></tr></thead>
               <tbody>{peers.map((peer, index) => <tr key={index}>
+                <td><input type="checkbox" aria-label={`Include ${peer.companyName || `peer ${index + 1}`} in valuation`} checked={peer.included} onChange={(event) => updatePeer(index, 'included', event.target.checked)} /></td>
                 <td><input value={peer.companyName} onChange={(event) => updatePeer(index, 'companyName', event.target.value)} placeholder="Company" /></td>
                 <td><input value={peer.ticker} onChange={(event) => updatePeer(index, 'ticker', event.target.value)} placeholder="Ticker" /></td>
                 <td><input value={peer.exchange} onChange={(event) => updatePeer(index, 'exchange', event.target.value)} placeholder="XSWX" /></td>
@@ -484,13 +600,14 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
           {peers.length < 10 && <button className="secondary-button" type="button" onClick={() => setPeers((current) => [...current, emptyPeer()])}>Add peer</button>}
           {peers.length > 6 && <button className="secondary-button" type="button" onClick={() => setPeers((current) => current.slice(0, -1))}>Remove last peer</button>}
           {compsError && <p className="login-error" role="alert">{compsError}</p>}
-          <button className="action-button" type="button" onClick={() => void calculateComps()} disabled={compsBusy}>Calculate comparable-company valuation</button>
+          <p className="note">{includedPeerCount} peers selected · at least 6 with valid EV/EBITDA data are required for the integrated exit method.</p>
+          <button className="action-button" type="button" onClick={() => void calculateComps()} disabled={compsBusy || includedPeerCount < 6}>Calculate comparable-company valuation</button>
           {compsResult && <div className="valuation-result">
             <p className="note">{compsResult.methodology}</p>
             <div className="table-scroll sensitivity-table">
               <h4>Peer multiple statistics</h4>
-              <table><thead><tr><th>Multiple</th><th>n</th><th>25th percentile</th><th>Median</th><th>Mean</th><th>75th percentile</th></tr></thead>
-                <tbody>{([['EV / Revenue (LTM)', compsResult.statistics.evRevenue], ['EV / EBITDA (LTM)', compsResult.statistics.evEbitda], ['P / E (LTM)', compsResult.statistics.pe], ['EV / Revenue (NTM)', compsResult.statistics.evNtmRevenue], ['EV / EBITDA (NTM)', compsResult.statistics.evNtmEbitda], ['P / E (NTM)', compsResult.statistics.ntmPe]] as const).map(([label, stats]) => <tr key={label}><th>{label}</th><td>{stats.count}</td><td>{stats.percentile25?.toFixed(2) ?? 'N/A'}x</td><td>{stats.median?.toFixed(2) ?? 'N/A'}x</td><td>{stats.mean?.toFixed(2) ?? 'N/A'}x</td><td>{stats.percentile75?.toFixed(2) ?? 'N/A'}x</td></tr>)}</tbody>
+              <table><thead><tr><th>Multiple</th><th>n</th><th>Low</th><th>25th pct.</th><th>Median</th><th>Mean</th><th>75th pct.</th><th>High</th></tr></thead>
+                <tbody>{([['EV / Revenue (LTM)', compsResult.statistics.evRevenue], ['EV / EBITDA (LTM)', compsResult.statistics.evEbitda], ['P / E (LTM)', compsResult.statistics.pe], ['EV / Revenue (NTM)', compsResult.statistics.evNtmRevenue], ['EV / EBITDA (NTM)', compsResult.statistics.evNtmEbitda], ['P / E (NTM)', compsResult.statistics.ntmPe]] as const).map(([label, stats]) => <tr key={label}><th>{label}</th><td>{stats.count}</td><td>{stats.low?.toFixed(2) ?? 'N/A'}x</td><td>{stats.percentile25?.toFixed(2) ?? 'N/A'}x</td><td>{stats.median?.toFixed(2) ?? 'N/A'}x</td><td>{stats.mean?.toFixed(2) ?? 'N/A'}x</td><td>{stats.percentile75?.toFixed(2) ?? 'N/A'}x</td><td>{stats.high?.toFixed(2) ?? 'N/A'}x</td></tr>)}</tbody>
               </table>
             </div>
             <section className="comparability-guide">
@@ -511,14 +628,14 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
             <div className="table-scroll sensitivity-table">
               <h4>Peer operating and financial-health comparison</h4>
               <table><thead><tr><th>Peer</th><th>P / Book</th><th>Gross margin</th><th>Operating margin</th><th>EBITDA margin</th><th>Net margin</th><th>ROIC</th><th>ROE</th><th>NTM revenue growth</th><th>NTM EBITDA growth</th><th>Net debt / EBITDA</th><th>Debt / equity</th><th>Interest coverage</th></tr></thead>
-                <tbody>{compsResult.peers.map((peer) => <tr key={peer.ticker}><th>{peer.companyName} ({peer.ticker})</th><td>{peer.priceToBook == null ? 'N/A' : `${peer.priceToBook.toFixed(2)}x`}</td><td>{peer.grossMargin == null ? 'N/A' : `${(peer.grossMargin * 100).toFixed(1)}%`}</td><td>{peer.operatingMargin == null ? 'N/A' : `${(peer.operatingMargin * 100).toFixed(1)}%`}</td><td>{peer.ebitdaMargin == null ? 'N/A' : `${(peer.ebitdaMargin * 100).toFixed(1)}%`}</td><td>{peer.netMargin == null ? 'N/A' : `${(peer.netMargin * 100).toFixed(1)}%`}</td><td>{peer.roic == null ? 'N/A' : `${(peer.roic * 100).toFixed(1)}%`}</td><td>{peer.returnOnEquity == null ? 'N/A' : `${(peer.returnOnEquity * 100).toFixed(1)}%`}</td><td>{peer.ntmRevenueGrowth == null ? 'N/A' : `${(peer.ntmRevenueGrowth * 100).toFixed(1)}%`}</td><td>{peer.ntmEbitdaGrowth == null ? 'N/A' : `${(peer.ntmEbitdaGrowth * 100).toFixed(1)}%`}</td><td>{peer.netDebtEbitda == null ? 'N/A' : `${peer.netDebtEbitda.toFixed(2)}x`}</td><td>{peer.debtToEquity == null ? 'N/A' : `${peer.debtToEquity.toFixed(2)}x`}</td><td>{peer.interestCoverage == null ? 'N/A' : `${peer.interestCoverage.toFixed(2)}x`}</td></tr>)}</tbody>
+                <tbody>{compsResult.peers.map((peer) => <tr key={peer.ticker}><th>{peer.companyName} ({peer.ticker} · {peer.currency})</th><td>{peer.priceToBook == null ? 'N/A' : `${peer.priceToBook.toFixed(2)}x`}</td><td>{peer.grossMargin == null ? 'N/A' : `${(peer.grossMargin * 100).toFixed(1)}%`}</td><td>{peer.operatingMargin == null ? 'N/A' : `${(peer.operatingMargin * 100).toFixed(1)}%`}</td><td>{peer.ebitdaMargin == null ? 'N/A' : `${(peer.ebitdaMargin * 100).toFixed(1)}%`}</td><td>{peer.netMargin == null ? 'N/A' : `${(peer.netMargin * 100).toFixed(1)}%`}</td><td>{peer.roic == null ? 'N/A' : `${(peer.roic * 100).toFixed(1)}%`}</td><td>{peer.returnOnEquity == null ? 'N/A' : `${(peer.returnOnEquity * 100).toFixed(1)}%`}</td><td>{peer.ntmRevenueGrowth == null ? 'N/A' : `${(peer.ntmRevenueGrowth * 100).toFixed(1)}%`}</td><td>{peer.ntmEbitdaGrowth == null ? 'N/A' : `${(peer.ntmEbitdaGrowth * 100).toFixed(1)}%`}</td><td>{peer.netDebtEbitda == null ? 'N/A' : `${peer.netDebtEbitda.toFixed(2)}x`}</td><td>{peer.debtToEquity == null ? 'N/A' : `${peer.debtToEquity.toFixed(2)}x`}</td><td>{peer.interestCoverage == null ? 'N/A' : `${peer.interestCoverage.toFixed(2)}x`}</td></tr>)}</tbody>
               </table>
             </div>
             {compsResult.peers.some((peer) => peer.outlierMultiples.length > 0) && <p className="caveat">Outlier review: {compsResult.peers.filter((peer) => peer.outlierMultiples.length > 0).map((peer) => `${peer.ticker} (${peer.outlierMultiples.join(', ')})`).join(' · ')}</p>}
             <ul className="caveat">{compsResult.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}</ul>
           </div>}
         </>}
-      </section>
+      </section>}
     </section>
   );
 }

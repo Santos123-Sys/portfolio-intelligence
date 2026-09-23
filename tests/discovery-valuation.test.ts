@@ -4,7 +4,8 @@ import {
   MarketDiscoveryOutput,
   validateDiscoveryOutput,
 } from '@portfolio-intelligence/agentic-contract';
-import { discountedCashFlow, threeCaseDiscountedCashFlow, assessDcfSuitability } from '../src/lib/quant/dcf';
+import { discountedCashFlow, threeCaseDiscountedCashFlow, assessDcfSuitability, calculateWacc, integrateSourcedCompsExit } from '../src/lib/quant/dcf';
+import { comparableCompanyAnalysis } from '../src/lib/quant/comparables';
 import { computeStandaloneSecurityRisk } from '../src/lib/quant/security-risk';
 import { EodhdProvider } from '../src/lib/connectors/eodhd';
 import { dcfReportFileName, renderDcfReportPdf } from '../src/lib/dcf-report';
@@ -227,12 +228,71 @@ describe('deterministic DCF', () => {
     });
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     expect(pdf.length).toBeGreaterThan(1_000);
-    expect(dcfReportFileName('NESN / XSWX')).toBe('nesn-xswx-three-scenario-dcf.pdf');
+    expect(dcfReportFileName('NESN / XSWX')).toBe('nesn-xswx-integrated-dcf-comps.pdf');
   });
 
   it('routes financial institutions away from an automatic FCFF DCF', () => {
     expect(assessDcfSuitability('Financial Services', ['free_cash_flow']).status)
       .toBe('alternative_method_recommended');
+  });
+});
+
+describe('source-backed integrated DCF and Comps', () => {
+  const dcfCommon = {
+    currency: 'CHF', startingFreeCashFlow: 100, forecastYears: 5, netDebt: 50,
+    sharesOutstanding: 10, dataAsOf: '2026-09-23T00:00:00.000Z', sourceReferences: ['fundamental:fcf:1'],
+  };
+
+  it('calculates CAPM and after-tax debt into WACC', () => {
+    const wacc = calculateWacc({ riskFreeRate: 0.04, marketRiskPremium: 0.05, beta: 1.1, costOfDebt: 0.06, taxRate: 0.2, debtToCapital: 0.25 });
+    expect(wacc.costOfEquity).toBeCloseTo(0.095);
+    expect(wacc.afterTaxCostOfDebt).toBeCloseTo(0.048);
+    expect(wacc.wacc).toBeCloseTo(0.08325);
+    expect(() => calculateWacc({ riskFreeRate: 0, marketRiskPremium: 0, beta: 0, costOfDebt: 0, taxRate: 0.2, debtToCapital: 0.25 })).toThrow(/Calculated WACC must be greater than 0%/);
+  });
+
+  it('adds a source-backed peer-median exit method to all three DCF cases and includes it in the PDF', async () => {
+    const base = threeCaseDiscountedCashFlow({
+      worst_case: { ...dcfCommon, annualGrowthRate: 0.01, discountRate: 0.12, terminalGrowthRate: 0.005 },
+      base_case: { ...dcfCommon, annualGrowthRate: 0.05, discountRate: 0.10, terminalGrowthRate: 0.02 },
+      optimistic_case: { ...dcfCommon, annualGrowthRate: 0.08, discountRate: 0.09, terminalGrowthRate: 0.025 },
+    });
+    const peers = Array.from({ length: 6 }, (_, index) => ({
+      companyName: `Peer ${index + 1}`, ticker: `P${index + 1}`, currency: 'CHF',
+      marketCapitalization: 100 + index * 10, netDebt: 20, revenue: 40 + index,
+      ebitda: 10 + index, netIncome: 6 + index, sourceUrl: `https://example.com/p${index + 1}`,
+    }));
+    const comps = comparableCompanyAnalysis({ companyName: 'Target', currency: 'CHF', revenue: 50, ebitda: 15, netIncome: 8, netDebt: 10, sharesOutstanding: 5 }, peers);
+    const result = integrateSourcedCompsExit(base, {
+      startingEbitda: 15,
+      annualEbitdaGrowthRates: { worst_case: 0, base_case: 0.05, optimistic_case: 0.08 },
+      medianEvEbitda: comps.statistics.evEbitda.median!, compsScenarioId: 'comps-id',
+      compsSourceReferences: peers.map((peer) => peer.sourceUrl), compsResult: comps,
+    }, calculateWacc({ riskFreeRate: 0.04, marketRiskPremium: 0.05, beta: 1.1, costOfDebt: 0.06, taxRate: 0.2, debtToCapital: 0.25 }));
+    expect(result.comparableCompanies?.scenarioId).toBe('comps-id');
+    expect(result.costOfCapital?.wacc).toBeCloseTo(0.08325);
+    expect(result.scenarios.every((scenario) => scenario.result.exitMultipleValuation != null)).toBe(true);
+    const baseExit = result.scenarios[1]!.result.exitMultipleValuation!;
+    expect(baseExit.terminalValue).toBeCloseTo(baseExit.terminalEbitda * comps.statistics.evEbitda.median!);
+    expect(baseExit.sensitivity).toHaveLength(25);
+    expect(result.scenarios[0]!.result.exitMultipleValuation!.fairValuePerShare).toBeLessThan(baseExit.fairValuePerShare);
+    const pdf = await renderDcfReportPdf({ companyName: 'Target SA', ticker: 'TGT', exchange: 'XSWX', result, sourceReferences: ['source:fcf', ...peers.map((peer) => peer.sourceUrl)] });
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(pdf.toString('latin1').match(/\/Type \/Page\b/g)?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('blocks the exit method if target EBITDA or a valid peer multiple is unavailable', () => {
+    const dcf = threeCaseDiscountedCashFlow({
+      worst_case: { ...dcfCommon, annualGrowthRate: 0.01, discountRate: 0.12, terminalGrowthRate: 0.005 },
+      base_case: { ...dcfCommon, annualGrowthRate: 0.05, discountRate: 0.10, terminalGrowthRate: 0.02 },
+      optimistic_case: { ...dcfCommon, annualGrowthRate: 0.08, discountRate: 0.09, terminalGrowthRate: 0.025 },
+    });
+    const peers = Array.from({ length: 6 }, (_, index) => ({ companyName: `Peer ${index}`, ticker: `P${index}`, currency: 'CHF', marketCapitalization: 100, netDebt: 20, revenue: 40, netIncome: 5, sourceUrl: `https://example.com/${index}` }));
+    const comps = comparableCompanyAnalysis({ companyName: 'Target', currency: 'CHF', revenue: 20, ebitda: 10, netIncome: 5 }, peers);
+    expect(() => integrateSourcedCompsExit(dcf, {
+      startingEbitda: 0, annualEbitdaGrowthRates: { worst_case: 0, base_case: 0, optimistic_case: 0 },
+      medianEvEbitda: 0, compsScenarioId: 'comps-id', compsSourceReferences: [], compsResult: comps,
+    })).toThrow(/source-backed target EBITDA/);
   });
 });
 

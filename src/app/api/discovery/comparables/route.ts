@@ -10,9 +10,12 @@ import { readBoundedJson } from '@/lib/request-body';
 
 export const runtime = 'nodejs';
 
+const httpUrlSchema = z.string().url().refine((value) => ['http:', 'https:'].includes(new URL(value).protocol));
+
 const peerSchema = z.object({
   companyName: z.string().trim().min(1).max(120),
   ticker: z.string().trim().min(1).max(30),
+  currency: z.string().regex(/^[A-Z]{3}$/),
   marketCapitalization: z.number().positive(),
   netDebt: z.number().finite(),
   totalDebt: z.number().finite().optional(),
@@ -31,8 +34,8 @@ const peerSchema = z.object({
   ntmRevenue: z.number().finite().optional(),
   ntmEbitda: z.number().finite().optional(),
   ntmNetIncome: z.number().finite().optional(),
-  sourceUrl: z.string().url(),
-  forecastSourceUrl: z.string().url().optional(),
+  sourceUrl: httpUrlSchema,
+  forecastSourceUrl: httpUrlSchema.optional(),
 }).strict();
 
 const requestSchema = z.object({
@@ -125,7 +128,12 @@ export async function POST(req: Request) {
       status: 'human_confirmed',
       assumptionsJson: { target: data.target, peers: parsed.data.peers, dataAsOf: data.dataAsOf },
       resultJson: result,
-      sourceReferences: parsed.data.peers.flatMap((peer) => [peer.sourceUrl, peer.forecastSourceUrl].filter((url): url is string => Boolean(url))),
+      sourceReferences: [
+        ...['revenue', 'ebitda', 'net_income', 'total_debt', 'cash_and_equivalents', 'shares_outstanding']
+          .map((metric) => data.sourceReferences.find((reference) => reference.startsWith(`fundamental:${metric}:`)))
+          .filter((reference): reference is string => Boolean(reference)),
+        ...parsed.data.peers.flatMap((peer) => [peer.sourceUrl, peer.forecastSourceUrl].filter((url): url is string => Boolean(url))),
+      ],
       approvedBy: session.auth.email,
     }).returning();
     return NextResponse.json({ scenario, result }, { status: 201 });

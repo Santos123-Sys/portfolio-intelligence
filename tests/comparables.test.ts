@@ -4,6 +4,7 @@ import { comparableCompanyAnalysis } from '../src/lib/quant/comparables';
 const peers = Array.from({ length: 6 }, (_, index) => ({
   companyName: `Peer ${index + 1}`,
   ticker: `P${index + 1}`,
+  currency: 'CHF',
   marketCapitalization: 100 + index * 10,
   netDebt: 20,
   revenue: 40 + index,
@@ -42,5 +43,13 @@ describe('deterministic comparable-company analysis', () => {
   it('requires a reviewable peer set of six to ten companies', () => {
     expect(() => comparableCompanyAnalysis({ companyName: 'Target', currency: 'CHF', revenue: 50 }, peers.slice(0, 5)))
       .toThrow(/6 to 10 peers/);
+  });
+
+  it('does not invent net debt when bridging EV multiples to equity value', () => {
+    const result = comparableCompanyAnalysis({ companyName: 'Target', currency: 'CHF', revenue: 50, ebitda: 12, sharesOutstanding: 5 }, peers);
+    const enterpriseMultiple = result.impliedValuations.find((value) => value.multiple === 'EV / EBITDA' && value.statistic === 'Median');
+    expect(enterpriseMultiple?.impliedEnterpriseValue).not.toBeNull();
+    expect(enterpriseMultiple?.impliedEquityValue).toBeNull();
+    expect(enterpriseMultiple?.impliedValuePerShare).toBeNull();
   });
 });

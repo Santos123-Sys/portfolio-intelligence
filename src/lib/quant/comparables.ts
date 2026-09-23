@@ -3,6 +3,7 @@ import { QuantError } from './types';
 export interface ComparablePeerInput {
   companyName: string;
   ticker: string;
+  currency: string;
   marketCapitalization: number;
   netDebt: number;
   totalDebt?: number;
@@ -39,6 +40,8 @@ export interface ComparableTargetInput {
 
 export interface MultipleStatistics {
   count: number;
+  low: number | null;
+  high: number | null;
   mean: number | null;
   median: number | null;
   percentile25: number | null;
@@ -104,6 +107,8 @@ function statistics(values: Array<number | null>): MultipleStatistics {
   const valid = values.filter((value): value is number => value != null && Number.isFinite(value));
   return {
     count: valid.length,
+    low: valid.length ? Math.min(...valid) : null,
+    high: valid.length ? Math.max(...valid) : null,
     mean: valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : null,
     median: quantile(valid, 0.5),
     percentile25: quantile(valid, 0.25),
@@ -155,16 +160,17 @@ function impliedValue(
     : multipleName === 'EV / EBITDA' ? target.ebitda
       : target.netIncome;
   if (base == null || base <= 0) return null;
+  const impliedEnterpriseValue = multipleName === 'P / E' ? null : multipleValue * base;
   const equityValue = multipleName === 'P / E'
     ? multipleValue * base
-    : multipleValue * base - (target.netDebt ?? 0);
+    : target.netDebt == null ? null : impliedEnterpriseValue! - target.netDebt;
   return {
     multiple: multipleName,
     statistic,
     multipleValue,
-    impliedEnterpriseValue: multipleName === 'P / E' ? null : multipleValue * base,
+    impliedEnterpriseValue,
     impliedEquityValue: equityValue,
-    impliedValuePerShare: target.sharesOutstanding && target.sharesOutstanding > 0 ? equityValue / target.sharesOutstanding : null,
+    impliedValuePerShare: equityValue != null && target.sharesOutstanding && target.sharesOutstanding > 0 ? equityValue / target.sharesOutstanding : null,
   };
 }
 
@@ -179,6 +185,7 @@ export function comparableCompanyAnalysis(
     if (!peer.companyName.trim() || !peer.ticker.trim() || !peer.sourceUrl.trim()) {
       throw new QuantError('Each peer requires company name, ticker, and source URL');
     }
+    if (!/^[A-Z]{3}$/.test(peer.currency)) throw new QuantError(`Comparable peer ${peer.ticker} requires an ISO 4217 currency`);
     if (tickers.has(peer.ticker.toUpperCase())) throw new QuantError(`Duplicate peer ticker: ${peer.ticker}`);
     tickers.add(peer.ticker.toUpperCase());
     const marketCapitalization = finite('market capitalization', peer.marketCapitalization)!;

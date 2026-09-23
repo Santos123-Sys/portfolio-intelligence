@@ -184,7 +184,7 @@ export function Header() {
           />
           <span className="brand-copy">
             <strong>Portfolio Intelligence</strong>
-            <span>Thesis-driven investment management</span>
+            <span>{t('brand.tagline')}</span>
           </span>
         </Link>
 
@@ -196,7 +196,7 @@ export function Header() {
           aria-controls="primary-navigation"
         >
           <span aria-hidden="true">☰</span>
-          <span>{mobileNavigationOpen ? 'Close' : 'Menu'}</span>
+          <span>{mobileNavigationOpen ? t('actions.close') : t('actions.menu')}</span>
         </button>
 
         <nav id="primary-navigation" aria-label="Main navigation" className={`primary-nav${mobileNavigationOpen ? ' is-open' : ''}`}>
