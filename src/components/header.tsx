@@ -8,7 +8,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePortfolioBreadcrumb } from '@/lib/portfolio-context';
 import { useLanguage, type TranslationKey } from '@/lib/i18n';
 
@@ -155,6 +155,8 @@ export function Header() {
   const [openMenu, setOpenMenu] = useState<'review' | 'more' | 'settings' | null>(null);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const navigationRef = useRef<HTMLElement>(null);
+  const mobileToggleRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,10 +166,35 @@ export function Header() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    function dismissOnOutsideClick(event: PointerEvent) {
+      if (!navigationRef.current?.contains(event.target as Node) &&
+          !mobileToggleRef.current?.contains(event.target as Node)) {
+        setOpenMenu(null);
+        setMobileNavigationOpen(false);
+      }
+    }
+    function dismissOnEscape(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || (!openMenu && !mobileNavigationOpen)) return;
+      const submenuButton = (document.activeElement as HTMLElement | null)?.closest('.nav-more')?.querySelector('button');
+      setOpenMenu(null);
+      setMobileNavigationOpen(false);
+      if (submenuButton instanceof HTMLElement) submenuButton.focus();
+      else if (navigationRef.current?.contains(document.activeElement)) mobileToggleRef.current?.focus();
+    }
+    document.addEventListener('pointerdown', dismissOnOutsideClick);
+    document.addEventListener('keydown', dismissOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', dismissOnOutsideClick);
+      document.removeEventListener('keydown', dismissOnEscape);
+    };
+  }, [openMenu, mobileNavigationOpen]);
+
   const reviewNav = REVIEW_NAV.filter(([href]) => isPlatformAdmin || href !== '/decisions');
   const supportNav = SUPPORT_NAV.filter(([href]) => isPlatformAdmin || href !== '/research-history');
   const settingsNav = SETTINGS_NAV.filter(([href]) => isPlatformAdmin || href !== '/agent-settings');
   const reviewActive = REVIEW_NAV.some(([href]) => pathname === href);
+  const supportActive = SUPPORT_NAV.some(([href]) => pathname === href);
   const settingsActive = SETTINGS_NAV.some(([href]) => pathname === href);
 
   return (
@@ -189,6 +216,7 @@ export function Header() {
         </Link>
 
         <button
+          ref={mobileToggleRef}
           type="button"
           className="mobile-nav-toggle"
           onClick={() => setMobileNavigationOpen((open) => !open)}
@@ -196,15 +224,16 @@ export function Header() {
           aria-controls="primary-navigation"
         >
           <span aria-hidden="true">☰</span>
-          <span>{mobileNavigationOpen ? 'Close' : 'Menu'}</span>
+          <span>{mobileNavigationOpen ? t('nav.close') : t('nav.menu')}</span>
         </button>
 
-        <nav id="primary-navigation" aria-label="Main navigation" className={`primary-nav${mobileNavigationOpen ? ' is-open' : ''}`}>
+        <nav ref={navigationRef} id="primary-navigation" aria-label={t('nav.mainNavigation')} className={`primary-nav${mobileNavigationOpen ? ' is-open' : ''}`}>
           {WORKFLOW_NAV.map(([href, labelKey]) => (
             <Link
               key={href}
               href={href}
               className={`nav-link${pathname === href || (href === '/positions' && PORTFOLIO_WORKSPACE_PATHS.has(pathname)) ? ' active' : ''}`}
+              aria-current={pathname === href ? 'page' : undefined}
               onClick={() => setMobileNavigationOpen(false)}
             >
               {t(labelKey)}
@@ -216,13 +245,14 @@ export function Header() {
               className={`nav-link${reviewActive ? ' active' : ''}`}
               onClick={() => setOpenMenu((menu) => menu === 'review' ? null : 'review')}
               aria-expanded={openMenu === 'review'}
+              aria-controls="review-navigation"
             >
               {t('nav.investmentReview')}
             </button>
             {openMenu === 'review' && (
-              <div className="nav-more-panel">
+              <div id="review-navigation" className="nav-more-panel">
                 {reviewNav.map(([href, labelKey]) => (
-                  <Link key={href} href={href} className="nav-link" onClick={() => { setOpenMenu(null); setMobileNavigationOpen(false); }}>
+                  <Link key={href} href={href} className={`nav-link${pathname === href ? ' active' : ''}`} aria-current={pathname === href ? 'page' : undefined} onClick={() => { setOpenMenu(null); setMobileNavigationOpen(false); }}>
                     {t(labelKey)}
                   </Link>
                 ))}
@@ -232,16 +262,17 @@ export function Header() {
           <div className="nav-more">
             <button
               type="button"
-              className="nav-link"
+              className={`nav-link${supportActive ? ' active' : ''}`}
               onClick={() => setOpenMenu((menu) => menu === 'more' ? null : 'more')}
               aria-expanded={openMenu === 'more'}
+              aria-controls="support-navigation"
             >
               {t('nav.more')}
             </button>
             {openMenu === 'more' && (
-              <div className="nav-more-panel">
+              <div id="support-navigation" className="nav-more-panel">
                 {supportNav.map(([href, labelKey]) => (
-                  <Link key={href} href={href} className="nav-link" onClick={() => { setOpenMenu(null); setMobileNavigationOpen(false); }}>
+                  <Link key={href} href={href} className={`nav-link${pathname === href ? ' active' : ''}`} aria-current={pathname === href ? 'page' : undefined} onClick={() => { setOpenMenu(null); setMobileNavigationOpen(false); }}>
                     {t(labelKey)}
                   </Link>
                 ))}
@@ -254,13 +285,14 @@ export function Header() {
               className={`nav-link${settingsActive ? ' active' : ''}`}
               onClick={() => setOpenMenu((menu) => menu === 'settings' ? null : 'settings')}
               aria-expanded={openMenu === 'settings'}
+              aria-controls="settings-navigation"
             >
               {t('nav.settings')}
             </button>
             {openMenu === 'settings' && (
-              <div className="nav-more-panel nav-more-panel-right">
+              <div id="settings-navigation" className="nav-more-panel nav-more-panel-right">
                 {settingsNav.map(([href, labelKey]) => (
-                  <Link key={href} href={href} className="nav-link" onClick={() => { setOpenMenu(null); setMobileNavigationOpen(false); }}>
+                  <Link key={href} href={href} className={`nav-link${pathname === href ? ' active' : ''}`} aria-current={pathname === href ? 'page' : undefined} onClick={() => { setOpenMenu(null); setMobileNavigationOpen(false); }}>
                     {t(labelKey)}
                   </Link>
                 ))}
