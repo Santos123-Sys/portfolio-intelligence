@@ -309,58 +309,21 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
 .dcf-scenario-card .analysis-eyebrow { margin: 0 0 0.3rem; }
 .dcf-scenario-card .big { margin: 0.1rem 0 0.55rem; font-size: 1.2rem; overflow-wrap: anywhere; }
 .dcf-scenario-card .note { margin: 0.35rem 0; line-height: 1.45; }
+.sourced-valuation-tabs { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 1rem 0; border-bottom: 1px solid var(--border); }
+.sourced-valuation-tabs button { min-height: 44px; padding: 0.55rem 0.85rem; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); }
+.sourced-valuation-tabs button.active { border-color: var(--accent); color: var(--text); }
+.sourced-summary-view, .sourced-sensitivity-view { display: grid; gap: 0.7rem; }
+.sourced-summary-view h4, .sourced-sensitivity-view h4 { margin: 0; }
+.sourced-football-field { display: grid; gap: 0.25rem; padding: 0.5rem 0.9rem; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.sourced-football-row { display: grid; gap: 0.35rem; padding: 0.55rem 0; border-bottom: 1px solid var(--border); }
+.sourced-football-row:last-child { border-bottom: 0; }
+.sourced-football-row > div:first-child { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.3rem 1rem; font-size: 0.78rem; }
+.sourced-football-track { position: relative; height: 0.5rem; border-radius: 1rem; background: color-mix(in srgb, var(--border) 80%, transparent); }
+.sourced-football-track i { position: absolute; top: 0; height: 100%; min-width: 2px; border-radius: inherit; background: var(--accent); }
+.sourced-football-track b { position: absolute; top: -0.14rem; width: 0.15rem; height: 0.78rem; background: var(--text); transform: translateX(-50%); }
+.comps-linked-result { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--card) 84%, var(--bg)); }
+.comps-linked-result h4, .comps-linked-result p { margin-top: 0; }
 .report-download { display: inline-flex; align-items: center; margin-top: 0.3rem; text-decoration: none; }
-.integrated-engine { margin: 0 0 1.5rem; padding: 1rem; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--panel) 72%, var(--bg)); }
-.engine-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-.engine-heading h3 { margin: 0.2rem 0; }
-.engine-heading .note { max-width: 55rem; }
-.engine-target-identity { display: grid; grid-template-columns: minmax(12rem, 2fr) minmax(7rem, 1fr) minmax(5rem, 0.5fr); gap: 0.5rem; max-width: 36rem; }
-.engine-target-identity label { display: grid; gap: 0.25rem; color: var(--muted); font-size: 0.68rem; }
-.engine-target-identity input { width: 100%; min-height: 2.2rem; padding: 0.4rem; border: 1px solid var(--border); border-radius: 5px; background: color-mix(in srgb, #75bfff 11%, var(--bg)); color: var(--text); }
-.engine-templates { display: flex; flex-wrap: wrap; gap: 0.45rem; justify-content: flex-end; }
-.engine-tabs { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.75rem 0; border-bottom: 1px solid var(--border); }
-.engine-tabs button { min-height: var(--tap-min, 44px); padding: 0.5rem 0.75rem; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); }
-.engine-tabs button.active { border-color: var(--accent); color: var(--text); }
-.engine-view { display: grid; gap: 0.8rem; }
-.engine-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.6rem; }
-.engine-kpis article, .engine-card { min-width: 0; padding: 0.8rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
-.engine-kpis article { display: grid; gap: 0.35rem; }
-.engine-kpis small { color: var(--muted); font-size: 0.7rem; }
-.engine-kpis strong { color: var(--text); font-size: 1.05rem; overflow-wrap: anywhere; }
-.baseline-kpis { grid-template-columns: repeat(auto-fit, minmax(95px, 1fr)); }
-.engine-summary-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.8rem; }
-.engine-card h4 { margin: 0 0 0.65rem; }
-.football-range { display: grid; gap: 0.3rem; padding: 0.55rem 0; border-top: 1px solid var(--border); }
-.football-range > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; font-size: 0.75rem; }
-.football-range strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.football-track { position: relative; height: 0.45rem; overflow: hidden; border-radius: 1rem; background: color-mix(in srgb, var(--border) 75%, transparent); }
-.football-track i { position: absolute; top: 0; bottom: 0; min-width: 2px; border-radius: inherit; background: var(--accent); }
-.engine-field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.65rem; }
-.engine-field { display: grid; align-content: start; gap: 0.3rem; min-width: 0; color: var(--muted); font-size: 0.72rem; }
-.engine-field-control { display: flex; align-items: center; gap: 0.35rem; }
-.engine-field input, .integrated-peer-table input, .integrated-projection-table input { width: 100%; min-width: 4.5rem; min-height: 2.2rem; padding: 0.4rem; border: 1px solid var(--border); border-radius: 5px; background: color-mix(in srgb, #75bfff 11%, var(--bg)); color: var(--text); font-variant-numeric: tabular-nums; }
-.engine-field small { white-space: nowrap; }
-.engine-formula { margin: 0.7rem 0 0; color: var(--muted); font-size: 0.8rem; }
-.engine-field .secondary-button { margin-top: 0.35rem; }
-.integrated-peer-table, .integrated-projection-table { min-width: 1150px; }
-.integrated-peer-table input { min-width: 5.7rem; }
-.integrated-peer-table input[type='checkbox'] { width: 1.1rem; min-width: 1.1rem; min-height: 1.1rem; }
-.integrated-projection-table input { min-width: 5rem; }
-.integrated-peer-table td, .integrated-projection-table td { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.integrated-peer-table tfoot th, .integrated-peer-table tfoot td { font-size: 0.7rem; }
-.ufcf-chart { height: 13rem; padding-top: 1.5rem; }
-.ufcf-bars { display: flex; height: 100%; align-items: flex-end; justify-content: space-around; gap: 0.6rem; border-bottom: 1px solid var(--border); }
-.ufcf-bar-column { display: flex; min-width: 0; height: 100%; flex: 1; flex-direction: column; justify-content: flex-end; align-items: center; gap: 0.35rem; }
-.ufcf-bar-column span { color: var(--muted); font-size: 0.62rem; }
-.ufcf-bar-column i { width: min(3rem, 68%); min-height: 3px; border-radius: 4px 4px 0 0; background: linear-gradient(0deg, var(--accent), color-mix(in srgb, var(--accent) 45%, #7bd4cb)); }
-.ufcf-bar-column small { color: var(--muted); font-size: 0.65rem; }
-.sensitivity-card { overflow: hidden; }
-.engine-print-only { display: none; }
-@media print {
-  .engine-templates, .engine-tabs, .integrated-peer-table input, .integrated-projection-table input, .engine-field input, .engine-field button, .primary-source-cta, .comps-panel { display: none !important; }
-  .integrated-engine { border: 0; background: #fff; color: #111; }
-  .engine-print-only { display: block; margin-top: 1rem; break-before: page; }
-}
 .valuation-panel > h4, .comps-panel > h4 { margin: 1.1rem 0 0.35rem; font-size: 0.9rem; }
 .comps-panel { margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .dcf-unavailable { margin-top: 1rem; padding: 0.8rem; border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--border)); border-radius: 7px; }
@@ -867,6 +830,8 @@ textarea {
 .comps-input-table input + input { margin-top: 0.4rem; }
 .peer-research-note { max-width: 20rem; margin: 0.4rem 0 0; font-size: 0.78rem; }
 .comparability-guide { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+.comps-linked-result { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--card) 84%, var(--bg)); }
+.comps-linked-result h4, .comps-linked-result p { margin-top: 0; }
 
 /* Thesis review is a decision surface, not a developer payload. */
 .thesis-generator { display: grid; gap: 1rem; }
