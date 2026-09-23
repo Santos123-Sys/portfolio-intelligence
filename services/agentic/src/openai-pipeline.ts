@@ -191,6 +191,7 @@ function pinCandidateIdentity(
     // plausible. If the provider did not supply it, retain it only where the
     // web-research step actually returned citable sources.
     const canUseWebClassification = (evidence?.urls.length ?? 0) > 0;
+    const hasProviderClassification = Boolean(record?.sector || record?.industry);
     return record
       ? {
           ...candidate,
@@ -199,9 +200,17 @@ function pinCandidateIdentity(
           companyName: record.companyName,
           currency: record.currency,
           country: record.country,
-          sector: record.sector ?? (canUseWebClassification ? candidate.sector : null),
-          industry: record.industry ?? (canUseWebClassification ? candidate.industry : null),
-          classificationSource: record.sector || record.industry
+          // Do not create a mixed classification whose sector and industry
+          // silently come from different authorities. Provider metadata wins
+          // as a unit; web research fills both fields only when the provider
+          // supplied neither and returned citable evidence.
+          sector: hasProviderClassification
+            ? record.sector
+            : canUseWebClassification ? candidate.sector : null,
+          industry: hasProviderClassification
+            ? record.industry
+            : canUseWebClassification ? candidate.industry : null,
+          classificationSource: hasProviderClassification
             ? 'provider' as const
             : canUseWebClassification && (candidate.sector || candidate.industry)
               ? 'web_research' as const

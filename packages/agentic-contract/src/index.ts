@@ -613,10 +613,32 @@ export function validateDiscoveryOutput(
     if (
       candidate.companyName !== record.companyName ||
       candidate.currency !== record.currency ||
-      candidate.country !== record.country ||
-      candidate.sector !== record.sector
+      candidate.country !== record.country
     ) {
       throw new ContractValidationError(`Candidate identity changed for ${candidate.ticker}`);
+    }
+
+    const providerClassificationMatches =
+      candidate.sector === record.sector &&
+      candidate.industry === record.industry;
+    const hasVerifiedWebClassificationSource = candidate.sourceUrls.some(
+      (url) => url !== record.sourceUrl && externallyRetrievedSources.has(url)
+    );
+    const verifiedWebClassification =
+      candidate.classificationSource === 'web_research' &&
+      record.sector === null &&
+      record.industry === null &&
+      (candidate.sector !== null || candidate.industry !== null) &&
+      hasVerifiedWebClassificationSource;
+    if (!providerClassificationMatches && !verifiedWebClassification) {
+      throw new ContractValidationError(
+        `Candidate classification changed without verified evidence for ${candidate.ticker}`
+      );
+    }
+    if (providerClassificationMatches && candidate.classificationSource === 'web_research') {
+      throw new ContractValidationError(
+        `Candidate classification source is inconsistent for ${candidate.ticker}`
+      );
     }
     const mandate = mandatesByPortfolio.get(candidate.portfolioId)!;
     if (!mandate.exchanges.includes(candidate.exchange) || candidate.currency !== portfolio.baseCurrency) {
