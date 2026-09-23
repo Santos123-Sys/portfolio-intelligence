@@ -7,8 +7,8 @@ export const metadata: Metadata = {
   title: 'Portfolio Intelligence',
   description: 'AI-assisted, thesis-driven investment management with a deterministic quantitative engine',
   icons: {
-    icon: '/brand/portfolio-intelligence-logo.png',
-    apple: '/brand/portfolio-intelligence-logo.png',
+    icon: '/brand/portfolio-intelligence-mark.svg',
+    apple: '/brand/portfolio-intelligence-mark.svg',
   },
 };
 

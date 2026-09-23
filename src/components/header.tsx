@@ -153,6 +153,7 @@ export function Header() {
   const { viewing } = usePortfolioBreadcrumb();
   const { language, setLanguage, t } = useLanguage();
   const [openMenu, setOpenMenu] = useState<'review' | 'more' | 'settings' | null>(null);
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
 
   useEffect(() => {
@@ -174,7 +175,7 @@ export function Header() {
       <div className="app-header-row">
         <Link href="/" className="brand">
           <Image
-            src="/brand/portfolio-intelligence-logo.png"
+            src="/brand/portfolio-intelligence-mark.svg"
             alt=""
             width={44}
             height={44}
@@ -187,12 +188,24 @@ export function Header() {
           </span>
         </Link>
 
-        <nav aria-label="Main navigation" className="primary-nav">
+        <button
+          type="button"
+          className="mobile-nav-toggle"
+          onClick={() => setMobileNavigationOpen((open) => !open)}
+          aria-expanded={mobileNavigationOpen}
+          aria-controls="primary-navigation"
+        >
+          <span aria-hidden="true">☰</span>
+          <span>{mobileNavigationOpen ? 'Close' : 'Menu'}</span>
+        </button>
+
+        <nav id="primary-navigation" aria-label="Main navigation" className={`primary-nav${mobileNavigationOpen ? ' is-open' : ''}`}>
           {WORKFLOW_NAV.map(([href, labelKey]) => (
             <Link
               key={href}
               href={href}
               className={`nav-link${pathname === href || (href === '/positions' && PORTFOLIO_WORKSPACE_PATHS.has(pathname)) ? ' active' : ''}`}
+              onClick={() => setMobileNavigationOpen(false)}
             >
               {t(labelKey)}
             </Link>
@@ -209,7 +222,7 @@ export function Header() {
             {openMenu === 'review' && (
               <div className="nav-more-panel">
                 {reviewNav.map(([href, labelKey]) => (
-                  <Link key={href} href={href} className="nav-link" onClick={() => setOpenMenu(null)}>
+                  <Link key={href} href={href} className="nav-link" onClick={() => { setOpenMenu(null); setMobileNavigationOpen(false); }}>
                     {t(labelKey)}
                   </Link>
                 ))}
@@ -228,7 +241,7 @@ export function Header() {
             {openMenu === 'more' && (
               <div className="nav-more-panel">
                 {supportNav.map(([href, labelKey]) => (
-                  <Link key={href} href={href} className="nav-link" onClick={() => setOpenMenu(null)}>
+                  <Link key={href} href={href} className="nav-link" onClick={() => { setOpenMenu(null); setMobileNavigationOpen(false); }}>
                     {t(labelKey)}
                   </Link>
                 ))}
@@ -247,7 +260,7 @@ export function Header() {
             {openMenu === 'settings' && (
               <div className="nav-more-panel nav-more-panel-right">
                 {settingsNav.map(([href, labelKey]) => (
-                  <Link key={href} href={href} className="nav-link" onClick={() => setOpenMenu(null)}>
+                  <Link key={href} href={href} className="nav-link" onClick={() => { setOpenMenu(null); setMobileNavigationOpen(false); }}>
                     {t(labelKey)}
                   </Link>
                 ))}

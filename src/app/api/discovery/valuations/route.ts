@@ -15,22 +15,35 @@ import {
   isDcfLocked,
   LIMITED_DATA_DCF_LOCK_REASON,
 } from '@/lib/integrations/analysis-mode';
-import { assessDcfSuitability, discountedCashFlow } from '@/lib/quant/dcf';
+import { assessDcfSuitability, threeCaseDiscountedCashFlow } from '@/lib/quant/dcf';
 
 export const runtime = 'nodejs';
 
-const valuationSchema = z.object({
+const automaticValuationSchema = z.object({
   candidateId: z.string().uuid(),
-  startingFreeCashFlow: z.number().positive(),
-  forecastYears: z.number().int().min(1).max(10),
-  annualGrowthRate: z.number().min(-0.5).max(0.5),
-  discountRate: z.number().positive().max(0.5),
-  terminalGrowthRate: z.number().min(-0.05).max(0.05),
-  netDebt: z.number().finite(),
-  sharesOutstanding: z.number().positive(),
-  sourceReferences: z.array(z.string().min(1)).min(1),
-  methodSuitabilityConfirmed: z.boolean(),
+  automatic: z.literal(true),
 }).strict();
+
+const SCENARIO_DRIVERS = {
+  worst_case: {
+    annualGrowthRate: 'dcf_worst_case_fcf_growth_rate',
+    discountRate: 'dcf_worst_case_discount_rate',
+    terminalGrowthRate: 'dcf_worst_case_terminal_growth_rate',
+  },
+  base_case: {
+    annualGrowthRate: 'dcf_base_case_fcf_growth_rate',
+    discountRate: 'dcf_base_case_discount_rate',
+    terminalGrowthRate: 'dcf_base_case_terminal_growth_rate',
+  },
+  optimistic_case: {
+    annualGrowthRate: 'dcf_optimistic_case_fcf_growth_rate',
+    discountRate: 'dcf_optimistic_case_discount_rate',
+    terminalGrowthRate: 'dcf_optimistic_case_terminal_growth_rate',
+  },
+} as const;
+
+const REQUIRED_AUTOMATIC_FINANCIALS = ['free_cash_flow', 'total_debt', 'cash_and_equivalents', 'shares_outstanding'] as const;
+const REQUIRED_AUTOMATIC_DRIVERS = Object.values(SCENARIO_DRIVERS).flatMap((scenario) => Object.values(scenario));
 
 async function context(ownerId: string, candidateId: string) {
   const [candidate] = await db.select().from(discoveryCandidates).where(and(
@@ -64,8 +77,23 @@ function numeric(row: { valueNumeric: string | null } | undefined): number | nul
 }
 
 function hasCompletePrimarySourceDcf(data: NonNullable<Awaited<ReturnType<typeof context>>>): boolean {
-  const required = ['free_cash_flow', 'total_debt', 'cash_and_equivalents', 'shares_outstanding'];
-  return required.every((metric) => data.latest.get(metric)?.provider === 'investor-relations');
+  return REQUIRED_AUTOMATIC_FINANCIALS.every((metric) => data.latest.get(metric)?.provider === 'investor-relations');
+}
+
+function automaticReadiness(data: NonNullable<Awaited<ReturnType<typeof context>>>) {
+  const missingFinancialRecords = REQUIRED_AUTOMATIC_FINANCIALS.filter((metric) => {
+    const value = numeric(data.latest.get(metric));
+    return value == null || data.latest.get(metric)?.provider !== 'investor-relations';
+  });
+  const missingScenarioDrivers = REQUIRED_AUTOMATIC_DRIVERS.filter((metric) => numeric(data.latest.get(metric)) == null);
+  return {
+    ready: missingFinancialRecords.length === 0 && missingScenarioDrivers.length === 0,
+    missingFinancialRecords,
+    missingScenarioDrivers,
+    message: missingFinancialRecords.length || missingScenarioDrivers.length
+      ? 'Strict automatic DCF is paused because source-linked financial records or scenario-driver records are missing. The platform will not insert an estimated growth, discount, or terminal rate.'
+      : 'All source-linked financial and scenario-driver records are present. The native three-scenario DCF can be generated.',
+  };
 }
 
 export async function GET(req: Request) {
@@ -100,6 +128,7 @@ export async function GET(req: Request) {
       dataAsOf: data.observations[0]?.retrievedAt.toISOString() ?? null,
       sourceReferences,
     },
+    automaticReadiness: automaticReadiness(data),
     latestScenario: latestScenario ?? null,
   });
 }
@@ -112,48 +141,54 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: 'Cross-origin mutation rejected' }, { status: 403 });
   }
-  const parsed = valuationSchema.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  const data = await context(session.auth.userId, parsed.data.candidateId);
+  const body = await req.json().catch(() => ({}));
+  const parsed = automaticValuationSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({
+      error: 'Strict automatic DCF accepts only { candidateId, automatic: true }. The platform does not accept user-entered valuation assumptions.',
+    }, { status: 400 });
+  }
+  const candidateId = parsed.data.candidateId;
+  const data = await context(session.auth.userId, candidateId);
   if (data && isDcfLocked(data.analysisMode) && !hasCompletePrimarySourceDcf(data)) {
     return NextResponse.json({ error: LIMITED_DATA_DCF_LOCK_REASON }, { status: 409 });
   }
   if (!data || !data.candidate.analysisId) {
     return NextResponse.json({ error: 'Complete the approved security analysis before valuation' }, { status: 409 });
   }
-  const suitability = assessDcfSuitability(data.candidate.sector, data.latest.keys());
-  if (suitability.status === 'insufficient_data') {
-    return NextResponse.json({ error: suitability.rationale }, { status: 409 });
-  }
-  if (suitability.status === 'alternative_method_recommended' && !parsed.data.methodSuitabilityConfirmed) {
-    return NextResponse.json({ error: suitability.rationale }, { status: 409 });
-  }
-  const allowedReferences = new Set(data.observations.map((row) => `fundamental:${row.metricName}:${row.id}`));
-  const invalid = parsed.data.sourceReferences.filter((reference) => !allowedReferences.has(reference));
-  if (invalid.length) return NextResponse.json({ error: `Unknown valuation evidence: ${invalid.join(', ')}` }, { status: 400 });
+  const readiness = automaticReadiness(data);
+  if (!readiness.ready) return NextResponse.json({ error: readiness.message, readiness }, { status: 409 });
+  const freeCashFlow = numeric(data.latest.get('free_cash_flow'))!;
+  const totalDebt = numeric(data.latest.get('total_debt'))!;
+  const cash = numeric(data.latest.get('cash_and_equivalents'))!;
+  const sharesOutstanding = numeric(data.latest.get('shares_outstanding'))!;
+  const references = [
+    ...REQUIRED_AUTOMATIC_FINANCIALS,
+    ...REQUIRED_AUTOMATIC_DRIVERS,
+  ].map((metric) => `fundamental:${metric}:${data.latest.get(metric)!.id}`);
   try {
-    const assumptions = {
+    const assumptions = Object.fromEntries(Object.entries(SCENARIO_DRIVERS).map(([name, drivers]) => [name, {
       currency: data.candidate.currency,
-      startingFreeCashFlow: parsed.data.startingFreeCashFlow,
-      forecastYears: parsed.data.forecastYears,
-      annualGrowthRate: parsed.data.annualGrowthRate,
-      discountRate: parsed.data.discountRate,
-      terminalGrowthRate: parsed.data.terminalGrowthRate,
-      netDebt: parsed.data.netDebt,
-      sharesOutstanding: parsed.data.sharesOutstanding,
+      startingFreeCashFlow: freeCashFlow,
+      forecastYears: 5,
+      annualGrowthRate: numeric(data.latest.get(drivers.annualGrowthRate))!,
+      discountRate: numeric(data.latest.get(drivers.discountRate))!,
+      terminalGrowthRate: numeric(data.latest.get(drivers.terminalGrowthRate))!,
+      netDebt: totalDebt - cash,
+      sharesOutstanding,
       dataAsOf: data.observations[0]?.retrievedAt.toISOString() ?? new Date().toISOString(),
-      sourceReferences: parsed.data.sourceReferences,
-    };
-    const result = discountedCashFlow(assumptions);
+      sourceReferences: references,
+    }])) as Parameters<typeof threeCaseDiscountedCashFlow>[0];
+    const result = threeCaseDiscountedCashFlow(assumptions);
     const [scenario] = await db.insert(valuationScenarios).values({
       ownerId: session.auth.userId,
       candidateId: data.candidate.id,
       analysisId: data.candidate.analysisId,
       method: result.method,
-      status: 'human_confirmed',
+      status: 'source_complete',
       assumptionsJson: assumptions,
       resultJson: result,
-      sourceReferences: parsed.data.sourceReferences,
+      sourceReferences: references,
       approvedBy: session.auth.email,
     }).returning();
     return NextResponse.json({ scenario, result }, { status: 201 });

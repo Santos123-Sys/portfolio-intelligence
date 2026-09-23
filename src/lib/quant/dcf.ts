@@ -42,6 +42,26 @@ export interface DcfResult {
   computedAt: string;
 }
 
+export type DcfScenarioName = 'worst_case' | 'base_case' | 'optimistic_case';
+
+/**
+ * A complete three-case valuation. The engine receives every driver as a
+ * source-backed record; it deliberately does not manufacture a "reasonable"
+ * WACC, growth rate, or terminal rate when evidence is absent.
+ */
+export interface ThreeCaseDcfResult {
+  method: 'three_case_two_stage_fcff';
+  currency: string;
+  scenarios: Array<{
+    name: DcfScenarioName;
+    label: 'Worst case' | 'Base case' | 'Optimistic case';
+    result: DcfResult;
+  }>;
+  methodology: string;
+  caveats: string[];
+  computedAt: string;
+}
+
 function assertFinite(name: string, value: number): void {
   if (!Number.isFinite(value)) throw new QuantError(`DCF ${name} must be finite`);
 }
@@ -148,6 +168,36 @@ export function discountedCashFlow(input: DcfAssumptions): DcfResult {
     assumptions: input,
     methodology: `Two-stage FCFF DCF: ${input.forecastYears} explicit annual periods, present values discounted at ${(input.discountRate * 100).toFixed(2)}%, Gordon-growth terminal value at ${(input.terminalGrowthRate * 100).toFixed(2)}%, then net debt removed and shares outstanding applied.`,
     caveats,
+    computedAt: new Date().toISOString(),
+  };
+}
+
+export function threeCaseDiscountedCashFlow(input: Record<DcfScenarioName, DcfAssumptions>): ThreeCaseDcfResult {
+  const ordered: Array<[DcfScenarioName, 'Worst case' | 'Base case' | 'Optimistic case']> = [
+    ['worst_case', 'Worst case'],
+    ['base_case', 'Base case'],
+    ['optimistic_case', 'Optimistic case'],
+  ];
+  const scenarios = ordered.map(([name, label]) => ({ name, label, result: discountedCashFlow(input[name]) }));
+  const base = scenarios[1]!.result;
+  const currency = base.currency;
+  if (scenarios.some(({ result }) => result.currency !== currency)) {
+    throw new QuantError('All DCF scenarios must use the same currency');
+  }
+  const [worst, , optimistic] = scenarios;
+  if (worst!.result.fairValuePerShare > base.fairValuePerShare || base.fairValuePerShare > optimistic!.result.fairValuePerShare) {
+    throw new QuantError('Scenario drivers must produce worst-case ≤ base-case ≤ optimistic-case value per share');
+  }
+  return {
+    method: 'three_case_two_stage_fcff',
+    currency,
+    scenarios,
+    methodology: 'Three-case two-stage FCFF DCF. Each case is independently calculated from source-linked inputs; no LLM arithmetic or unsourced default assumption is used.',
+    caveats: [
+      'This is an assumption-sensitive analytical model, not a market-price prediction or a trade instruction.',
+      'The model is generated only when every financial and scenario driver is present in the retained evidence record.',
+      ...base.caveats,
+    ],
     computedAt: new Date().toISOString(),
   };
 }

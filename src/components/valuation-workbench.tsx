@@ -20,7 +20,26 @@ interface ValuationSetup {
     dataAsOf: string | null;
     sourceReferences: string[];
   };
-  latestScenario: { resultJson: DcfResult } | null;
+  automaticReadiness: {
+    ready: boolean;
+    missingFinancialRecords: string[];
+    missingScenarioDrivers: string[];
+    message: string;
+  };
+  latestScenario: { id: string; method: string; resultJson: ThreeCaseDcfResult } | null;
+}
+
+interface ThreeCaseDcfResult {
+  method: 'three_case_two_stage_fcff';
+  currency: string;
+  scenarios: Array<{
+    name: 'worst_case' | 'base_case' | 'optimistic_case';
+    label: string;
+    result: DcfResult;
+  }>;
+  methodology: string;
+  caveats: string[];
+  computedAt: string;
 }
 
 interface DcfResult {
@@ -30,6 +49,11 @@ interface DcfResult {
   equityValue: number;
   methodology: string;
   caveats: string[];
+  assumptions: {
+    annualGrowthRate: number;
+    discountRate: number;
+    terminalGrowthRate: number;
+  };
   sensitivity: Array<{
     discountRate: number;
     terminalGrowthRate: number;
@@ -118,17 +142,12 @@ function emptyPeer(): PeerForm {
   return { companyName: '', ticker: '', exchange: '', currency: '', marketCapitalization: '', netDebt: '', totalDebt: '', revenue: '', ebitda: '', netIncome: '', grossProfit: '', operatingIncome: '', totalEquity: '', interestExpense: '', cashAndEquivalents: '', incomeTaxExpense: '', preTaxIncome: '', ntmRevenue: '', ntmEbitda: '', ntmNetIncome: '', sourceUrl: '', forecastSourceUrl: '', researchNote: '' };
 }
 
-function initial(value: number | null): string {
-  return value == null ? '' : String(value);
-}
-
 export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: string; onSaved: () => void }) {
   const [setup, setSetup] = useState<ValuationSetup | null>(null);
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<DcfResult | null>(null);
+  const [automaticResult, setAutomaticResult] = useState<ThreeCaseDcfResult | null>(null);
+  const [automaticScenarioId, setAutomaticScenarioId] = useState<string | null>(null);
   const [compsSetup, setCompsSetup] = useState<ComparableSetup | null>(null);
   const [peers, setPeers] = useState<PeerForm[]>(() => Array.from({ length: 6 }, emptyPeer));
   const [compsResult, setCompsResult] = useState<ComparableResult | null>(null);
@@ -143,24 +162,18 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
   useEffect(() => {
     const controller = new AbortController();
     setBusy(true);
-    setConfirmed(false);
     setError(null);
-    setResult(null);
+    setAutomaticResult(null);
+    setAutomaticScenarioId(null);
     fetch(`/api/discovery/valuations?candidateId=${encodeURIComponent(candidateId)}`, { signal: controller.signal })
       .then(async (response) => {
         const body = await response.json() as ValuationSetup & { error?: string };
         if (!response.ok) throw new Error(body.error ?? `Valuation setup failed (${response.status})`);
         setSetup(body);
-        setResult(body.latestScenario?.resultJson ?? null);
-        setValues({
-          startingFreeCashFlow: initial(body.defaults.startingFreeCashFlow),
-          netDebt: initial(body.defaults.netDebt),
-          sharesOutstanding: initial(body.defaults.sharesOutstanding),
-          forecastYears: String(body.defaults.forecastYears),
-          annualGrowthRate: '',
-          discountRate: '',
-          terminalGrowthRate: '',
-        });
+        if (body.latestScenario?.method === 'three_case_two_stage_fcff') {
+          setAutomaticResult(body.latestScenario.resultJson);
+          setAutomaticScenarioId(body.latestScenario.id);
+        }
       })
       .catch((cause) => {
         if (!controller.signal.aborted) setError((cause as Error).message);
@@ -191,11 +204,7 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
     return () => controller.abort();
   }, [candidateId, reloadToken]);
 
-  function update(name: string, value: string) {
-    setValues((current) => ({ ...current, [name]: value }));
-  }
-
-  async function calculate() {
+  async function generateAutomaticDcf() {
     if (!setup) return;
     setBusy(true);
     setError(null);
@@ -203,22 +212,12 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
       const response = await fetch('/api/discovery/valuations', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          candidateId,
-          startingFreeCashFlow: Number(values.startingFreeCashFlow),
-          netDebt: Number(values.netDebt),
-          sharesOutstanding: Number(values.sharesOutstanding),
-          forecastYears: Number(values.forecastYears),
-          annualGrowthRate: Number(values.annualGrowthRate) / 100,
-          discountRate: Number(values.discountRate) / 100,
-          terminalGrowthRate: Number(values.terminalGrowthRate) / 100,
-          sourceReferences: setup.defaults.sourceReferences,
-          methodSuitabilityConfirmed: confirmed,
-        }),
+        body: JSON.stringify({ candidateId, automatic: true }),
       });
-      const body = await response.json().catch(() => ({})) as { error?: string; result?: DcfResult };
+      const body = await response.json().catch(() => ({})) as { error?: string; result?: ThreeCaseDcfResult; scenario?: { id: string } };
       if (!response.ok || !body.result) throw new Error(body.error ?? `DCF failed (${response.status})`);
-      setResult(body.result);
+      setAutomaticResult(body.result);
+      setAutomaticScenarioId(body.scenario?.id ?? null);
       onSaved();
     } catch (cause) {
       setError((cause as Error).message);
@@ -397,7 +396,7 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
       });
       const body = await response.json().catch(() => ({})) as { error?: string; importedMetrics?: string[] };
       if (!response.ok) throw new Error(body.error ?? `Primary-source retrieval failed (${response.status})`);
-      setPrimarySourceNotice(`Imported ${body.importedMetrics?.length ?? 0} primary-source metrics. Review the filing scope, then complete the DCF assumptions.`);
+      setPrimarySourceNotice(`Imported ${body.importedMetrics?.length ?? 0} primary-source metrics. The strict DCF will only run when all required financial records and source-linked scenario drivers are available.`);
       setReloadToken((current) => current + 1);
     } catch (cause) {
       setPrimarySourceNotice((cause as Error).message);
@@ -408,81 +407,43 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
 
   if (busy && !setup && compsBusy && !compsSetup) return <p className="note">Loading valuation evidence…</p>;
   if (!setup && !compsSetup && !busy && !compsBusy) return <p className="login-error" role="alert">{error ?? compsError ?? 'Valuation evidence is unavailable.'}</p>;
-  const valuationBlocked = setup?.suitability.status === 'insufficient_data';
-  const dcfInputsComplete = ['startingFreeCashFlow', 'netDebt', 'sharesOutstanding', 'forecastYears', 'annualGrowthRate', 'discountRate', 'terminalGrowthRate']
-    .every((key) => values[key]?.trim() !== '');
-  const discountRates = [...new Set(result?.sensitivity.map((cell) => cell.discountRate) ?? [])];
-  const terminalGrowthRates = [...new Set(result?.sensitivity.map((cell) => cell.terminalGrowthRate) ?? [])];
-
   return (
     <section className="valuation-panel">
       <p className="analysis-eyebrow">4. Valuation</p>
       <h3>Valuation workspace</h3>
       <p className="note">Use a DCF only with structured financial statements. Use comparable companies to triangulate value from a sourced, human-reviewed peer set. Neither output is a trade instruction.</p>
       <div className="primary-source-cta">
-        <div><strong>Primary-source financials</strong><p>Retrieve available inline-XBRL annual-report or 10-K values from investor-relations or regulatory filing pages. The system keeps the filing URL and will only unlock DCF when the required fields are present.</p></div>
+        <div><strong>Primary-source financials</strong><p>Retrieve available inline-XBRL annual-report or 10-K values from investor-relations or regulatory filing pages. The system retains the filing URL and will only unlock the DCF when required financial records and scenario drivers are sourced.</p></div>
         <button className="secondary-button" type="button" onClick={() => void retrievePrimarySourceFinancials()} disabled={primarySourceBusy}>{primarySourceBusy ? 'Retrieving…' : 'Retrieve financial statements'}</button>
       </div>
       {primarySourceNotice && <p className={primarySourceNotice.startsWith('Imported') ? 'note' : 'caveat'}>{primarySourceNotice}</p>}
       {!setup ? <section className="dcf-unavailable">
-        <h4>DCF scenario</h4>
+        <h4>Strict automatic DCF</h4>
         <p className="caveat">{busy ? 'Checking structured financial-statement evidence…' : error ?? 'DCF cannot be prepared from the current evidence.'}</p>
         <p className="note">This does not block comparable-company analysis. It prevents a DCF from using unsupported cash-flow, debt, or share-count inputs.</p>
       </section> : <>
-      <h4>DCF scenario</h4>
+      <h4>Strict automatic DCF</h4>
       <p className={setup.suitability.status === 'review_required' ? 'note' : 'caveat'}>{setup.suitability.rationale}</p>
-      <p className="note">Currency: {setup.defaults.currency} · Evidence as of {setup.defaults.dataAsOf ? new Date(setup.defaults.dataAsOf).toLocaleDateString() : 'unknown'}.</p>
-      <div className="valuation-grid">
-        <label>Starting free cash flow
-          <input type="number" inputMode="decimal" required value={values.startingFreeCashFlow ?? ''} onChange={(event) => update('startingFreeCashFlow', event.target.value)} />
-        </label>
-        <label>Net debt
-          <input type="number" inputMode="decimal" required value={values.netDebt ?? ''} onChange={(event) => update('netDebt', event.target.value)} />
-        </label>
-        <label>Shares outstanding
-          <input type="number" inputMode="decimal" min="0" step="any" required value={values.sharesOutstanding ?? ''} onChange={(event) => update('sharesOutstanding', event.target.value)} />
-        </label>
-        <label>Forecast years
-          <input type="number" inputMode="numeric" min="1" max="10" required value={values.forecastYears ?? ''} onChange={(event) => update('forecastYears', event.target.value)} />
-        </label>
-        <label>Annual growth (%)
-          <input type="number" inputMode="decimal" min="-50" max="50" step="0.1" required value={values.annualGrowthRate ?? ''} onChange={(event) => update('annualGrowthRate', event.target.value)} />
-        </label>
-        <label>Discount rate (%)
-          <input type="number" inputMode="decimal" min="0.01" max="50" step="0.1" required value={values.discountRate ?? ''} onChange={(event) => update('discountRate', event.target.value)} />
-        </label>
-        <label>Terminal growth (%)
-          <input type="number" inputMode="decimal" min="-5" max="5" step="0.1" required value={values.terminalGrowthRate ?? ''} onChange={(event) => update('terminalGrowthRate', event.target.value)} />
-        </label>
-      </div>
-      <label className="confirmation-row">
-        <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-        I reviewed the method and every assumption. I understand that this is an analytical scenario, not a price guarantee.
-      </label>
+      <p className="note">Currency: {setup.defaults.currency} · Financial evidence as of {setup.defaults.dataAsOf ? new Date(setup.defaults.dataAsOf).toLocaleDateString() : 'unknown'}.</p>
+      <p className={setup.automaticReadiness.ready ? 'note' : 'caveat'}>{setup.automaticReadiness.message}</p>
+      {setup.automaticReadiness.missingFinancialRecords.length > 0 && <p className="caveat">Missing primary-source financial records: {setup.automaticReadiness.missingFinancialRecords.join(', ')}.</p>}
+      {setup.automaticReadiness.missingScenarioDrivers.length > 0 && <p className="caveat">Missing source-linked scenario driver records: {setup.automaticReadiness.missingScenarioDrivers.join(', ')}.</p>}
+      <p className="note">The model applies only retained evidence to a five-year FCFF forecast, WACC, and terminal growth for Worst Case, Base Case, and Optimistic Case. It does not provide editable fallback assumptions.</p>
       {error && <p className="login-error" role="alert">{error}</p>}
-      {!dcfInputsComplete && <p className="note">To run the DCF, provide growth, discount-rate, and terminal-growth assumptions after reviewing the retrieved annual-report figures.</p>}
-      <button className="action-button" type="button" onClick={() => void calculate()} disabled={busy || !confirmed || valuationBlocked || !dcfInputsComplete}>
-        {busy ? 'Calculating…' : 'Calculate deterministic DCF'}
+      <button className="action-button" type="button" onClick={() => void generateAutomaticDcf()} disabled={busy || !setup.automaticReadiness.ready}>
+        {busy ? 'Generating…' : 'Generate strict three-case DCF'}
       </button>
-      {result && (
+      {automaticResult && (
         <div className="valuation-result">
-          <p className="big">{result.currency} {result.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })} <span className="cur">per share</span></p>
-          <p className="note">Enterprise value {result.currency} {result.enterpriseValue.toLocaleString()} · Equity value {result.currency} {result.equityValue.toLocaleString()}</p>
-          <p className="note">{result.methodology}</p>
-          <ul className="caveat">{result.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}</ul>
-          {discountRates.length > 0 && terminalGrowthRates.length > 0 && <div className="table-scroll sensitivity-table">
-            <h4>Fair value sensitivity</h4>
-            <table>
-              <thead><tr><th>Discount ↓ / Terminal →</th>{terminalGrowthRates.map((rate) => <th key={rate}>{(rate * 100).toFixed(1)}%</th>)}</tr></thead>
-              <tbody>{discountRates.map((discountRate) => <tr key={discountRate}>
-                <th>{(discountRate * 100).toFixed(1)}%</th>
-                {terminalGrowthRates.map((terminalGrowthRate) => {
-                  const cell = result.sensitivity.find((item) => item.discountRate === discountRate && item.terminalGrowthRate === terminalGrowthRate);
-                  return <td key={terminalGrowthRate}>{cell?.fairValuePerShare == null ? 'N/A' : cell.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>;
-                })}
-              </tr>)}</tbody>
-            </table>
-          </div>}
+          <div className="dcf-scenario-cards">{automaticResult.scenarios.map((scenario) => <article className="dcf-scenario-card" key={scenario.name}>
+            <p className="analysis-eyebrow">{scenario.label}</p>
+            <p className="big">{automaticResult.currency} {scenario.result.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })} <span className="cur">per share</span></p>
+            <p className="note">FCF growth {(scenario.result.assumptions.annualGrowthRate * 100).toFixed(1)}% · WACC {(scenario.result.assumptions.discountRate * 100).toFixed(1)}% · Terminal growth {(scenario.result.assumptions.terminalGrowthRate * 100).toFixed(1)}%</p>
+            <p className="note">Enterprise value {automaticResult.currency} {scenario.result.enterpriseValue.toLocaleString()} · Equity value {automaticResult.currency} {scenario.result.equityValue.toLocaleString()}</p>
+          </article>)}</div>
+          <p className="note">{automaticResult.methodology}</p>
+          <ul className="caveat">{automaticResult.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}</ul>
+          {automaticScenarioId && <a className="secondary-button report-download" href={`/api/discovery/valuations/${automaticScenarioId}/report`} target="_blank" rel="noreferrer">Open DCF PDF report</a>}
         </div>
       )}
       </>}
