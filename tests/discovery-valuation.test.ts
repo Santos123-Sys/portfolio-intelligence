@@ -239,9 +239,9 @@ describe('deterministic DCF', () => {
 
 describe('integrated DCF and Comps motor', () => {
   const peers: IntegratedPeer[] = [
-    { id: '1', companyName: 'Peer One', ticker: 'ONE', sharePrice: 20, dilutedShares: 10, totalDebt: 30, cash: 5, revenue: 100, ebitda: 20, netIncome: 8, included: true },
-    { id: '2', companyName: 'Peer Two', ticker: 'TWO', sharePrice: 25, dilutedShares: 8, totalDebt: 20, cash: 4, revenue: 90, ebitda: 18, netIncome: 0, included: true },
-    { id: '3', companyName: 'Excluded Peer', ticker: 'OUT', sharePrice: 40, dilutedShares: 7, totalDebt: 10, cash: 2, revenue: 110, ebitda: -3, netIncome: -4, included: false },
+    { id: '1', companyName: 'Peer One', ticker: 'ONE', currency: 'CHF', sharePrice: 20, dilutedShares: 10, totalDebt: 30, cash: 5, revenue: 100, ebitda: 20, netIncome: 8, included: true },
+    { id: '2', companyName: 'Peer Two', ticker: 'TWO', currency: 'EUR', sharePrice: 25, dilutedShares: 8, totalDebt: 20, cash: 4, revenue: 90, ebitda: 18, netIncome: 0, included: true },
+    { id: '3', companyName: 'Excluded Peer', ticker: 'OUT', currency: 'USD', sharePrice: 40, dilutedShares: 7, totalDebt: 10, cash: 2, revenue: 110, ebitda: -3, netIncome: -4, included: false },
   ];
   const dcfInput: IntegratedDcfInput = {
     riskFreeRate: 0.04, marketRiskPremium: 0.05, beta: 1.1, costOfDebt: 0.06, taxRate: 0.2, debtToCapital: 0.25,

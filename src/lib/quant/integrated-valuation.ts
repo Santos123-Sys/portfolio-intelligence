@@ -4,6 +4,7 @@ export interface IntegratedPeer {
   id: string;
   companyName: string;
   ticker: string;
+  currency: string;
   sharePrice: number;
   dilutedShares: number;
   totalDebt: number;
