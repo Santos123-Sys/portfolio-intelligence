@@ -8,6 +8,7 @@ import type { AgenticJob, JobKind, JobRepository } from '../src/types.js';
 
 export class MemoryRepository implements JobRepository {
   readonly jobs = new Map<string, AgenticJob>();
+  readonly leaseOwners = new Map<string, string>();
 
   async ping() {}
   async close() {}
@@ -56,17 +57,30 @@ export class MemoryRepository implements JobRepository {
     return job;
   }
 
-  async claimNext(_workerId: string, _leaseSeconds: number) {
+  async claimNext(workerId: string, leaseSeconds: number) {
+    void leaseSeconds;
     const job = [...this.jobs.values()].find((candidate) => candidate.status === 'queued') ?? null;
     if (job) {
       job.status = 'running';
+      this.leaseOwners.set(job.id, workerId);
       job.attemptCount += 1;
       job.updatedAt = new Date();
     }
     return job;
   }
 
-  async updateProgress(id: string, completed: number, total: number, stage: string) {
+  async renewLease(id: string, workerId: string, leaseSeconds: number) {
+    void leaseSeconds;
+    return this.jobs.get(id)?.status === 'running' && this.leaseOwners.get(id) === workerId;
+  }
+
+  private claimIsCurrent(id: string, attempt?: number) {
+    const job = this.jobs.get(id)!;
+    return attempt === undefined || (job.status === 'running' && job.attemptCount === attempt);
+  }
+
+  async updateProgress(id: string, completed: number, total: number, stage: string, attempt?: number) {
+    if (!this.claimIsCurrent(id, attempt)) throw new Error('Job claim is no longer current');
     const job = this.jobs.get(id)!;
     job.progressCompleted = completed;
     job.progressTotal = total;
@@ -74,7 +88,8 @@ export class MemoryRepository implements JobRepository {
     job.updatedAt = new Date();
   }
 
-  async completeExtraction(id: string, result: ThesisExtractionResult) {
+  async completeExtraction(id: string, result: ThesisExtractionResult, attempt?: number) {
+    if (!this.claimIsCurrent(id, attempt)) throw new Error('Job claim is no longer current');
     const job = this.jobs.get(id)!;
     job.status = 'completed';
     job.result = result;
@@ -82,7 +97,8 @@ export class MemoryRepository implements JobRepository {
     job.completedAt = job.updatedAt = new Date();
   }
 
-  async completeDiscovery(id: string, result: MarketDiscoveryOutput) {
+  async completeDiscovery(id: string, result: MarketDiscoveryOutput, attempt?: number) {
+    if (!this.claimIsCurrent(id, attempt)) throw new Error('Job claim is no longer current');
     const job = this.jobs.get(id)!;
     job.status = 'completed';
     job.result = result;
@@ -95,8 +111,10 @@ export class MemoryRepository implements JobRepository {
     id: string,
     result: PortfolioAnalysisManifest,
     hash: string,
-    report: { objectKey: string | null; bytes: Buffer | null }
+    report: { objectKey: string | null; bytes: Buffer | null },
+    attempt?: number
   ) {
+    if (!this.claimIsCurrent(id, attempt)) throw new Error('Job claim is no longer current');
     const job = this.jobs.get(id)!;
     job.status = 'completed';
     job.result = result;
@@ -108,7 +126,8 @@ export class MemoryRepository implements JobRepository {
     job.completedAt = job.updatedAt = new Date();
   }
 
-  async fail(id: string, stage: string, message: string) {
+  async fail(id: string, stage: string, message: string, attempt?: number) {
+    if (!this.claimIsCurrent(id, attempt)) return;
     const job = this.jobs.get(id)!;
     job.status = 'failed';
     job.failedStage = stage;

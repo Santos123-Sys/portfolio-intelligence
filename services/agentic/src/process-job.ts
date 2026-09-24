@@ -24,18 +24,18 @@ export async function processJob(job: AgenticJob, deps: ProcessingDependencies):
     if (job.kind === 'thesis_extraction') {
       const request = ThesisExtractionRequest.safeParse(job.payload);
       if (!request.success) throw new AgenticPipelineError('extraction', 'Stored thesis payload failed contract validation');
-      await deps.repository.updateProgress(job.id, 0, 1, 'thesis_extraction');
+      await deps.repository.updateProgress(job.id, 0, 1, 'thesis_extraction', job.attemptCount);
       const result = await deps.pipeline.extractThesis(request.data.document, request.data.agentConfig);
-      await deps.repository.completeExtraction(job.id, result);
+      await deps.repository.completeExtraction(job.id, result, job.attemptCount);
       return;
     }
 
     if (job.kind === 'market_discovery') {
       const request = DiscoveryRunRequest.safeParse(job.payload);
       if (!request.success) throw new AgenticPipelineError('analysis', 'Stored discovery payload failed contract validation');
-      await deps.repository.updateProgress(job.id, 0, 1, 'market_discovery');
+      await deps.repository.updateProgress(job.id, 0, 1, 'market_discovery', job.attemptCount);
       const result = await deps.pipeline.discoverSecurities(request.data);
-      await deps.repository.completeDiscovery(job.id, result);
+      await deps.repository.completeDiscovery(job.id, result, job.attemptCount);
       return;
     }
 
@@ -59,7 +59,7 @@ export async function processJob(job: AgenticJob, deps: ProcessingDependencies):
       const analyses: AnalysisOutput[] = [];
       const bundles = [];
       for (const security of securities) {
-        await deps.repository.updateProgress(job.id, completed, total, `security_analysis:${security.ticker}`);
+        await deps.repository.updateProgress(job.id, completed, total, `security_analysis:${security.ticker}`, job.attemptCount);
         const grounding = request.data.groundingBundles.find(({ portfolioId, bundle }) =>
           portfolioId === portfolio.id && bundle.ticker === security.ticker && bundle.exchange === security.exchange
         );
@@ -73,7 +73,7 @@ export async function processJob(job: AgenticJob, deps: ProcessingDependencies):
         completed += 1;
       }
 
-      await deps.repository.updateProgress(job.id, completed, total, `portfolio_synthesis:${portfolio.id}`);
+      await deps.repository.updateProgress(job.id, completed, total, `portfolio_synthesis:${portfolio.id}`, job.attemptCount);
       const synthesis = await deps.pipeline.synthesizePortfolio(
         portfolio,
         analyses,
@@ -84,11 +84,11 @@ export async function processJob(job: AgenticJob, deps: ProcessingDependencies):
       completed += 1;
     }
 
-    await deps.repository.updateProgress(job.id, completed, total, 'manifest_validation');
+    await deps.repository.updateProgress(job.id, completed, total, 'manifest_validation', job.attemptCount);
     const manifest = buildManifest(request.data, results);
     completed += 1;
 
-    await deps.repository.updateProgress(job.id, completed, total, 'report_render');
+    await deps.repository.updateProgress(job.id, completed, total, 'report_render', job.attemptCount);
     let pdf: Buffer;
     try {
       pdf = await (deps.renderPdf ?? renderReportPdf)(manifest, job.externalId);
@@ -102,7 +102,7 @@ export async function processJob(job: AgenticJob, deps: ProcessingDependencies):
     } catch {
       throw new ProcessingStageError('upload', 'PDF artifact upload failed; the job can be retried safely');
     }
-    await deps.repository.completeAnalysis(job.id, manifest, hashManifest(manifest), report);
+    await deps.repository.completeAnalysis(job.id, manifest, hashManifest(manifest), report, job.attemptCount);
   } catch (error) {
     const stage = error instanceof AgenticPipelineError || error instanceof ProcessingStageError
       ? error.stage
@@ -110,7 +110,7 @@ export async function processJob(job: AgenticJob, deps: ProcessingDependencies):
     const safeMessage = error instanceof AgenticPipelineError || error instanceof ProcessingStageError
       ? error.message
       : 'Agentic job failed unexpectedly; no security was silently omitted';
-    await deps.repository.fail(job.id, stage, safeMessage);
+    await deps.repository.fail(job.id, stage, safeMessage, job.attemptCount);
   }
 }
 

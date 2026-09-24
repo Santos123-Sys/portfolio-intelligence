@@ -48,16 +48,18 @@ export interface JobRepository {
   findByExternalId(externalId: string): Promise<AgenticJob | null>;
   retry(id: string): Promise<AgenticJob | null>;
   claimNext(workerId: string, leaseSeconds: number): Promise<AgenticJob | null>;
-  updateProgress(id: string, completed: number, total: number, stage: string): Promise<void>;
-  completeExtraction(id: string, result: ThesisExtractionResult): Promise<void>;
-  completeDiscovery(id: string, result: MarketDiscoveryOutput): Promise<void>;
+  renewLease(id: string, workerId: string, leaseSeconds: number): Promise<boolean>;
+  updateProgress(id: string, completed: number, total: number, stage: string, attempt?: number): Promise<void>;
+  completeExtraction(id: string, result: ThesisExtractionResult, attempt?: number): Promise<void>;
+  completeDiscovery(id: string, result: MarketDiscoveryOutput, attempt?: number): Promise<void>;
   completeAnalysis(
     id: string,
     manifest: PortfolioAnalysisManifest,
     manifestHash: string,
-    report: { objectKey: string | null; bytes: Buffer | null }
+    report: { objectKey: string | null; bytes: Buffer | null },
+    attempt?: number
   ): Promise<void>;
-  fail(id: string, stage: string, safeMessage: string): Promise<void>;
+  fail(id: string, stage: string, safeMessage: string, attempt?: number): Promise<void>;
   claimCallback(): Promise<AgenticJob | null>;
   markCallbackDelivered(id: string): Promise<void>;
   scheduleCallbackRetry(id: string, error: string, nextAt: Date, permanent: boolean): Promise<void>;

@@ -4,7 +4,7 @@ export type WorkerState = 'starting' | 'idle' | 'processing';
 
 export interface WorkerHeartbeat {
   state: WorkerState;
-  /** Epoch milliseconds of the last completed poll of the job queue, or null before the first one. */
+  /** Last queue poll or successful owned-job lease renewal. */
   lastPollAt: number | null;
   jobsProcessed: number;
 }
