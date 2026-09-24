@@ -13,7 +13,8 @@ import OpenAI, {
 } from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z, ZodError } from 'zod';
-import { researchCompany, type WebResearchConfig, type WebResearchEvidence } from './web-research.js';
+import { type WebResearchConfig, type WebResearchEvidence } from './web-research.js';
+import { researchUniverse } from './research-universe.js';
 import {
   AGENT_REASONING_PROMPTS,
   AnalysisOutput,
@@ -716,15 +717,14 @@ export class OpenAIAgenticPipeline {
     }
   }
 
-  async discoverSecurities(input: z.infer<typeof DiscoveryRunRequest>): Promise<z.infer<typeof MarketDiscoveryOutput>> {
+  async discoverSecurities(
+    input: z.infer<typeof DiscoveryRunRequest>,
+    onProgress: (completed: number, total: number, stage: string) => Promise<void> = async () => {}
+  ): Promise<z.infer<typeof MarketDiscoveryOutput>> {
     const request = DiscoveryRunRequest.parse(input);
-    const webEvidence = new Map<string, Awaited<ReturnType<typeof researchCompany>>>();
-    // The dashboard supplies no more than 50 structurally-filtered records.
-    // Sequential calls make the qualitative research budget explicit and avoid
-    // bursting a free-tier search API.
-    for (const record of request.universe) {
-      webEvidence.set(`${record.exchange}:${record.ticker}`, await researchCompany(record.companyName, record.ticker, this.webResearch));
-    }
+    const total = request.universe.length + request.portfolios.length;
+    const webEvidence = await researchUniverse(request.universe, this.webResearch,
+      (completed) => onProgress(completed, total, 'web_research'));
     try {
       const portfolioOutputs: z.infer<typeof MarketDiscoveryOutput>[] = [];
       for (const portfolio of request.portfolios) {
@@ -790,6 +790,7 @@ export class OpenAIAgenticPipeline {
         });
         validateDiscoveryOutput(portfolioOutput, portfolioRequest);
         portfolioOutputs.push(portfolioOutput);
+        await onProgress(request.universe.length + portfolioOutputs.length, total, `portfolio_research:${portfolio.name}`);
       }
 
       const output = MarketDiscoveryOutput.parse({

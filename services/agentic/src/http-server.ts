@@ -223,7 +223,8 @@ export function createAgenticHttpServer(deps: HttpServerDependencies) {
         const parsed = DiscoveryRunRequest.safeParse(await readJson(request, 8 * 1024 * 1024));
         if (!parsed.success) throw new HttpError(400, 'Discovery run request failed contract validation');
         const externalId = createExternalId('discovery');
-        const job = await deps.repository.create('market_discovery', externalId, parsed.data, 1);
+        const job = await deps.repository.create('market_discovery', externalId, parsed.data,
+          parsed.data.universe.length + parsed.data.portfolios.length);
         return sendJson(response, 202, discoveryStatus(job));
       }
 
