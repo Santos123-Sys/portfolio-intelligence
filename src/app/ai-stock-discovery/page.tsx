@@ -19,6 +19,10 @@ interface DiscoveryRun {
     portfolioName: string;
     count: number;
   }>;
+  universeSummaries?: Array<{
+    exchange: string; count: number; provider: string; observedAt: string;
+    selection: string; limited: boolean; eligibleCount: number | null;
+  }>;
   /**
    * The full agent output. It was already being returned by the runs API and
    * simply never read: a run that completed with zero candidates showed
@@ -497,6 +501,13 @@ export default function AIStockDiscoveryPage() {
               <span className={`badge ${latestRun!.status === 'failed' ? 'breach' : latestRun!.status === 'completed' ? 'ok' : 'watch'}`}>{latestRun!.status}</span>{' '}
               · {latestRun!.candidateCount} candidates
             </p>
+            {!!latestRun!.universeSummaries?.length && <details className="note">
+              <summary>Markets searched and universe selection</summary>
+              {latestRun!.universeSummaries.map((market) => <p key={market.exchange}>
+                <strong>{market.exchange}:</strong> {market.count} selected{market.eligibleCount ? ` of ${market.eligibleCount} eligible symbols` : ''} · {market.selection} · {market.provider} · snapshot {new Date(market.observedAt).toLocaleString()}
+                {market.limited && ' · Selection limit reached; not full-market coverage.'}
+              </p>)}
+            </details>}
             {latestRun!.status === 'completed' && latestRun!.candidateCount > 0 && <button
               className="action-button"
               type="button"

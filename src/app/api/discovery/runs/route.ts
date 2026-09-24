@@ -7,6 +7,7 @@ import { db } from '@/lib/db';
 import { thesisVersions } from '@/lib/db/schema';
 import { discoveryCandidates, externalDiscoveryRuns } from '@/lib/db/workflow-schema';
 import { summarizeDiscoveryCandidateCounts } from '@/lib/discovery-run-summary';
+import { summarizeRunUniverse } from '@/lib/discovery-universe-summary';
 import { startDiscoveryRunForOwner, synchronizeDiscoveryRun } from '@/lib/discovery-workflow';
 import {
   fetchExternalDiscoveryRun,
@@ -46,6 +47,7 @@ async function list(ownerId: string) {
   return runs.map((run) => ({
     ...run,
     ...summarizeDiscoveryCandidateCounts(run.requestJson, portfoliosByRun.get(run.id) ?? []),
+    universeSummaries: summarizeRunUniverse(run.requestJson),
   }));
 }
 
