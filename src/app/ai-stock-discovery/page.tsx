@@ -12,6 +12,7 @@ interface DiscoveryRun {
   requestedAt: string;
   completedAt: string | null;
   errorMessage: string | null;
+  progress?: { completed: number; total: number; currentStage: string } | null;
   candidateCount: number;
   maxCandidatesPerPortfolio: number | null;
   portfolioCandidateCounts: Array<{
@@ -497,6 +498,12 @@ export default function AIStockDiscoveryPage() {
               <span className={`badge ${latestRun!.status === 'failed' ? 'breach' : latestRun!.status === 'completed' ? 'ok' : 'watch'}`}>{latestRun!.status}</span>{' '}
               · {latestRun!.candidateCount} candidates
             </p>
+            {latestRun!.progress && latestRun!.status === 'running' && <p className="note" role="status">
+              Research progress: {latestRun!.progress.completed} of {latestRun!.progress.total} steps ·{' '}
+              {latestRun!.progress.currentStage.startsWith('portfolio_research:')
+                ? `Reviewing ${latestRun!.progress.currentStage.slice('portfolio_research:'.length)}`
+                : latestRun!.progress.currentStage === 'web_research' ? 'Gathering company sources' : 'Preparing research'}
+            </p>}
             {latestRun!.status === 'completed' && latestRun!.candidateCount > 0 && <button
               className="action-button"
               type="button"

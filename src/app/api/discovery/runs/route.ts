@@ -57,9 +57,11 @@ export async function GET(req: Request) {
   const active = runs.filter((run) =>
     (!id || run.id === id) && (run.status === 'queued' || run.status === 'running')
   );
+  const progressByRun = new Map<string, { completed: number; total: number; currentStage: string }>();
   await Promise.all(active.map(async (run) => {
     try {
       const remote = await fetchExternalDiscoveryRun(run.externalDiscoveryId);
+      if (remote.progress) progressByRun.set(run.id, remote.progress);
       await synchronizeDiscoveryRun(run.id, session.auth.userId, remote);
     } catch {
       // Keep the durable local record while the private service is temporarily unavailable.
@@ -69,7 +71,9 @@ export async function GET(req: Request) {
   if (id && !runs.some((run) => run.id === id)) {
     return NextResponse.json({ error: 'Discovery run not found' }, { status: 404 });
   }
-  return NextResponse.json({ runs: id ? runs.filter((run) => run.id === id) : runs });
+  return NextResponse.json({ runs: (id ? runs.filter((run) => run.id === id) : runs).map((run) => ({
+    ...run, progress: progressByRun.get(run.id) ?? null,
+  })) });
 }
 
 export async function POST(req: Request) {
