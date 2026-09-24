@@ -508,7 +508,7 @@ export default function AIStockDiscoveryPage() {
         )}
       </section>
 
-      <section>
+      <section id="candidate-review" className="candidate-review-section">
         <div className="section-heading candidate-review-heading">
           <div>
             <h2 className="section-title">2. Human candidate review</h2>

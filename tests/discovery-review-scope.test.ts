@@ -36,6 +36,7 @@ describe('run-scoped candidate review', () => {
   });
 
   it('treats developing evidence as an initial snapshot and explains how research continues', () => {
+    expect(discoveryPage).toContain('id="candidate-review" className="candidate-review-section"');
     expect(discoveryPage).toContain('Initial screening evidence');
     expect(discoveryPage).toContain('Needs further research');
     expect(discoveryPage).toContain('Approval starts research; it does not buy or add this security to your holdings.');
