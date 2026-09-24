@@ -22,6 +22,7 @@
     "test": "npm run build:contract && vitest run && npm run test --workspace @portfolio-intelligence/agentic-service",
     "test:dashboard": "npm run build:contract && vitest run",
     "test:agentic": "npm run build:contract && npm run test --workspace @portfolio-intelligence/agentic-service",
+    "test:e2e": "playwright test",
     "test:watch": "vitest",
     "typecheck": "npm run build:contract && next typegen && tsc --noEmit && npm run typecheck --workspace @portfolio-intelligence/agentic-service",
     "db:generate": "drizzle-kit generate",
@@ -52,6 +53,7 @@
     "sharp": "0.35.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@types/node": "^22.10.5",
     "@types/pdfkit": "^0.17.6",
     "@types/react": "^19.2.18",
