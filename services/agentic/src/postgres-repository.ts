@@ -110,59 +110,79 @@ export class PostgresJobRepository implements JobRepository {
     return rows[0] ? mapJob(rows[0]) : null;
   }
 
-  async updateProgress(id: string, completed: number, total: number, stage: string): Promise<void> {
-    await this.sql`
+  async renewLease(id: string, workerId: string, leaseSeconds: number): Promise<boolean> {
+    const rows = await this.sql`
+      update agentic_jobs
+      set lease_expires_at = now() + (${leaseSeconds} * interval '1 second'), updated_at = now()
+      where id = ${id} and lease_owner = ${workerId} and status = 'running'
+        and lease_expires_at > now()
+      returning id
+    `;
+    return rows.length === 1;
+  }
+
+  async updateProgress(id: string, completed: number, total: number, stage: string, attempt?: number): Promise<void> {
+    const rows = await this.sql`
       update agentic_jobs
       set progress_completed = ${completed}, progress_total = ${total}, current_stage = ${stage},
           lease_expires_at = now() + interval '10 minutes', updated_at = now()
-      where id = ${id}
+      where id = ${id} and (${attempt ?? null}::integer is null or (status = 'running' and attempt_count = ${attempt ?? null} and lease_expires_at > now()))
+      returning id
     `;
+    if (!rows.length) throw new Error('Job claim is no longer current');
   }
 
-  async completeExtraction(id: string, result: AgenticJob['result']): Promise<void> {
-    await this.sql`
+  async completeExtraction(id: string, result: AgenticJob['result'], attempt?: number): Promise<void> {
+    const rows = await this.sql`
       update agentic_jobs
       set status = 'completed', result_json = ${this.sql.json(result as never)}, current_stage = 'completed',
           progress_completed = progress_total, completed_at = now(), updated_at = now(),
           lease_owner = null, lease_expires_at = null
-      where id = ${id}
+      where id = ${id} and (${attempt ?? null}::integer is null or (status = 'running' and attempt_count = ${attempt ?? null} and lease_expires_at > now()))
+      returning id
     `;
+    if (!rows.length) throw new Error('Job claim is no longer current');
   }
 
-  async completeDiscovery(id: string, result: AgenticJob['result']): Promise<void> {
-    await this.sql`
+  async completeDiscovery(id: string, result: AgenticJob['result'], attempt?: number): Promise<void> {
+    const rows = await this.sql`
       update agentic_jobs
       set status = 'completed', result_json = ${this.sql.json(result as never)}, current_stage = 'completed',
           progress_completed = progress_total, completed_at = now(), updated_at = now(),
           lease_owner = null, lease_expires_at = null
-      where id = ${id}
+      where id = ${id} and (${attempt ?? null}::integer is null or (status = 'running' and attempt_count = ${attempt ?? null} and lease_expires_at > now()))
+      returning id
     `;
+    if (!rows.length) throw new Error('Job claim is no longer current');
   }
 
   async completeAnalysis(
     id: string,
     manifest: Extract<AgenticJob['result'], { schemaVersion: string }>,
     manifestHash: string,
-    report: { objectKey: string | null; bytes: Buffer | null }
+    report: { objectKey: string | null; bytes: Buffer | null },
+    attempt?: number
   ): Promise<void> {
-    await this.sql`
+    const rows = await this.sql`
       update agentic_jobs
       set status = 'completed', result_json = ${this.sql.json(manifest as never)}, manifest_hash = ${manifestHash},
           report_object_key = ${report.objectKey}, report_pdf = ${report.bytes}, callback_status = 'pending',
           callback_next_at = now(), current_stage = 'callback_pending', progress_completed = progress_total,
           completed_at = now(), updated_at = now(), lease_owner = null, lease_expires_at = null
-      where id = ${id}
+      where id = ${id} and (${attempt ?? null}::integer is null or (status = 'running' and attempt_count = ${attempt ?? null} and lease_expires_at > now()))
+      returning id
     `;
+    if (!rows.length) throw new Error('Job claim is no longer current');
   }
 
-  async fail(id: string, stage: string, safeMessage: string): Promise<void> {
+  async fail(id: string, stage: string, safeMessage: string, attempt?: number): Promise<void> {
     await this.sql`
       update agentic_jobs
       set status = 'failed', failed_stage = ${stage}, error_message = ${safeMessage}, current_stage = 'failed',
           callback_status = case when kind = 'analysis_run' then 'pending' else 'not_required' end,
           callback_next_at = case when kind = 'analysis_run' then now() else null end,
           completed_at = now(), updated_at = now(), lease_owner = null, lease_expires_at = null
-      where id = ${id}
+      where id = ${id} and (${attempt ?? null}::integer is null or (status = 'running' and attempt_count = ${attempt ?? null} and lease_expires_at > now()))
     `;
   }
 

@@ -6,6 +6,7 @@ import { PostgresJobRepository } from './postgres-repository.js';
 import { processJob } from './process-job.js';
 import { ReportStorage } from './storage.js';
 import { createWorkerHealthServer, type WorkerHeartbeat, type WorkerState } from './worker-health.js';
+import { keepJobLeaseAlive } from './worker-lease.js';
 
 const config = getWorkerConfig();
 const repository = new PostgresJobRepository(config.AGENTIC_DATABASE_URL);
@@ -87,9 +88,16 @@ async function run(): Promise<void> {
     if (job) {
       process.stdout.write(`Processing ${job.kind} ${job.externalId}\n`);
       state = 'processing';
+      const lease = keepJobLeaseAlive(repository, job.id, workerId, config.AGENTIC_JOB_LEASE_SECONDS, () => {
+        lastPollAt = Date.now();
+      });
       try {
         await processJob(job, { repository, pipeline, storage });
       } finally {
+        await lease.stop();
+        if (lease.lost) {
+          throw new Error(`Worker lost its lease while processing ${job.externalId}`);
+        }
         state = 'idle';
         jobsProcessed += 1;
       }
