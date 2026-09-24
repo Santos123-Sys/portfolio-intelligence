@@ -22,14 +22,14 @@ describe('run-scoped candidate review', () => {
   it('loads candidates only after the user chooses a specific discovery run', () => {
     expect(discoveryPage).toContain('const [selectedRunId, setSelectedRunId] = useState<string | null>(null)');
     expect(discoveryPage).toContain('/api/discovery/candidates?runId=');
-    expect(discoveryPage).toContain('Review latest candidates');
-    expect(discoveryPage).toContain('Candidate results are hidden.');
-    expect(discoveryPage).toContain('Check readiness');
-    expect(discoveryPage).toContain('Decision journal');
+    expect(discoveryPage).toContain("t('reviewLatest')");
+    expect(discoveryPage).toContain("t('hidden')");
+    expect(discoveryPage).toContain("t('check')");
+    expect(discoveryPage).toContain("t('journal')");
   });
 
   it('keeps only the latest run in the active workflow and moves history to its own folder', () => {
-    expect(discoveryPage).toContain('Latest market research');
+    expect(discoveryPage).toContain("t('latest')");
     expect(discoveryPage).toContain('href="/research-history"');
     expect(discoveryPage).not.toContain('Show run history');
     expect(discoveryPage).toContain('setSelectedRunId(null)');

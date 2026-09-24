@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ValuationWorkbench } from '@/components/valuation-workbench';
+import { useLanguage } from '@/lib/i18n';
+import { discoveryDate, discoveryText } from '@/lib/discovery-translations';
 
 interface DiscoveryRun {
   id: string;
@@ -147,43 +149,43 @@ function journalIsComplete(journal: DecisionJournalDraft): boolean {
   return Object.values(journal).every((value) => value.trim().length >= 8);
 }
 
-function friendlyAnalysisStatus(candidate: Candidate): {
+function friendlyAnalysisStatus(candidate: Candidate, t: (key: Parameters<typeof discoveryText>[1]) => string): {
   label: string;
   badgeClass: 'ok' | 'watch' | 'breach';
   description: string;
 } {
   if (candidate.workflowStatus === 'analysis_failed' || candidate.analysisRunStatus === 'failed') {
     return {
-      label: 'Needs attention',
+      label: t('attention'),
       badgeClass: 'breach',
-      description: 'The analysis stopped before a validated result was produced. Review the message below and retry.',
+      description: t('attentionDetail'),
     };
   }
   if (candidate.reportUrl || (candidate.analysis && (candidate.analysisRunStatus === 'completed' || candidate.analysisRunStatus === 'imported'))) {
     return {
-      label: 'Report ready',
+      label: t('reportReady'),
       badgeClass: 'ok',
-      description: 'The research evidence and deterministic price-risk checks are ready for your review.',
+      description: t('reportReadyDetail'),
     };
   }
   if (candidate.analysisRunStatus === 'running') {
     return {
-      label: 'Analysis in progress',
+      label: t('inProgress'),
       badgeClass: 'watch',
-      description: 'The research agent is assessing thesis fit, evidence quality, catalysts, and downside risks.',
+      description: t('inProgressDetail'),
     };
   }
   if (candidate.workflowStatus === 'analysis_preparing') {
     return {
-      label: 'Preparing evidence',
+      label: t('evidencePreparing'),
       badgeClass: 'watch',
-      description: 'Approval is saved. Validated price history and source-backed research are being prepared.',
+      description: t('evidencePreparingDetail'),
     };
   }
   return {
-    label: 'Waiting to begin',
+    label: t('waiting'),
     badgeClass: 'watch',
-    description: 'The analysis request is queued and will start automatically. You can leave this page while it runs.',
+    description: t('waitingDetail'),
   };
 }
 
@@ -215,6 +217,9 @@ function formatLatestPrice(price: Candidate['latestPrice']): string | null {
 }
 
 export default function AIStockDiscoveryPage() {
+  const { language } = useLanguage();
+  const t = (key: Parameters<typeof discoveryText>[1]) => discoveryText(language, key);
+  const date = (value: string) => discoveryDate(language, value);
   const [runs, setRuns] = useState<DiscoveryRun[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -415,8 +420,8 @@ export default function AIStockDiscoveryPage() {
 
   return (
     <main>
-      <h1>Thesis-Driven Stock Discovery</h1>
-      <p className="sub">Confirmed thesis → provider-backed market universe → AI shortlist → human approval → source-backed research analysis and deterministic price risk.</p>
+      <h1>{t('title')}</h1>
+      <p className="sub">{t('intro')}</p>
 
       {error && <p className="login-error workflow-error" role="alert">{error}</p>}
 
@@ -429,41 +434,37 @@ export default function AIStockDiscoveryPage() {
         satisfies it, so the reader can act without hunting through the nav.
       */}
       <section className="card prerequisites">
-        <h2>Before you start</h2>
+        <h2>{t('before')}</h2>
         <ol className="prerequisite-list">
           <li>
-            <strong>Confirm your thesis.</strong> Confirmation creates every portfolio destination
-            stated in the thesis. Automated stock discovery starts only where a configured equity-market universe exists.{' '}
-            <a className="text-link" href="/investment-thesis">Investment thesis</a>
+            <strong>{t('thesis')}</strong> {t('thesisDetail')}{' '}
+            <a className="text-link" href="/investment-thesis">{t('thesisLink')}</a>
           </li>
           <li>
-            <strong>Configure live research providers.</strong> Discovery needs
-            <code>DISCOVERY_PROVIDER=finnhub</code> with <code>FINNHUB_API_KEY</code>; web research
-            uses Tavily or Brave. Finnhub is discovery-only. After approval, EODHD supplies
-            price history for deterministic risk; structured fundamentals are not requested.
+            <strong>{t('providers')}</strong> {t('providersDetail')}{' '}
+            <code>DISCOVERY_PROVIDER=finnhub</code> · <code>FINNHUB_API_KEY</code>
           </li>
         </ol>
         <p className="note">
-          Once all three hold, the numbered stages below run in order: research finds
-          candidates, you approve them, and only approved candidates are analysed.
+          {t('sequence')}
         </p>
       </section>
 
       <section className="card workflow-stage">
         <div>
-          <h2>1. Start market research</h2>
-          <p className="note">The workflow builds a 20–50-company universe, applies the available structural filters, adds source-backed web research, and returns a 5–15 candidate shortlist. It never adds a security to a portfolio. EODHD is used only after you approve a candidate.</p>
+          <h2>{t('start')}</h2>
+          <p className="note">{t('startDetail')}</p>
         </div>
-        <label className="compact-field">Maximum candidates in each portfolio
+        <label className="compact-field">{t('limit')}
           <input type="number" min="1" max="7" value={candidateLimit} onChange={(event) => setCandidateLimit(event.target.value)} />
-          <span>Applied separately to every eligible portfolio, not to the combined run.</span>
+          <span>{t('limitDetail')}</span>
         </label>
         <div className="discovery-actions">
           <button className="secondary-button" type="button" onClick={() => void checkDiscoveryReadiness()} disabled={busy !== null || preflightBusy}>
-            {preflightBusy ? 'Checking readiness…' : 'Check readiness'}
+            {preflightBusy ? t('checking') : t('check')}
           </button>
           <button className="action-button" type="button" onClick={() => void startDiscovery()} disabled={busy !== null || preflightBusy}>
-            {busy === 'start' ? 'Starting research…' : 'Find thesis-matched stocks'}
+            {busy === 'start' ? t('starting') : t('find')}
           </button>
         </div>
       </section>
@@ -471,10 +472,10 @@ export default function AIStockDiscoveryPage() {
       {preflight && <section className={`card discovery-preflight ${preflight.ready ? 'preflight-ready' : 'preflight-blocked'}`} aria-live="polite">
         <div className="section-heading">
           <div>
-            <h2>{preflight.ready ? 'Discovery is ready' : 'Discovery needs attention'}</h2>
-            <p className="note">Checked {new Date(preflight.checkedAt).toLocaleString()}{preflight.provider ? ` · Provider: ${preflight.provider}` : ''}</p>
+            <h2>{preflight.ready ? t('ready') : t('blocked')}</h2>
+            <p className="note">{t('checked')} {date(preflight.checkedAt)}{preflight.provider ? ` · ${t('provider')}: ${preflight.provider}` : ''}</p>
           </div>
-          <span className={`badge ${preflight.ready ? 'ok' : 'breach'}`}>{preflight.ready ? 'Ready to run' : 'Blocked'}</span>
+          <span className={`badge ${preflight.ready ? 'ok' : 'breach'}`}>{preflight.ready ? t('readyBadge') : t('blockedBadge')}</span>
         </div>
         <div className="preflight-checks">
           {preflight.checks.map((check) => <div key={`${check.status}:${check.label}`}>
@@ -487,17 +488,17 @@ export default function AIStockDiscoveryPage() {
       <section className="card">
         <div className="section-heading">
           <div>
-            <h2>Latest market research</h2>
-            <p className="note">The current shortlist stays here. Older discovery, thesis, and company-research activity is organized in Research history.</p>
+            <h2>{t('latest')}</h2>
+            <p className="note">{t('latestDetail')}</p>
           </div>
-          <Link className="secondary-button inline-action" href="/research-history">Open research history</Link>
+          <Link className="secondary-button inline-action" href="/research-history">{t('history')}</Link>
         </div>
-        {runs.length === 0 ? <p className="note">No market-research run has been started.</p> : (
+        {runs.length === 0 ? <p className="note">{t('noRuns')}</p> : (
           <div className="latest-run-summary" aria-live="polite">
             <p>
-              <strong>Latest run:</strong> {new Date(latestRun!.requestedAt).toLocaleString()} ·{' '}
-              <span className={`badge ${latestRun!.status === 'failed' ? 'breach' : latestRun!.status === 'completed' ? 'ok' : 'watch'}`}>{latestRun!.status}</span>{' '}
-              · {latestRun!.candidateCount} candidates
+              <strong>{t('latestRun')}:</strong> {date(latestRun!.requestedAt)} ·{' '}
+              <span className={`badge ${latestRun!.status === 'failed' ? 'breach' : latestRun!.status === 'completed' ? 'ok' : 'watch'}`}>{t(latestRun!.status === 'failed' ? 'failed' : latestRun!.status === 'completed' ? 'completed' : latestRun!.status === 'running' ? 'running' : 'queued')}</span>{' '}
+              · {latestRun!.candidateCount} {t('candidates')}
             </p>
             <div className="preflight-checks" aria-label="Research outcome by portfolio">
               {latestRun!.portfolioCandidateCounts.map((portfolio) => <div key={portfolio.portfolioId}>
@@ -511,7 +512,7 @@ export default function AIStockDiscoveryPage() {
               type="button"
               onClick={() => toggleCandidateReview(latestRun!.id)}
             >
-              {selectedRunId === latestRun!.id ? 'Hide candidates' : 'Review latest candidates'}
+              {selectedRunId === latestRun!.id ? t('hide') : t('reviewLatest')}
             </button>}
           </div>
         )}
@@ -520,78 +521,80 @@ export default function AIStockDiscoveryPage() {
       <section id="candidate-review" className="candidate-review-section">
         <div className="section-heading candidate-review-heading">
           <div>
-            <h2 className="section-title">2. Human candidate review</h2>
-            {selectedRun && <p className="note">Showing the candidates found by the run requested {new Date(selectedRun.requestedAt).toLocaleString()}. Rejected ideas are hidden here and remain available in Research history.</p>}
+            <h2 className="section-title">{t('review')}</h2>
+            {selectedRun && <p className="note">{t('showing')} {date(selectedRun.requestedAt)}. {t('rejected')}</p>}
           </div>
-          {selectedRunId && <button className="action-button" type="button" onClick={() => setSelectedRunId(null)}>Hide candidates</button>}
+          {selectedRunId && <button className="action-button" type="button" onClick={() => setSelectedRunId(null)}>{t('hide')}</button>}
         </div>
-        {!selectedRunId ? <div className="card"><p className="note">Candidate results are hidden. Review the latest run above to open its shortlist.</p></div>
-          : candidateListLoading ? <div className="card"><p className="note">Loading this run&apos;s candidates…</p></div>
-          : candidates.length === 0 ? <div className="card"><p className="note">No active candidates remain in this run. Rejected ideas are hidden from this screen and retained in Research history.</p></div> : (
+        {!selectedRunId ? <div className="card"><p className="note">{t('hidden')}</p></div>
+          : candidateListLoading ? <div className="card"><p className="note">{t('loading')}</p></div>
+          : candidates.length === 0 ? <div className="card"><p className="note">{t('empty')}</p></div> : (
           <div className="candidate-list">{candidates.map((candidate) => {
             const discovery = candidate.discoveryJson;
             const canDecide = candidate.decision === 'pending' || candidate.decision === 'watchlist';
             const isWorking = busy === candidate.id;
-            const analysisStatus = friendlyAnalysisStatus(candidate);
+            const analysisStatus = friendlyAnalysisStatus(candidate, t);
             return <article className="card candidate-card" key={candidate.id}>
               <div className="candidate-heading">
                 <div>
                   <h3>{candidate.companyName} <span className="note">{candidate.ticker} · {candidate.exchange}</span></h3>
-                  <p className="note">{candidate.portfolioName} · {candidate.country ?? 'Country not verified'} · {candidate.sector ?? 'Sector not verified'} · {candidate.industry ?? 'Industry not verified'} · {candidate.currency}</p>
-                  <p className="note">Classification: {candidate.classificationSource === 'provider' ? 'market-data provider' : candidate.classificationSource === 'web_research' ? 'web research; review sources' : 'not yet verified'}</p>
+                  <p className="note">{candidate.portfolioName} · {candidate.country ?? t('countryUnknown')} · {candidate.sector ?? t('sectorUnknown')} · {candidate.industry ?? t('industryUnknown')} · {candidate.currency}</p>
+                  <p className="note">{t('classification')}: {candidate.classificationSource === 'provider' ? t('providerClass') : candidate.classificationSource === 'web_research' ? t('webClass') : t('unclassified')}</p>
                 </div>
-                <div className="candidate-score"><strong>{discovery.thesisAlignmentScore}</strong><span>thesis fit</span></div>
+                <div className="candidate-score"><strong>{discovery.thesisAlignmentScore}</strong><span>{t('thesisFit')}</span></div>
               </div>
               <p>{discovery.rationale}</p>
-              {candidate.latestPrice && <p className="note"><strong>Latest market close:</strong> {formatLatestPrice(candidate.latestPrice)} · as of {candidate.latestPrice.asOf} · {candidate.latestPrice.provider}</p>}
-              <section className="evidence-scorecard" aria-label="Research evidence quality">
+              {candidate.latestPrice && <p className="note"><strong>{t('close')}:</strong> {formatLatestPrice(candidate.latestPrice)} · {t('asOf')} {candidate.latestPrice.asOf} · {candidate.latestPrice.provider}</p>}
+              <section className="evidence-scorecard" aria-label={t('evidence')}>
                 <div className="evidence-scorecard-heading">
-                  <strong>Research evidence</strong>
+                  <strong>{t('evidence')}</strong>
                   <span className={`badge ${candidate.evidenceScorecard.assessment === 'sufficient' ? 'ok' : candidate.evidenceScorecard.assessment === 'developing' ? 'watch' : 'breach'}`}>
-                    {candidate.evidenceScorecard.assessment}
+                    {t(candidate.evidenceScorecard.assessment)}
                   </span>
                 </div>
                 <div className="evidence-scorecard-grid">
-                  <span>{candidate.evidenceScorecard.verifiedSourceCount} sources</span>
-                  <span>{candidate.evidenceScorecard.groundedFactCount} grounded facts</span>
-                  <span>{candidate.evidenceScorecard.informationGapCount} open gaps</span>
-                  <span>Market price {candidate.evidenceScorecard.marketPriceStatus}</span>
+                  <span>{candidate.evidenceScorecard.verifiedSourceCount} {t('sources')}</span>
+                  <span>{candidate.evidenceScorecard.groundedFactCount} {t('facts')}</span>
+                  <span>{candidate.evidenceScorecard.informationGapCount} {t('gaps')}</span>
+                  <span>{t('price')} {t(candidate.evidenceScorecard.marketPriceStatus)}</span>
                 </div>
-                <p>{candidate.evidenceScorecard.summary}</p>
+                <p>{t(candidate.evidenceScorecard.assessment === 'sufficient' ? 'sufficientDetail' : candidate.evidenceScorecard.assessment === 'developing' ? 'developingDetail' : 'limitedDetail')}</p>
+                {candidate.decision !== 'approved' && candidate.evidenceScorecard.assessment !== 'sufficient' && <p className="note">{t('continueResearch')}</p>}
+                {candidate.decision === 'approved' && <p className="note">{t('snapshotDetail')}</p>}
               </section>
-              <p className="note"><strong>Matched:</strong> {discovery.matchedCriteria.join(' · ') || 'None evidenced'}</p>
-              {discovery.violatedCriteria.length > 0 && <p className="caveat"><strong>Conflicts:</strong> {discovery.violatedCriteria.join(' · ')}</p>}
-              {discovery.informationGaps.length > 0 && <p className="note"><strong>Gaps:</strong> {discovery.informationGaps.join(' · ')}</p>}
-              <p className="note"><strong>Sources:</strong> {discovery.sourceUrls.map((url, index) => <span key={url}>{index ? ' · ' : ''}<a className="text-link" href={url} target="_blank" rel="noreferrer">source {index + 1}</a></span>)}</p>
+              <p className="note"><strong>{t('matched')}:</strong> {discovery.matchedCriteria.join(' · ') || t('none')}</p>
+              {discovery.violatedCriteria.length > 0 && <p className="caveat"><strong>{t('conflicts')}:</strong> {discovery.violatedCriteria.join(' · ')}</p>}
+              {discovery.informationGaps.length > 0 && <p className="note"><strong>{t('gapList')}:</strong> {discovery.informationGaps.join(' · ')}</p>}
+              <p className="note"><strong>{t('sourceList')}:</strong> {discovery.sourceUrls.map((url, index) => <span key={url}>{index ? ' · ' : ''}<a className="text-link" href={url} target="_blank" rel="noreferrer">{t('source')} {index + 1}</a></span>)}</p>
               {canDecide && <details className="decision-journal" open>
-                <summary>Decision journal <span>Required before approval</span></summary>
-                <p>Capture the decision context once, so the later analysis and audit trail remain understandable without internal run IDs.</p>
+                <summary>{t('journal')} <span>{t('required')}</span></summary>
+                <p>{t('journalDetail')}</p>
                 <div className="decision-journal-grid">
-                  <label>Why does this fit the thesis?
+                  <label>{t('why')}
                     <textarea value={journalFor(candidate).decisionReason} onChange={(event) => updateJournal(candidate.id, 'decisionReason', event.target.value)} placeholder="Specific reason this opportunity merits deeper work" />
                   </label>
-                  <label>Expected holding period
+                  <label>{t('period')}
                     <input value={journalFor(candidate).expectedHoldingPeriod} onChange={(event) => updateJournal(candidate.id, 'expectedHoldingPeriod', event.target.value)} placeholder="e.g. 3–5 years" />
                   </label>
-                  <label>Current valuation view
+                  <label>{t('valuation')}
                     <textarea value={journalFor(candidate).valuationView} onChange={(event) => updateJournal(candidate.id, 'valuationView', event.target.value)} placeholder="What must be tested in valuation and why" />
                   </label>
-                  <label>Principal risk
+                  <label>{t('principalRisk')}
                     <textarea value={journalFor(candidate).principalRisk} onChange={(event) => updateJournal(candidate.id, 'principalRisk', event.target.value)} placeholder="Most material downside risk" />
                   </label>
-                  <label>What would invalidate the view?
+                  <label>{t('invalidation')}
                     <textarea value={journalFor(candidate).invalidationTrigger} onChange={(event) => updateJournal(candidate.id, 'invalidationTrigger', event.target.value)} placeholder="Observable trigger that would change the decision" />
                   </label>
                 </div>
               </details>}
               <div className="candidate-actions">
-                <span className={`badge ${candidate.decision === 'rejected' ? 'breach' : candidate.decision === 'approved' ? 'ok' : 'watch'}`}>{candidate.decision}</span>
+                <span className={`badge ${candidate.decision === 'rejected' ? 'breach' : candidate.decision === 'approved' ? 'ok' : 'watch'}`}>{candidate.decision === 'watchlist' ? t('watchlist') : candidate.decision === 'rejected' ? t('reject') : candidate.decision === 'approved' ? t('approved') : t('pending')}</span>
                 {canDecide && <>
-                  <button type="button" onClick={() => void decide(candidate, 'approved')} disabled={isWorking || !journalIsComplete(journalFor(candidate))}>{isWorking ? 'Approving…' : 'Approve & analyze'}</button>
-                  <button type="button" onClick={() => void decide(candidate, 'watchlist')} disabled={isWorking}>Watchlist</button>
-                  <button type="button" className="danger-outline" onClick={() => void decide(candidate, 'rejected')} disabled={isWorking}>Reject</button>
+                  <button type="button" onClick={() => void decide(candidate, 'approved')} disabled={isWorking || !journalIsComplete(journalFor(candidate))}>{isWorking ? t('approving') : t('approve')}</button>
+                  <button type="button" onClick={() => void decide(candidate, 'watchlist')} disabled={isWorking}>{t('watchlist')}</button>
+                  <button type="button" className="danger-outline" onClick={() => void decide(candidate, 'rejected')} disabled={isWorking}>{t('reject')}</button>
                 </>}
-                {isWorking && <span className="note">Preparing source-backed research and validated price history…</span>}
+                {isWorking && <span className="note">{t('preparing')}</span>}
                 {candidateErrors[candidate.id] && <p className="caveat" role="alert">{candidateErrors[candidate.id]}</p>}
               </div>
 
@@ -600,49 +603,49 @@ export default function AIStockDiscoveryPage() {
                   <div className="analysis-stage-heading">
                     <div>
                       <p className="analysis-eyebrow">Approved investment research</p>
-                      <h3>3. Research and risk assessment</h3>
+                      <h3>{t('analysis')}</h3>
                     </div>
                     <span className={`badge ${analysisStatus.badgeClass}`}>{analysisStatus.label}</span>
                   </div>
                   <p className="analysis-status-copy" aria-live="polite">{analysisStatus.description}</p>
                   {candidate.analysisMode === 'limited_research_risk' && <div className="analysis-scope">
-                    <strong>Evidence scope</strong>
-                    <p>This assessment combines source-backed company research with EODHD price-risk metrics. Structured financial statements are not included, so DCF valuation remains locked.</p>
+                    <strong>{t('scope')}</strong>
+                    <p>{t('scopeDetail')}</p>
                   </div>}
                   {candidate.workflowStatus === 'analysis_failed' && <p className="caveat" role="alert">{candidate.analysisErrorMessage ?? candidate.analysisRunError ?? 'Analysis failed. Retry from this candidate card.'}</p>}
                   {candidate.workflowStatus === 'analysis_failed' && !candidate.externalAnalysisRunId && <button className="action-button" type="button" onClick={() => void decide(candidate, 'approved')} disabled={busy !== null || !journalIsComplete(journalFor(candidate))}>
-                    {busy === candidate.id ? 'Retrying preparation…' : 'Retry analysis preparation'}
+                    {busy === candidate.id ? 'Retrying preparation…' : t('retryPreparation')}
                   </button>}
                   {candidate.analysisRunStatus === 'failed' && candidate.externalAnalysisRunId && <button className="action-button" type="button" onClick={() => void retryAnalysis(candidate.externalAnalysisRunId!)} disabled={busy !== null}>
-                    {busy === `analysis:${candidate.externalAnalysisRunId}` ? 'Retrying analysis…' : 'Retry analysis'}
+                    {busy === `analysis:${candidate.externalAnalysisRunId}` ? 'Retrying analysis…' : t('retryAnalysis')}
                   </button>}
                   {candidate.risk && <div className="risk-strip">{candidate.risk.map((metric) => <div key={metric.metricName}>
                     <span>{friendlyRiskMetric(metric.metricName)}</span><strong>{(metric.value * 100).toFixed(2)}%</strong>
-                    <details><summary>How it is calculated</summary><p>{metric.methodology}</p>{metric.caveat && <p className="caveat">{metric.caveat}</p>}</details>
+                    <details><summary>{t('calculation')}</summary><p>{metric.methodology}</p>{metric.caveat && <p className="caveat">{metric.caveat}</p>}</details>
                   </div>)}</div>}
                   {candidate.analysis ? <>
                     <div className="analysis-score-summary">
-                      <div><strong>{candidate.analysis.investmentScore}</strong><span>Investment score</span></div>
-                      <div><strong>{candidate.analysis.thesisAlignmentScore}</strong><span>Thesis alignment</span></div>
-                      <div><strong>{(candidate.analysis.confidenceScore * 100).toFixed(0)}%</strong><span>Evidence confidence</span></div>
+                      <div><strong>{candidate.analysis.investmentScore}</strong><span>{t('investmentScore')}</span></div>
+                      <div><strong>{candidate.analysis.thesisAlignmentScore}</strong><span>{t('alignment')}</span></div>
+                      <div><strong>{(candidate.analysis.confidenceScore * 100).toFixed(0)}%</strong><span>{t('confidence')}</span></div>
                     </div>
                     {candidate.analysisMode === 'limited_research_risk'
                       ? <p className="note">Risk severity {candidate.analysis.riskScore ?? '—'} · Financial characteristic scores are withheld in limited-data mode.</p>
                       : <p className="note">Quality {candidate.analysis.qualityScore ?? '—'} · Growth {candidate.analysis.growthScore ?? '—'} · Risk severity {candidate.analysis.riskScore ?? '—'} · Dividend {candidate.analysis.dividendScore ?? '—'}</p>}
                     <div className="analysis-decision">
-                      <h4>Decision view</h4>
+                      <h4>{t('decisionView')}</h4>
                       <p>{candidate.analysis.investmentThesis}</p>
                     </div>
-                    <p><strong>Evidence coverage:</strong> {candidate.analysis.fundamentalSummary}</p>
-                    <p className="note"><strong>Catalysts:</strong> {(candidate.analysis.keyCatalysts ?? []).join(' · ')}</p>
-                    <p className="caveat"><strong>Principal risks:</strong> {(candidate.analysis.keyRisks ?? []).join(' · ')}</p>
-                    <p className="caveat"><strong>Thesis breakers:</strong> {(candidate.analysis.thesisBreakers ?? []).join(' · ')}</p>
-                    <p className="note"><strong>Information gaps:</strong> {(candidate.analysis.informationGaps ?? []).join(' · ') || 'None recorded'}</p>
+                    <p><strong>{t('coverage')}:</strong> {candidate.analysis.fundamentalSummary}</p>
+                    <p className="note"><strong>{t('catalysts')}:</strong> {(candidate.analysis.keyCatalysts ?? []).join(' · ')}</p>
+                    <p className="caveat"><strong>{t('risks')}:</strong> {(candidate.analysis.keyRisks ?? []).join(' · ')}</p>
+                    <p className="caveat"><strong>{t('breakers')}:</strong> {(candidate.analysis.thesisBreakers ?? []).join(' · ')}</p>
+                    <p className="note"><strong>{t('informationGaps')}:</strong> {(candidate.analysis.informationGaps ?? []).join(' · ') || t('noneRecorded')}</p>
                     {candidate.analysis.researchFramework && <section className="research-framework" aria-label="Research framework">
                       <div className="research-framework-heading">
                         <div>
-                          <h4>Research framework</h4>
-                          <p>How this security fits the coverage process and what must be monitored next.</p>
+                          <h4>{t('framework')}</h4>
+                          <p>{t('frameworkDetail')}</p>
                         </div>
                         <div className="research-framework-badges">
                           <span className="badge">Evidence: {frameworkLabel(candidate.analysis.researchFramework.evidenceQuality)}</span>
@@ -651,30 +654,30 @@ export default function AIStockDiscoveryPage() {
                       </div>
                       <p><strong>Coverage rationale:</strong> {candidate.analysis.researchFramework.coverageRationale}</p>
                       <div className="research-framework-grid">
-                        <div><strong>Market context</strong><p>{candidate.analysis.researchFramework.marketContext.join(' · ') || 'Not evidenced in the current research pack.'}</p></div>
-                        <div><strong>Sector drivers</strong><p>{candidate.analysis.researchFramework.sectorDrivers.join(' · ') || 'Not evidenced in the current research pack.'}</p></div>
-                        <div><strong>Company drivers</strong><p>{candidate.analysis.researchFramework.companyDrivers.join(' · ') || 'Not evidenced in the current research pack.'}</p></div>
-                        <div><strong>Valuation drivers</strong><p>{candidate.analysis.researchFramework.criticalValuationDrivers.join(' · ') || 'Not ready without further validated financial evidence.'}</p></div>
+                        <div><strong>{t('marketContext')}</strong><p>{candidate.analysis.researchFramework.marketContext.join(' · ') || 'Not evidenced in the current research pack.'}</p></div>
+                        <div><strong>{t('sectorDrivers')}</strong><p>{candidate.analysis.researchFramework.sectorDrivers.join(' · ') || 'Not evidenced in the current research pack.'}</p></div>
+                        <div><strong>{t('companyDrivers')}</strong><p>{candidate.analysis.researchFramework.companyDrivers.join(' · ') || 'Not evidenced in the current research pack.'}</p></div>
+                        <div><strong>{t('valuationDrivers')}</strong><p>{candidate.analysis.researchFramework.criticalValuationDrivers.join(' · ') || 'Not ready without further validated financial evidence.'}</p></div>
                       </div>
-                      <p className="note"><strong>Monitoring triggers:</strong> {candidate.analysis.researchFramework.monitoringTriggers.join(' · ')}</p>
+                      <p className="note"><strong>{t('monitoring')}:</strong> {candidate.analysis.researchFramework.monitoringTriggers.join(' · ')}</p>
                     </section>}
                     {candidate.reportUrl && <div className="analysis-report-cta">
                       <div>
-                        <strong>Professional investment report</strong>
+                        <strong>{t('report')}</strong>
                         <p>Open the complete decision summary, scorecards, catalysts, risks, limitations, and disclosure in a presentation-ready PDF.</p>
                       </div>
-                      <a className="action-button inline-action" href={candidate.reportUrl} target="_blank" rel="noreferrer">Open PDF report</a>
+                      <a className="action-button inline-action" href={candidate.reportUrl} target="_blank" rel="noreferrer">{t('openReport')}</a>
                     </div>}
-                    {candidate.dcfLocked && <p className="caveat"><strong>DCF locked.</strong> {candidate.dcfLockReason}</p>}
+                    {candidate.dcfLocked && <p className="caveat"><strong>{t('dcfLocked')}.</strong> {candidate.dcfLockReason}</p>}
                     <button className="action-button" type="button" onClick={() => setValuationCandidateId((current) => current === candidate.id ? null : candidate.id)}>
-                      {valuationCandidateId === candidate.id ? 'Close valuation' : candidate.valuation ? 'Review valuation workspace' : 'Open valuation workspace'}
+                      {valuationCandidateId === candidate.id ? t('closeValuation') : candidate.valuation ? t('reviewValuation') : t('openValuation')}
                     </button>
                     {candidate.valuation && typeof candidate.valuation.resultJson.fairValuePerShare === 'number' && <p className="security-state">Latest DCF fair-value scenario: {candidate.valuation.resultJson.currency} {candidate.valuation.resultJson.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })} per share.</p>}
                     {valuationCandidateId === candidate.id && <ValuationWorkbench candidateId={candidate.id} onSaved={() => {
                       if (selectedRunId) void loadCandidates(selectedRunId);
                     }} />}
-                    <details className="analysis-evidence"><summary>Audit and processing details</summary>
-                      <p>Status: {candidate.analysisRunStatus ?? candidate.workflowStatus}</p>
+                    <details className="analysis-evidence"><summary>{t('audit')}</summary>
+                      <p>{t('status')}: {candidate.analysisRunStatus ?? candidate.workflowStatus}</p>
                       {candidate.externalAnalysisRunId && <p>Internal reference: <code>{candidate.externalAnalysisRunId}</code></p>}
                       <p>{(candidate.analysis.groundedIn ?? []).length} evidence references retained.</p>
                       <ul>{(candidate.analysis.groundedIn ?? []).map((reference) => <li key={reference}><code>{reference}</code></li>)}</ul>
@@ -682,10 +685,10 @@ export default function AIStockDiscoveryPage() {
                   </> : <>
                     {candidate.reportUrl && <div className="analysis-report-cta">
                       <div>
-                        <strong>Professional investment report</strong>
+                        <strong>{t('report')}</strong>
                         <p>The report is ready. It can be reviewed while the dashboard finishes importing its structured analysis.</p>
                       </div>
-                      <a className="action-button inline-action" href={candidate.reportUrl} target="_blank" rel="noreferrer">Open PDF report</a>
+                      <a className="action-button inline-action" href={candidate.reportUrl} target="_blank" rel="noreferrer">{t('openReport')}</a>
                     </div>}
                     <p className="note">The approved security is processed independently. Limited-data analysis uses research evidence and price risk; DCF remains locked without structured statements.</p>
                   </>}

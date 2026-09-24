@@ -35,7 +35,7 @@ describe('low-cost provider architecture', () => {
 
   it('locks DCF in both the candidate UI and valuation API', () => {
     expect(discoveryPage).toContain('candidate.dcfLocked');
-    expect(discoveryPage).toContain('<strong>DCF locked.</strong>');
+    expect(discoveryPage).toContain("<strong>{t('dcfLocked')}.</strong>");
     expect(valuationRoute.match(/isDcfLocked\(data\.analysisMode\)/g)).toHaveLength(2);
     expect(valuationRoute).toContain('LIMITED_DATA_DCF_LOCK_REASON');
   });
