@@ -265,6 +265,9 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
 .research-framework-grid div { padding: 0.65rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
 .research-framework-grid strong { font-size: 0.74rem; }
 .research-framework-grid p { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.72rem; }
+.company-diligence > .note { margin: 0.35rem 0 0; }
+.company-diligence .research-framework-grid .badge { margin-left: 0.35rem; vertical-align: middle; }
+.company-diligence .research-framework-grid p { line-height: 1.5; }
 .research-pipeline { margin: 1.4rem 0; }
 .research-pipeline-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
 .research-pipeline-heading h2 { margin: 0.1rem 0 0.35rem; font-size: 1.15rem; }
