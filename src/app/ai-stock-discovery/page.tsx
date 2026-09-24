@@ -18,6 +18,8 @@ interface DiscoveryRun {
     portfolioId: string;
     portfolioName: string;
     count: number;
+    status: 'candidates_found' | 'no_candidates' | 'failed' | 'pending';
+    reason: string;
   }>;
   /**
    * The full agent output. It was already being returned by the runs API and
@@ -497,6 +499,13 @@ export default function AIStockDiscoveryPage() {
               <span className={`badge ${latestRun!.status === 'failed' ? 'breach' : latestRun!.status === 'completed' ? 'ok' : 'watch'}`}>{latestRun!.status}</span>{' '}
               · {latestRun!.candidateCount} candidates
             </p>
+            <div className="preflight-checks" aria-label="Research outcome by portfolio">
+              {latestRun!.portfolioCandidateCounts.map((portfolio) => <div key={portfolio.portfolioId}>
+                <strong>{portfolio.portfolioName}</strong>
+                <p>{portfolio.count} candidates · {portfolio.status === 'failed' ? 'Research failed' : portfolio.status === 'no_candidates' ? 'No matches' : portfolio.status === 'pending' ? 'Research pending' : 'Research completed'}</p>
+                <p>{portfolio.reason}</p>
+              </div>)}
+            </div>
             {latestRun!.status === 'completed' && latestRun!.candidateCount > 0 && <button
               className="action-button"
               type="button"

@@ -25,7 +25,7 @@ describe('agent schemas are expressible as strict Structured Outputs', () => {
     // If this ever stops throwing, the contract dropped .trim() and the derived
     // schema is redundant. That is worth noticing rather than carrying forever.
     expect(() =>
-      zodTextFormat(MarketDiscoveryOutput.omit({ verifiedWebSources: true, thesisVersion: true }), 'x')
+      zodTextFormat(MarketDiscoveryOutput.omit({ verifiedWebSources: true, thesisVersion: true, portfolioOutcomes: true }), 'x')
     ).toThrow(/cannot be represented by strict Structured Outputs/);
   });
 
@@ -48,6 +48,7 @@ describe('the derived candidate schema does not drift from the contract', () => 
     const contractKeys = Object.keys(MarketDiscoveryOutput.shape).sort();
     const modelKeys = Object.keys(MarketDiscoveryModelOutput.shape).sort();
     expect(contractKeys.filter((k) => !modelKeys.includes(k))).toEqual([
+      'portfolioOutcomes',
       'thesisVersion',
       'verifiedWebSources',
     ]);

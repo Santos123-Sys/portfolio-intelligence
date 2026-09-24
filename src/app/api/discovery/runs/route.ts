@@ -45,7 +45,7 @@ async function list(ownerId: string) {
   }
   return runs.map((run) => ({
     ...run,
-    ...summarizeDiscoveryCandidateCounts(run.requestJson, portfoliosByRun.get(run.id) ?? []),
+    ...summarizeDiscoveryCandidateCounts(run.requestJson, portfoliosByRun.get(run.id) ?? [], run.resultJson, run.errorMessage),
   }));
 }
 
