@@ -340,6 +340,12 @@ export const MarketDiscoveryOutput = z.object({
   /** URLs copied by the service from actual web-search tool metadata, never model-authored. */
   verifiedWebSources: z.array(z.string().url()),
   limitations: z.array(z.string()),
+  /** One explicit outcome for every requested portfolio, including empty and failed markets. */
+  portfolioOutcomes: z.array(z.object({
+    portfolioId: z.string().uuid(),
+    status: z.enum(['candidates_found', 'no_candidates', 'failed']),
+    reason: z.string().trim().min(1),
+  }).strict()).optional(),
 }).strict();
 export type MarketDiscoveryOutput = z.infer<typeof MarketDiscoveryOutput>;
 
@@ -576,6 +582,19 @@ export function validateDiscoveryOutput(
   const mandateIds = output.marketMandates.map((mandate) => mandate.portfolioId);
   if (new Set(mandateIds).size !== mandateIds.length || mandateIds.some((id) => !portfoliosById.has(id))) {
     throw new ContractValidationError('Discovery market mandates contain an unknown or duplicate portfolio');
+  }
+  if (output.portfolioOutcomes) {
+    const outcomeIds = output.portfolioOutcomes.map((outcome) => outcome.portfolioId);
+    if (outcomeIds.length !== portfoliosById.size || new Set(outcomeIds).size !== outcomeIds.length ||
+      outcomeIds.some((id) => !portfoliosById.has(id))) {
+      throw new ContractValidationError('Discovery outcomes must cover each requested portfolio exactly once');
+    }
+    for (const outcome of output.portfolioOutcomes) {
+      const count = output.candidates.filter((candidate) => candidate.portfolioId === outcome.portfolioId).length;
+      if ((outcome.status === 'candidates_found') !== (count > 0)) {
+        throw new ContractValidationError('Discovery outcome disagrees with the portfolio candidate count');
+      }
+    }
   }
   const universeExchanges = new Set(request.universe.map((record) => record.exchange));
   const mandatesByPortfolio = new Map(output.marketMandates.map((mandate) => [mandate.portfolioId, mandate]));

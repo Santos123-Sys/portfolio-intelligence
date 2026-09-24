@@ -39,8 +39,8 @@ describe('discovery run candidate summary', () => {
     expect(summary.candidateCount).toBe(12);
     expect(summary.maxCandidatesPerPortfolio).toBe(6);
     expect(summary.portfolioCandidateCounts).toEqual([
-      { portfolioId: swissId, portfolioName: 'Swiss Quality', count: 6 },
-      { portfolioId: brazilId, portfolioName: 'Brazilian Growth', count: 6 },
+      { portfolioId: swissId, portfolioName: 'Swiss Quality', count: 6, status: 'pending', reason: 'Research has not completed for this portfolio.' },
+      { portfolioId: brazilId, portfolioName: 'Brazilian Growth', count: 6, status: 'pending', reason: 'Research has not completed for this portfolio.' },
     ]);
   });
 
@@ -50,5 +50,24 @@ describe('discovery run candidate summary', () => {
       maxCandidatesPerPortfolio: null,
       portfolioCandidateCounts: [],
     });
+  });
+
+  it('reports a failed market separately from a researched market with no matches', () => {
+    const summary = summarizeDiscoveryCandidateCounts(request, [], {
+      thesisVersion: 1,
+      marketMandates: [
+        { portfolioId: swissId, role: 'swiss_quality', exchanges: ['XSWX'], currency: 'CHF', rationale: 'Searched' },
+        { portfolioId: brazilId, role: 'brazilian_growth', exchanges: ['BVMF'], currency: 'BRL', rationale: 'Failed' },
+      ],
+      candidates: [], verifiedWebSources: [], limitations: [],
+      portfolioOutcomes: [
+        { portfolioId: swissId, status: 'no_candidates', reason: 'No companies qualified.' },
+        { portfolioId: brazilId, status: 'failed', reason: 'Provider timed out.' },
+      ],
+    });
+    expect(summary.portfolioCandidateCounts.map(({ status, reason }) => ({ status, reason }))).toEqual([
+      { status: 'no_candidates', reason: 'No companies qualified.' },
+      { status: 'failed', reason: 'Provider timed out.' },
+    ]);
   });
 });

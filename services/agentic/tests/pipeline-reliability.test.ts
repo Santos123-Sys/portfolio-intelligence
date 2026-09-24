@@ -425,6 +425,18 @@ describe('schema failures name the field that failed', () => {
       brazilPortfolioId,
     ]);
     expect(output.candidates.map((candidate) => candidate.ticker)).toEqual(['NESN', 'WEGE3']);
+    expect(output.portfolioOutcomes?.map((item) => item.status)).toEqual(['candidates_found', 'candidates_found']);
+
+    const partiallyFailingClient = {
+      responses: { parse: async (input: { input: string }) => {
+        if (input.input.includes('WEGE3')) throw new Error('Market provider unavailable');
+        return client.responses.parse(input);
+      } },
+    } as unknown as OpenAI;
+    const partial = await new OpenAIAgenticPipeline('k', 'gpt-5.6', 'medium', partiallyFailingClient)
+      .discoverSecurities(multiPortfolioRequest as never);
+    expect(partial.candidates.map((candidate) => candidate.ticker)).toEqual(['NESN']);
+    expect(partial.portfolioOutcomes?.map((item) => item.status)).toEqual(['candidates_found', 'failed']);
   });
 
   it('records a portfolio-specific limitation when no candidate qualifies', async () => {

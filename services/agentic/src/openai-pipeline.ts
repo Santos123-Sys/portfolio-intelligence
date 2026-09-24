@@ -141,7 +141,7 @@ const DiscoveryCandidateModelOutput = z.object({
 }).strict();
 
 export const MarketDiscoveryModelOutput = MarketDiscoveryOutput
-  .omit({ verifiedWebSources: true, thesisVersion: true, candidates: true })
+  .omit({ verifiedWebSources: true, thesisVersion: true, portfolioOutcomes: true, candidates: true })
   .extend({ candidates: z.array(DiscoveryCandidateModelOutput) });
 
 const UNSPECIFIED_CURRENCY_VALUES = new Set(['NOT SPECIFIED', 'UNSPECIFIED', 'ANY', 'N/A']);
@@ -727,7 +727,9 @@ export class OpenAIAgenticPipeline {
     }
     try {
       const portfolioOutputs: z.infer<typeof MarketDiscoveryOutput>[] = [];
+      const portfolioOutcomes: NonNullable<z.infer<typeof MarketDiscoveryOutput>['portfolioOutcomes']> = [];
       for (const portfolio of request.portfolios) {
+        try {
         // Candidate caps and currencies are portfolio-specific. Giving the
         // model every mandate in one call allowed a valid-looking combined
         // response to spend the whole shortlist on the first market. Isolate
@@ -790,6 +792,41 @@ export class OpenAIAgenticPipeline {
         });
         validateDiscoveryOutput(portfolioOutput, portfolioRequest);
         portfolioOutputs.push(portfolioOutput);
+        portfolioOutcomes.push({
+          portfolioId: portfolio.id,
+          status: portfolioOutput.candidates.length ? 'candidates_found' : 'no_candidates',
+          reason: portfolioOutput.candidates.length
+            ? `${portfolioOutput.candidates.length} candidates matched the supplied universe and thesis.`
+            : portfolioOutput.limitations.join(' ') || 'No candidates met the confirmed mandate in the supplied universe.',
+        });
+        } catch (error) {
+          // Preserve validated work from other markets. A failed market has no
+          // inferred candidates and is explicitly distinguishable from no match.
+          const failure = error instanceof AgenticPipelineError ? error
+            : error instanceof ZodError ? describeSchemaFailure('discovery', error)
+              : error instanceof Error && error.name === 'ContractValidationError'
+                ? new AgenticPipelineError('discovery', `Market discovery: ${error.message}`, true)
+                : classifyProviderError('discovery', error);
+          portfolioOutcomes.push({ portfolioId: portfolio.id, status: 'failed', reason: failure.message });
+          const exchanges = [...new Set(request.universe.filter((record) =>
+            record.currency.toUpperCase() === portfolio.baseCurrency.toUpperCase()
+          ).map((record) => record.exchange))];
+          portfolioOutputs.push({
+            thesisVersion: request.thesis.criteria.version,
+            marketMandates: [{
+              portfolioId: portfolio.id, role: portfolio.role,
+              exchanges: exchanges.length ? exchanges : [request.universe[0].exchange],
+              currency: portfolio.baseCurrency,
+              rationale: 'Research for this portfolio did not complete; no candidate conclusion was produced.',
+            }],
+            candidates: [], verifiedWebSources: [],
+            limitations: [`${portfolio.name}: ${failure.message}`],
+          });
+        }
+      }
+
+      if (portfolioOutcomes.every((outcome) => outcome.status === 'failed')) {
+        throw new AgenticPipelineError('discovery', portfolioOutcomes.map((outcome) => outcome.reason).join(' '), true);
       }
 
       const output = MarketDiscoveryOutput.parse({
@@ -798,6 +835,7 @@ export class OpenAIAgenticPipeline {
         candidates: deduplicateCandidateIdentities(portfolioOutputs.flatMap((result) => result.candidates)),
         verifiedWebSources: [...new Set(portfolioOutputs.flatMap((result) => result.verifiedWebSources))],
         limitations: [...new Set(portfolioOutputs.flatMap((result) => result.limitations))],
+        portfolioOutcomes,
       });
       validateDiscoveryOutput(output, request);
       return output;
