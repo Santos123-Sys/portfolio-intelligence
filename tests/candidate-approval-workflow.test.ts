@@ -18,7 +18,7 @@ describe('candidate approval to analysis workflow', () => {
     expect(schema).toContain("analysisErrorMessage: text('analysis_error_message')");
     expect(route).toContain('await failCandidateAnalysisPreparation(');
     expect(workflow).toContain("workflowStatus: 'analysis_failed'");
-    expect(page).toContain('Retry analysis preparation');
+    expect(page).toContain("t('retryPreparation')");
   });
 
   it('uses only approved-candidate price history and explicit research evidence', () => {
@@ -32,13 +32,13 @@ describe('candidate approval to analysis workflow', () => {
 
   it('keeps the candidate card updated while preparation is active', () => {
     expect(page).toContain("candidate.workflowStatus === 'analysis_preparing'");
-    expect(page).toContain('Approval is saved. Validated price history');
+    expect(page).toContain("t('evidencePreparingDetail')");
     expect(page).toContain('candidateErrors[candidate.id]');
   });
 
   it('keeps technical run identifiers out of the primary decision surface', () => {
-    expect(page).toContain('Audit and processing details');
-    expect(page).toContain('Professional investment report');
+    expect(page).toContain("t('audit')");
+    expect(page).toContain("t('report')");
     expect(page).not.toContain('`Run: ${candidate.externalAnalysisRunId}');
     expect(route).toContain('/api/integrations/agentic/reports?externalRunId=');
   });
