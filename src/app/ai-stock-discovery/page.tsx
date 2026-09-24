@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ValuationWorkbench } from '@/components/valuation-workbench';
 import { useLanguage } from '@/lib/i18n';
 import { discoveryDate, discoveryText } from '@/lib/discovery-translations';
+import { CompanyDiligence } from '@/components/company-diligence';
 
 interface DiscoveryRun {
   id: string;
@@ -661,6 +662,11 @@ export default function AIStockDiscoveryPage() {
                       </div>
                       <p className="note"><strong>{t('monitoring')}:</strong> {candidate.analysis.researchFramework.monitoringTriggers.join(' · ')}</p>
                     </section>}
+                    {candidate.analysis.researchFramework && <CompanyDiligence
+                      framework={candidate.analysis.researchFramework}
+                      analysisMode={candidate.analysisMode}
+                      sourceUrls={discovery.sourceUrls}
+                    />}
                     {candidate.reportUrl && <div className="analysis-report-cta">
                       <div>
                         <strong>{t('report')}</strong>
