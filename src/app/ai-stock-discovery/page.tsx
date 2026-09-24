@@ -550,6 +550,8 @@ export default function AIStockDiscoveryPage() {
                   <span>{t('price')} {t(candidate.evidenceScorecard.marketPriceStatus)}</span>
                 </div>
                 <p>{t(candidate.evidenceScorecard.assessment === 'sufficient' ? 'sufficientDetail' : candidate.evidenceScorecard.assessment === 'developing' ? 'developingDetail' : 'limitedDetail')}</p>
+                {candidate.decision !== 'approved' && candidate.evidenceScorecard.assessment !== 'sufficient' && <p className="note">{t('continueResearch')}</p>}
+                {candidate.decision === 'approved' && <p className="note">{t('snapshotDetail')}</p>}
               </section>
               <p className="note"><strong>{t('matched')}:</strong> {discovery.matchedCriteria.join(' · ') || t('none')}</p>
               {discovery.violatedCriteria.length > 0 && <p className="caveat"><strong>{t('conflicts')}:</strong> {discovery.violatedCriteria.join(' · ')}</p>}
