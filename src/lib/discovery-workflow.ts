@@ -15,6 +15,7 @@ import { getActiveAgentCustomization } from './agent-config';
 import { decisionJournalAuditText, type DecisionJournal } from './decision-journal';
 import { getPriceProvider } from './connectors';
 import { loadDiscoveryUniverse } from './discovery-provider';
+import { summarizeDiscoveryUniverse } from './discovery-universe-summary';
 import { db } from './db';
 import { accounts, aiAnalyses, decisionLog, portfolios, priceHistory, securities, thesisVersions } from './db/schema';
 import {
@@ -161,10 +162,7 @@ export async function buildDiscoveryRunRequest(
 export async function preflightDiscoveryForOwner(ownerId: string, maxCandidatesPerPortfolio = 6) {
   try {
     const built = await buildDiscoveryRunRequest(ownerId, maxCandidatesPerPortfolio);
-    const universeByExchange = new Map<string, number>();
-    for (const record of built.request.universe) {
-      universeByExchange.set(record.exchange, (universeByExchange.get(record.exchange) ?? 0) + 1);
-    }
+    const universe = summarizeDiscoveryUniverse(built.request.universe);
     return {
       ready: true as const,
       checkedAt: new Date().toISOString(),
@@ -173,9 +171,9 @@ export async function preflightDiscoveryForOwner(ownerId: string, maxCandidatesP
       checks: [
         { label: 'Confirmed thesis', detail: `Version ${built.request.thesis.criteria.version} is active`, status: 'ready' as const },
         { label: 'Portfolio mandates', detail: `${built.request.portfolios.length} eligible portfolio${built.request.portfolios.length === 1 ? '' : 's'} aligned to the thesis`, status: 'ready' as const },
-        ...[...universeByExchange.entries()].map(([exchange, count]) => ({
+        ...universe.map(({ exchange, count, selection, observedAt, limited, eligibleCount }) => ({
           label: exchange === 'BVMF' ? 'Brazilian B3 universe' : exchange === 'XSWX' ? 'Swiss SIX universe' : `${exchange} universe`,
-          detail: `${count} tradable securities available for research`,
+          detail: `${count} securities selected${eligibleCount ? ` from ${eligibleCount} eligible symbols` : ''}. ${selection}. ${limited ? 'Selection limit reached; this is not full-market coverage. ' : ''}Source snapshot: ${observedAt}.`,
           status: 'ready' as const,
         })),
       ],

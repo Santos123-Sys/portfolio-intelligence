@@ -294,6 +294,7 @@ export class EodhdProvider implements PriceProvider {
         universe_source: 'exchange-symbol-list',
         universe_ranking: ranked ? 'last_close_turnover' : 'unranked',
         universe_truncated: truncated,
+        universe_eligible_count: candidates.length,
       };
       const isin = text(first(row, 'Isin', 'isin'));
       if (isin) attributes.isin = isin;
@@ -339,7 +340,10 @@ export class EodhdProvider implements PriceProvider {
       const rawCode = text(first(row, 'code', 'Code', 'symbol'));
       const companyName = text(first(row, 'name', 'Name', 'company_name'));
       if (!rawCode || !companyName) return [];
-      const attributes: SecurityUniverseRecord['attributes'] = {};
+      const attributes: SecurityUniverseRecord['attributes'] = {
+        universe_ranking: 'market_capitalization_desc',
+        universe_limit_reached: rows.length >= boundedLimit,
+      };
       const fields: Array<[string, string[]]> = [
         ['market_capitalization', ['market_capitalization', 'marketCapitalization']],
         ['earnings_per_share', ['earnings_share', 'earningsPerShare', 'eps']],
