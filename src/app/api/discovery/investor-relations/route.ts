@@ -8,6 +8,7 @@ import { discoveryCandidates } from '@/lib/db/workflow-schema';
 import { retrieveInvestorRelationsFundamentals } from '@/lib/investor-relations';
 import { recordFundamentalObservations } from '@/lib/services/provenance';
 import { readBoundedJson } from '@/lib/request-body';
+import { retrieveSecAnnualFilings } from '@/lib/sec-companyfacts';
 
 export const runtime = 'nodejs';
 const schema = z.object({ candidateId: z.string().uuid() }).strict();
@@ -28,30 +29,37 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Complete the approved security analysis before importing primary-source financials' }, { status: 409 });
   }
   try {
-    const result = await retrieveInvestorRelationsFundamentals(candidate.companyName, candidate.ticker, candidate.currency);
-    if (!result.extracted) {
+    const secFilings = candidate.currency === 'USD' && process.env.SEC_USER_AGENT
+      ? await retrieveSecAnnualFilings(candidate.companyName, candidate.ticker, candidate.currency) : [];
+    const fallback = secFilings.length ? null : await retrieveInvestorRelationsFundamentals(candidate.companyName, candidate.ticker, candidate.currency);
+    const filings = secFilings.length ? secFilings : fallback?.extracted ? [fallback.extracted] : [];
+    if (!filings.length) {
       return NextResponse.json({
-        error: result.skippedPdfCount
+        error: fallback?.skippedPdfCount
           ? 'No supported annual inline-XBRL facts were found in the candidate currency. Search also found PDF reports; those require a dedicated verified filing importer.'
           : 'No unambiguous annual inline-XBRL facts with a matching currency and reporting period were found for this company.',
       }, { status: 422 });
     }
-    await recordFundamentalObservations(candidate.securityId, {
-      ...result.extracted.fundamentals,
-      _source: result.extracted.sourceName,
-      _sourceUrl: result.extracted.sourceUrl,
-      _status: 'OK',
-      _query: `Primary-source search via ${result.searchProvider}`,
-      _evidenceSnippet: result.extracted.evidenceSnippet,
-      _currency: result.extracted.currency,
-      _observationDate: result.extracted.periodEnd,
-    }, 'investor-relations');
+    for (const filing of filings) {
+      await recordFundamentalObservations(candidate.securityId, {
+        ...filing.fundamentals,
+        _source: filing.sourceName,
+        _sourceUrl: filing.sourceUrl,
+        _status: 'OK',
+        _query: secFilings.length ? 'SEC Company Facts · verified CIK' : `Primary-source search via ${fallback?.searchProvider}`,
+        _evidenceSnippet: filing.evidenceSnippet,
+        _currency: filing.currency,
+        _observationDate: filing.periodEnd,
+      }, 'investor-relations');
+    }
+    const newest = filings.at(-1)!;
     return NextResponse.json({
-      importedMetrics: Object.keys(result.extracted.fundamentals),
-      sourceUrl: result.extracted.sourceUrl,
-      periodEnd: result.extracted.periodEnd,
-      currency: result.extracted.currency,
-      notice: result.extracted.evidenceSnippet,
+      importedMetrics: Object.keys(newest.fundamentals),
+      importedPeriods: filings.map((filing) => filing.periodEnd),
+      sourceUrl: newest.sourceUrl,
+      periodEnd: newest.periodEnd,
+      currency: newest.currency,
+      notice: newest.evidenceSnippet,
     }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: `Primary-source financial retrieval failed: ${(error as Error).message}` }, { status: 502 });
