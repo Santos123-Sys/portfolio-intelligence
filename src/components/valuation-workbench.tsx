@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { FinancialDocumentReview } from './financial-document-review';
 
 interface ValuationSetup {
   suitability: {
@@ -142,7 +143,7 @@ function emptyPeer(): PeerForm {
   return { companyName: '', ticker: '', exchange: '', currency: '', marketCapitalization: '', netDebt: '', totalDebt: '', revenue: '', ebitda: '', netIncome: '', grossProfit: '', operatingIncome: '', totalEquity: '', interestExpense: '', cashAndEquivalents: '', incomeTaxExpense: '', preTaxIncome: '', ntmRevenue: '', ntmEbitda: '', ntmNetIncome: '', sourceUrl: '', forecastSourceUrl: '', researchNote: '' };
 }
 
-export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: string; onSaved: () => void }) {
+export function ValuationWorkbench({ candidateId, country, onSaved }: { candidateId: string; country: string | null; onSaved: () => void }) {
   const [setup, setSetup] = useState<ValuationSetup | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -417,6 +418,8 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
         <button className="secondary-button" type="button" onClick={() => void retrievePrimarySourceFinancials()} disabled={primarySourceBusy}>{primarySourceBusy ? 'Retrieving…' : 'Retrieve financial statements'}</button>
       </div>
       {primarySourceNotice && <p className={primarySourceNotice.startsWith('Imported') ? 'note' : 'caveat'}>{primarySourceNotice}</p>}
+      {(country === 'CH' || country?.toLowerCase() === 'switzerland')
+        && <FinancialDocumentReview candidateId={candidateId} onApproved={() => setReloadToken((current) => current + 1)} />}
       {!setup ? <section className="dcf-unavailable">
         <h4>Strict automatic DCF</h4>
         <p className="caveat">{busy ? 'Checking structured financial-statement evidence…' : error ?? 'DCF cannot be prepared from the current evidence.'}</p>

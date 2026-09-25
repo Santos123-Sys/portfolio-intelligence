@@ -44,3 +44,7 @@ The current `market_data_observations` table has `observationDate`, `currency`, 
 - PR F only if justified by measured throughput: Python batch worker, pandas/numpy and FastAPI contract. Deploy separately on Railway after parity, observability and authentication gates pass.
 
 A source failure, unknown reporting period, unit mismatch, missing issuer match, or ambiguous filing keeps valuation locked for that metric. The UI must show the concrete missing evidence and never imply that search results or scraped snippets are audited financial figures.
+
+## Swiss PDF flow
+
+Swiss PDF-only reports use the private `filings_python` service. Upload is limited to 5 MB and approved Swiss/CHF candidates. The model extracts a proposed JSON draft with original page references; pandas checks period and unit compatibility and calculates draft ratios. The authenticated owner opens the stored PDF and explicitly approves selected source facts. Only then are they available to the in-app report and valuation gate. Store the PDF hash, quoted evidence, original displayed value, unit multiplier and reviewer alongside every accepted fact. The service requires its own Railway deployment, OpenAI key and shared private token; see `services/filings_python/README.md`.
