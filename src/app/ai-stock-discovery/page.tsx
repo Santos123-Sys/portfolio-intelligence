@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ValuationWorkbench } from '@/components/valuation-workbench';
+import { ResearchWorkspace } from '@/components/research-workspace';
 import { useLanguage } from '@/lib/i18n';
 import { discoveryDate, discoveryText } from '@/lib/discovery-translations';
 
@@ -297,18 +298,23 @@ export default function AIStockDiscoveryPage() {
     };
   }, [hasActiveWork, loadCandidates, loadRuns, selectedRunId]);
 
+  async function fetchDiscoveryReadiness() {
+    setPreflight(null);
+    const response = await fetch('/api/discovery/preflight', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ maxCandidatesPerPortfolio: Number(candidateLimit) }),
+    });
+    const body = await response.json().catch(() => ({})) as { preflight?: DiscoveryPreflight; error?: string };
+    if (!body.preflight) throw new Error(body.error ?? `Readiness check failed (${response.status})`);
+    setPreflight(body.preflight);
+  }
+
   async function checkDiscoveryReadiness() {
     setPreflightBusy(true);
     setError(null);
     try {
-      const response = await fetch('/api/discovery/preflight', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ maxCandidatesPerPortfolio: Number(candidateLimit) }),
-      });
-      const body = await response.json().catch(() => ({})) as { preflight?: DiscoveryPreflight; error?: string };
-      if (!body.preflight) throw new Error(body.error ?? `Readiness check failed (${response.status})`);
-      setPreflight(body.preflight);
+      await fetchDiscoveryReadiness();
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
@@ -329,9 +335,12 @@ export default function AIStockDiscoveryPage() {
       });
       const body = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? `Discovery start failed (${response.status})`);
+      setPreflight(null);
       await loadRuns();
     } catch (cause) {
       setError((cause as Error).message);
+      // A failed start should explain the specific missing requirement in place.
+      await fetchDiscoveryReadiness().catch(() => undefined);
     } finally {
       setBusy(null);
     }
@@ -425,38 +434,13 @@ export default function AIStockDiscoveryPage() {
 
       {error && <p className="login-error workflow-error" role="alert">{error}</p>}
 
-      {/*
-        The three prerequisites below were previously invisible until they were
-        violated: discovery-workflow.ts throws for each of them at click time,
-        so the only way to learn the required order was to press the button and
-        read an error. Stating the sequence up front is the difference between
-        a workflow and a guessing game — and each item links to the page that
-        satisfies it, so the reader can act without hunting through the nav.
-      */}
-      <section className="card prerequisites">
-        <h2>{t('before')}</h2>
-        <ol className="prerequisite-list">
-          <li>
-            <strong>{t('thesis')}</strong> {t('thesisDetail')}{' '}
-            <a className="text-link" href="/investment-thesis">{t('thesisLink')}</a>
-          </li>
-          <li>
-            <strong>{t('providers')}</strong> {t('providersDetail')}{' '}
-            <code>DISCOVERY_PROVIDER=finnhub</code> · <code>FINNHUB_API_KEY</code>
-          </li>
-        </ol>
-        <p className="note">
-          {t('sequence')}
-        </p>
-      </section>
-
       <section className="card workflow-stage">
         <div>
           <h2>{t('start')}</h2>
           <p className="note">{t('startDetail')}</p>
         </div>
         <label className="compact-field">{t('limit')}
-          <input type="number" min="1" max="7" value={candidateLimit} onChange={(event) => setCandidateLimit(event.target.value)} />
+          <input type="number" min="1" max="7" value={candidateLimit} onChange={(event) => { setCandidateLimit(event.target.value); setPreflight(null); }} />
           <span>{t('limitDetail')}</span>
         </label>
         <div className="discovery-actions">
@@ -481,6 +465,7 @@ export default function AIStockDiscoveryPage() {
           {preflight.checks.map((check) => <div key={`${check.status}:${check.label}`}>
             <strong>{check.label}</strong>
             <p>{check.detail}</p>
+            {check.status === 'blocked' && /thesis|portfolio mandate/i.test(`${check.label} ${check.detail}`) && <Link className="text-link" href="/investment-thesis">Review investment thesis</Link>}
           </div>)}
         </div>
       </section>}
@@ -612,6 +597,15 @@ export default function AIStockDiscoveryPage() {
                     <strong>{t('scope')}</strong>
                     <p>{t('scopeDetail')}</p>
                   </div>}
+                  <ResearchWorkspace candidate={{
+                    companyName: candidate.companyName, runStatus: selectedRun?.status ?? 'completed',
+                    decision: candidate.decision, workflowStatus: candidate.workflowStatus,
+                    analysisRunStatus: candidate.analysisRunStatus, risk: candidate.risk,
+                    analysis: candidate.analysis, sourceUrls: candidate.discoveryJson.sourceUrls,
+                  }} onOpenReport={() => {
+                    setValuationCandidateId(candidate.id);
+                    window.setTimeout(() => document.getElementById(`financial-report-${candidate.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+                  }} />
                   {candidate.workflowStatus === 'analysis_failed' && <p className="caveat" role="alert">{candidate.analysisErrorMessage ?? candidate.analysisRunError ?? 'Analysis failed. Retry from this candidate card.'}</p>}
                   {candidate.workflowStatus === 'analysis_failed' && !candidate.externalAnalysisRunId && <button className="action-button" type="button" onClick={() => void decide(candidate, 'approved')} disabled={busy !== null || !journalIsComplete(journalFor(candidate))}>
                     {busy === candidate.id ? 'Retrying preparation…' : t('retryPreparation')}

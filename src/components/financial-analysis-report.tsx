@@ -29,7 +29,7 @@ export function FinancialAnalysisReport({ candidateId, reloadToken }: { candidat
     year: period.periodEnd.slice(0, 4), revenue: period.metrics.revenue ?? null,
     operatingIncome: period.metrics.operating_income ?? null, freeCashFlow: period.metrics.free_cash_flow ?? null,
   })) ?? [];
-  return <section className="financial-report" aria-labelledby="financial-report-heading">
+  return <section className="financial-report" id={`financial-report-${candidateId}`} aria-labelledby="financial-report-heading">
     <div className="financial-report-header"><div><p className="analysis-eyebrow">Source-backed financial analysis</p>
       <h4 id="financial-report-heading">Company financial report</h4>
       <p className="note">The report appears here after analysis. Downloading a PDF is optional.</p></div>
