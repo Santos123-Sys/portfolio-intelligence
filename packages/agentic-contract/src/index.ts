@@ -567,6 +567,15 @@ export function universeGroundingKeys(record: SecurityUniverseRecord): string[] 
   ];
 }
 
+function universeSourceUrls(record: SecurityUniverseRecord): Set<string> {
+  const attributeUrls = Object.entries(record.attributes).flatMap(([key, value]) =>
+    key.endsWith('_source_url') && typeof value === 'string' && /^https?:\/\//i.test(value)
+      ? [value]
+      : []
+  );
+  return new Set([record.sourceUrl, ...attributeUrls]);
+}
+
 export function validateDiscoveryOutput(
   output: MarketDiscoveryOutput,
   request: DiscoveryRunRequest
@@ -673,7 +682,8 @@ export function validateDiscoveryOutput(
     if (!candidate.sourceUrls.includes(record.sourceUrl)) {
       throw new ContractValidationError(`Candidate ${candidate.ticker} omitted its structured-universe source`);
     }
-    if (candidate.sourceUrls.some((url) => url !== record.sourceUrl && !externallyRetrievedSources.has(url))) {
+    const allowedRecordSources = universeSourceUrls(record);
+    if (candidate.sourceUrls.some((url) => !allowedRecordSources.has(url) && !externallyRetrievedSources.has(url))) {
       throw new ContractValidationError(`Candidate ${candidate.ticker} cited a source absent from its universe record`);
     }
   }

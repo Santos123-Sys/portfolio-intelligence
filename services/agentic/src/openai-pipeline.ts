@@ -302,7 +302,7 @@ Absolute rules:
 2. Treat the universe as a research universe, not proof of full-market coverage. Disclose important coverage and data gaps in limitations.
 3. Use only supplied identity fields, attributes and web-research evidence for candidate eligibility and scoring. Do not calculate or infer new financial metrics.
 4. groundedIn contains only exact grounding keys supplied beside that universe record.
-5. sourceUrls must include the record's structured-universe source URL. It may additionally include only a URL supplied in the web-research evidence.
+5. sourceUrls must include the record's structured-universe source URL. It may additionally include only a URL supplied in that record's attributes ending in _source_url or in the independent web-research evidence.
 6. Preserve hard thesis exclusions. A candidate with an evidenced hard exclusion must not be shortlisted.
 7. thesisAlignmentScore measures fit to the confirmed thesis, not general popularity or business quality.
 8. This request contains exactly one portfolio. Research that portfolio's entire supplied universe and produce exactly one market mandate for it.
@@ -311,6 +311,7 @@ Absolute rules:
 11. Do not value securities, calculate volatility, recommend trades, or alter holdings. Human approval is required before financial analysis.
 12. Return a security identity (exchange plus ticker) at most once across the combined candidate output.
 13. For sector and industry, copy the structured-universe classification exactly when it is supplied. When it is absent, classify only when the supplied web-research evidence explicitly supports the classification; otherwise return null. Never use memory or a plausible-sounding label.
+14. Treat revenue-geography attributes as dated, issuer-level disclosures. Cite the matching revenue_geo_source_url when using them, and do not conflate revenue geography with issuer domicile or listing country.
 
 Prefer decision-useful gaps over generic caveats. A concise, evidence-bound shortlist is better than a long speculative list.`;
 

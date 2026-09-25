@@ -113,6 +113,23 @@ describe('provider-grounded stock discovery', () => {
     expect(() => validateDiscoveryOutput(output, discoveryRequest())).not.toThrow();
   });
 
+  it('accepts a cited URL from the candidate record while keeping revenue geography separate', () => {
+    const request = discoveryRequest();
+    request.universe[0].attributes = {
+      ...request.universe[0].attributes,
+      issuer_domicile_country: 'Switzerland',
+      listing_country: 'Switzerland',
+      revenue_geo_summary: 'FY2025 sales by customer geography were reported by region.',
+      revenue_geo_period: 'FY2025 ended 2025-12-31',
+      revenue_geo_source_url: 'https://issuer.example.com/annual-report',
+    };
+    const output = discoveryOutput();
+    output.candidates[0].groundedIn.push('attribute:revenue_geo_summary', 'attribute:revenue_geo_source_url');
+    output.candidates[0].sourceUrls.push('https://issuer.example.com/annual-report');
+
+    expect(() => validateDiscoveryOutput(output, request)).not.toThrow();
+  });
+
   it('accepts verified web classification when the provider supplied none', () => {
     const request = discoveryRequest();
     request.universe[0] = {
