@@ -16,6 +16,7 @@ import {
   LIMITED_DATA_DCF_LOCK_REASON,
 } from '@/lib/integrations/analysis-mode';
 import { assessDcfSuitability, threeCaseDiscountedCashFlow } from '@/lib/quant/dcf';
+import { selectFilingSnapshot } from '@/lib/financial-filing-snapshot';
 
 export const runtime = 'nodejs';
 
@@ -58,6 +59,14 @@ async function context(ownerId: string, candidateId: string) {
   )).orderBy(desc(marketDataObservations.retrievedAt));
   const latest = new Map<string, typeof observations[number]>();
   for (const observation of observations) if (!latest.has(observation.metricName)) latest.set(observation.metricName, observation);
+  // Keep DCF inputs on one annual filing and one currency. A partial new import
+  // must never silently borrow missing values from last year's report.
+  const filingFacts = selectFilingSnapshot(observations, candidate.currency, REQUIRED_AUTOMATIC_FINANCIALS);
+  for (const metric of REQUIRED_AUTOMATIC_FINANCIALS) {
+    const matching = filingFacts.get(metric);
+    if (matching) latest.set(metric, matching);
+    else latest.delete(metric);
+  }
   const [run] = candidate.externalAnalysisRunId
     ? await db.select().from(externalAgenticRuns).where(and(
       eq(externalAgenticRuns.ownerId, ownerId),

@@ -47,6 +47,8 @@ export async function recordFundamentalObservations(securityId: string, fundamen
   const query = typeof fundamentals._query === 'string' ? fundamentals._query : undefined;
   const status = typeof fundamentals._status === 'string' ? fundamentals._status : 'OK';
   const evidenceSnippet = typeof fundamentals._evidenceSnippet === 'string' ? fundamentals._evidenceSnippet : undefined;
+  const currency = typeof fundamentals._currency === 'string' ? fundamentals._currency : undefined;
+  const observationDate = typeof fundamentals._observationDate === 'string' ? fundamentals._observationDate : undefined;
 
   for (const [metricName, value] of Object.entries(fundamentals)) {
     if (metricName.startsWith('_')) continue;
@@ -56,6 +58,8 @@ export async function recordFundamentalObservations(securityId: string, fundamen
       metricName,
       valueNumeric: typeof value === 'number' ? String(value) : null,
       valueText: typeof value === 'string' ? value : null,
+      currency: metricName === 'shares_outstanding' ? null : currency,
+      observationDate,
       provider,
       sourceName,
       sourceUrl,
