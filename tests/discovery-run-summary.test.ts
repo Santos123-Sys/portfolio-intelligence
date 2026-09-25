@@ -24,7 +24,9 @@ const request = {
     ticker: 'NESN', exchange: 'XSWX', companyName: 'Nestle', currency: 'CHF',
     country: 'Switzerland', sector: 'Consumer staples', industry: 'Food',
     assetType: 'Listed Equity', observedAt: '2026-09-03T00:00:00.000Z',
-    provider: 'finnhub', sourceUrl: 'https://finnhub.io/docs/api/stock-symbols', attributes: {},
+    provider: 'eodhd', sourceUrl: 'https://eodhd.com/financial-apis/exchanges-api-list-of-tickers-and-trading-hours', attributes: {
+      universe_truncated: true, universe_ranking: 'unranked',
+    },
   }],
   maxCandidatesPerPortfolio: 6,
 };
@@ -38,6 +40,10 @@ describe('discovery run candidate summary', () => {
 
     expect(summary.candidateCount).toBe(12);
     expect(summary.maxCandidatesPerPortfolio).toBe(6);
+    expect(summary.universeCoverage).toEqual({
+      records: 1, truncated: true, unranked: true, providers: ['eodhd'],
+      recordsByPortfolio: [{ portfolioId: swissId, count: 1 }, { portfolioId: brazilId, count: 0 }],
+    });
     expect(summary.portfolioCandidateCounts).toEqual([
       { portfolioId: swissId, portfolioName: 'Swiss Quality', count: 6, status: 'pending', reason: 'Research has not completed for this portfolio.' },
       { portfolioId: brazilId, portfolioName: 'Brazilian Growth', count: 6, status: 'pending', reason: 'Research has not completed for this portfolio.' },
@@ -49,6 +55,7 @@ describe('discovery run candidate summary', () => {
       candidateCount: 2,
       maxCandidatesPerPortfolio: null,
       portfolioCandidateCounts: [],
+      universeCoverage: { records: 0, truncated: false, unranked: false, providers: [], recordsByPortfolio: [] },
     });
   });
 

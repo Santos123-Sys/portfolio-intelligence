@@ -24,6 +24,13 @@ interface DiscoveryRun {
     status: 'candidates_found' | 'no_candidates' | 'failed' | 'pending';
     reason: string;
   }>;
+  universeCoverage?: {
+    records: number;
+    truncated: boolean;
+    unranked: boolean;
+    providers: string[];
+    recordsByPortfolio: Array<{ portfolioId: string; count: number }>;
+  };
   /**
    * The full agent output. It was already being returned by the runs API and
    * simply never read: a run that completed with zero candidates showed
@@ -489,7 +496,21 @@ export default function AIStockDiscoveryPage() {
               {latestRun!.portfolioCandidateCounts.map((portfolio) => <div key={portfolio.portfolioId}>
                 <strong>{portfolio.portfolioName}</strong>
                 <p>{portfolio.count} candidates · {portfolio.status === 'failed' ? 'Research failed' : portfolio.status === 'no_candidates' ? 'No matches' : portfolio.status === 'pending' ? 'Research pending' : 'Research completed'}</p>
-                <p>{portfolio.reason}</p>
+                <p>{portfolio.status === 'no_candidates'
+                  ? 'No companies cleared the mandate evidence threshold in this run.'
+                  : portfolio.reason.length > 220 ? `${portfolio.reason.slice(0, 220).trimEnd()}…` : portfolio.reason}</p>
+                {portfolio.reason.length > 220 && <details className="run-outcome-details">
+                  <summary>Read the full research explanation</summary>
+                  <p>{portfolio.reason}</p>
+                </details>}
+                {portfolio.status === 'no_candidates' && latestRun!.universeCoverage &&
+                  (latestRun!.universeCoverage.truncated || latestRun!.universeCoverage.unranked) && <p className="run-coverage-warning">
+                    This result covers {latestRun!.universeCoverage.recordsByPortfolio.find((item) => item.portfolioId === portfolio.portfolioId)?.count ?? 0} provider records
+                    {latestRun!.universeCoverage.providers.length ? ` from ${latestRun!.universeCoverage.providers.join(', ')}` : ''}.
+                    {latestRun!.universeCoverage.truncated ? ' The list was truncated' : ''}
+                    {latestRun!.universeCoverage.truncated && latestRun!.universeCoverage.unranked ? ' and' : ''}
+                    {latestRun!.universeCoverage.unranked ? ' not ranked' : ''}; zero matches here do not establish that the full market has no eligible companies.
+                  </p>}
               </div>)}
             </div>
             {latestRun!.status === 'completed' && latestRun!.candidateCount > 0 && <button
