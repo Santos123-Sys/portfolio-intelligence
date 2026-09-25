@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { FinancialAnalysisReport } from './financial-analysis-report';
 
 interface ValuationSetup {
   suitability: {
@@ -406,7 +407,10 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
   }
 
   if (busy && !setup && compsBusy && !compsSetup) return <p className="note">Loading valuation evidence…</p>;
-  if (!setup && !compsSetup && !busy && !compsBusy) return <p className="login-error" role="alert">{error ?? compsError ?? 'Valuation evidence is unavailable.'}</p>;
+  if (!setup && !compsSetup && !busy && !compsBusy) return <>
+    <FinancialAnalysisReport candidateId={candidateId} reloadToken={reloadToken} />
+    <p className="login-error" role="alert">{error ?? compsError ?? 'Valuation evidence is unavailable.'}</p>
+  </>;
   return (
     <section className="valuation-panel">
       <p className="analysis-eyebrow">4. Valuation</p>
@@ -417,6 +421,7 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
         <button className="secondary-button" type="button" onClick={() => void retrievePrimarySourceFinancials()} disabled={primarySourceBusy}>{primarySourceBusy ? 'Retrieving…' : 'Retrieve financial statements'}</button>
       </div>
       {primarySourceNotice && <p className={primarySourceNotice.startsWith('Imported') ? 'note' : 'caveat'}>{primarySourceNotice}</p>}
+      <FinancialAnalysisReport candidateId={candidateId} reloadToken={reloadToken} />
       {!setup ? <section className="dcf-unavailable">
         <h4>Strict automatic DCF</h4>
         <p className="caveat">{busy ? 'Checking structured financial-statement evidence…' : error ?? 'DCF cannot be prepared from the current evidence.'}</p>
