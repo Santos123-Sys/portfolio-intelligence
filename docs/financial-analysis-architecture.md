@@ -44,3 +44,7 @@ The current `market_data_observations` table has `observationDate`, `currency`, 
 - PR F only if justified by measured throughput: Python batch worker, pandas/numpy and FastAPI contract. Deploy separately on Railway after parity, observability and authentication gates pass.
 
 A source failure, unknown reporting period, unit mismatch, missing issuer match, or ambiguous filing keeps valuation locked for that metric. The UI must show the concrete missing evidence and never imply that search results or scraped snippets are audited financial figures.
+
+## SEC adapter configuration
+
+Set `SEC_USER_AGENT` to an identifying organization and contact email, such as `Portfolio Intelligence contact@example.com`, before enabling SEC Company Facts retrieval. The adapter requires an exact ticker match in the official SEC ticker registry and an issuer-name match; it imports only USD annual 10-K/20-F/40-F facts. It does not convert USD filings into a CHF or BRL portfolio's reporting currency. SEC access is bounded to two requests per import and fails visibly on provider errors.
