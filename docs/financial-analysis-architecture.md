@@ -52,4 +52,3 @@ For a BVMF/BRL candidate, enter the issuer's 14-digit CNPJ and one DFP fiscal ye
 ## Swiss PDF flow
 
 Swiss PDF-only reports use the private `filings_python` service. Upload is limited to 5 MB and approved Swiss/CHF candidates. The model extracts a proposed JSON draft with original page references; pandas checks period and unit compatibility and calculates draft ratios. The authenticated owner opens the stored PDF and explicitly approves selected source facts. Only then are they available to the in-app report and valuation gate. Store the PDF hash, quoted evidence, original displayed value, unit multiplier and reviewer alongside every accepted fact. The service requires its own Railway deployment, OpenAI key and shared private token; see `services/filings_python/README.md`.
-
