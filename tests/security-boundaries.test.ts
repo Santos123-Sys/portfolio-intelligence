@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { AFRelationship, PDFDict, PDFDocument, PDFName } from 'pdf-lib';
 import {
   MAX_TEXT_BYTES,
+  prepareThesisDocumentForExtraction,
   validateThesisDocument,
 } from '../src/lib/document-security';
 import { readBoundedJson } from '../src/lib/request-body';
@@ -11,6 +13,48 @@ function encoded(value: string | Buffer): string {
 }
 
 describe('thesis document security boundary', () => {
+  it('prepares linked C2PA PDFs as page-only extraction copies', async () => {
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage();
+    page.drawText('Investment thesis evidence');
+    const link = pdf.context.register(pdf.context.obj({
+      Type: 'Annot', Subtype: 'Link', Rect: [0, 0, 100, 20],
+      A: { S: 'URI', URI: 'https://example.org/filing' },
+    }));
+    page.node.set(PDFName.of('Annots'), pdf.context.obj([link]));
+    await pdf.attach(new Uint8Array([1, 2, 3]), 'Content Credentials', {
+      mimeType: 'application/c2pa', afRelationship: AFRelationship.Source,
+    });
+    const c2pa = await PDFDocument.load(await pdf.save());
+    for (const [, object] of c2pa.context.enumerateIndirectObjects()) {
+      if (object instanceof PDFDict && object.get(PDFName.of('Type'))?.toString() === '/Filespec') {
+        object.set(PDFName.of('AFRelationship'), PDFName.of('C2PA_Manifest'));
+      }
+    }
+    const result = await prepareThesisDocumentForExtraction({
+      fileName: 'thesis.pdf', mimeType: 'application/pdf',
+      contentBase64: Buffer.from(await c2pa.save()).toString('base64'),
+    });
+    const prepared = await PDFDocument.load(Buffer.from(result.contentBase64, 'base64'));
+    expect(prepared.getPageCount()).toBe(1);
+    expect(prepared.getPage(0).node.get(PDFName.of('Annots'))).toBeUndefined();
+    expect(prepared.catalog.get(PDFName.of('Names'))).toBeUndefined();
+    expect(result.byteLength).toBeLessThan(5000);
+  });
+
+  it('rejects unrelated PDF attachments and executable actions during preparation', async () => {
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    await pdf.attach(new Uint8Array([1]), 'payload.bin', { mimeType: 'application/octet-stream' });
+    await expect(prepareThesisDocumentForExtraction({
+      fileName: 'payload.pdf', mimeType: 'application/pdf',
+      contentBase64: Buffer.from(await pdf.save()).toString('base64'),
+    })).rejects.toThrow(/Only C2PA/);
+    await expect(prepareThesisDocumentForExtraction({
+      fileName: 'active.pdf', mimeType: 'application/pdf',
+      contentBase64: encoded('%PDF-1.4\n/OpenAction << /S /JavaScript /JS (alert(1)) >>\n%%EOF'),
+    })).rejects.toThrow(/executable actions/);
+  });
   it('accepts a passive PDF with a valid signature and trailer', () => {
     const result = validateThesisDocument({
       fileName: 'investment-thesis.pdf',

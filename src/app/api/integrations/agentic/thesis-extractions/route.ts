@@ -14,6 +14,7 @@ import {
 import {
   DocumentValidationError,
   MAX_ENCODED_DOCUMENT_CHARACTERS,
+  prepareThesisDocumentForExtraction,
   validateThesisDocument,
 } from '@/lib/document-security';
 import { readBoundedJson } from '@/lib/request-body';
@@ -85,7 +86,7 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   let document: ReturnType<typeof validateThesisDocument>;
   try {
-    document = validateThesisDocument(parsed.data);
+    document = await prepareThesisDocumentForExtraction(parsed.data);
   } catch (error) {
     if (error instanceof DocumentValidationError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
