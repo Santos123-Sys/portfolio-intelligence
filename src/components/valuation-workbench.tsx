@@ -144,7 +144,7 @@ function emptyPeer(): PeerForm {
   return { companyName: '', ticker: '', exchange: '', currency: '', marketCapitalization: '', netDebt: '', totalDebt: '', revenue: '', ebitda: '', netIncome: '', grossProfit: '', operatingIncome: '', totalEquity: '', interestExpense: '', cashAndEquivalents: '', incomeTaxExpense: '', preTaxIncome: '', ntmRevenue: '', ntmEbitda: '', ntmNetIncome: '', sourceUrl: '', forecastSourceUrl: '', researchNote: '' };
 }
 
-export function ValuationWorkbench({ candidateId, country, onSaved }: { candidateId: string; country: string | null; onSaved: () => void }) {
+export function ValuationWorkbench({ candidateId, exchange, currency, country, onSaved }: { candidateId: string; exchange: string; currency: string; country: string | null; onSaved: () => void }) {
   const [setup, setSetup] = useState<ValuationSetup | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -157,6 +157,8 @@ export function ValuationWorkbench({ candidateId, country, onSaved }: { candidat
   const [compsError, setCompsError] = useState<string | null>(null);
   const [primarySourceBusy, setPrimarySourceBusy] = useState(false);
   const [primarySourceNotice, setPrimarySourceNotice] = useState<string | null>(null);
+  const [cvmCnpj, setCvmCnpj] = useState('');
+  const [cvmYear, setCvmYear] = useState(new Date().getUTCFullYear() - 1);
   const [peerSuggestionNotice, setPeerSuggestionNotice] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const automaticPeerResearchKey = useRef<string | null>(null);
@@ -407,6 +409,20 @@ export function ValuationWorkbench({ candidateId, country, onSaved }: { candidat
     }
   }
 
+  async function importCvmYear() {
+    setPrimarySourceBusy(true);
+    setPrimarySourceNotice(null);
+    try {
+      const response = await fetch('/api/discovery/cvm-dfp', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ candidateId, cnpj: cvmCnpj.replace(/\D/g, ''), year: cvmYear }) });
+      const body = await response.json().catch(() => ({})) as { error?: string; importedMetrics?: string[]; periodEnd?: string };
+      if (!response.ok) throw new Error(body.error ?? `CVM filing import failed (${response.status})`);
+      setPrimarySourceNotice(`Imported ${body.importedMetrics?.length ?? 0} CVM DFP metrics for ${body.periodEnd}. Repeat for another fiscal year to build the historical report.`);
+      setReloadToken((current) => current + 1);
+    } catch (cause) { setPrimarySourceNotice((cause as Error).message); }
+    finally { setPrimarySourceBusy(false); }
+  }
+
   if (busy && !setup && compsBusy && !compsSetup) return <p className="note">Loading valuation evidence…</p>;
   if (!setup && !compsSetup && !busy && !compsBusy) return <>
     <FinancialAnalysisReport candidateId={candidateId} reloadToken={reloadToken} />
@@ -421,6 +437,14 @@ export function ValuationWorkbench({ candidateId, country, onSaved }: { candidat
         <div><strong>Primary-source financials</strong><p>Retrieve available inline-XBRL annual-report or 10-K values from investor-relations or regulatory filing pages. The system retains the filing URL and will only unlock the DCF when required financial records and scenario drivers are sourced.</p></div>
         <button className="secondary-button" type="button" onClick={() => void retrievePrimarySourceFinancials()} disabled={primarySourceBusy}>{primarySourceBusy ? 'Retrieving…' : 'Retrieve financial statements'}</button>
       </div>
+      {exchange === 'BVMF' && currency === 'BRL' && <div className="primary-source-cta">
+        <div><strong>CVM annual DFP</strong><p>Enter the issuer’s verified 14-digit CNPJ and fiscal year. The CVM source must match the company and contain consolidated BRL figures. Import one year at a time; missing facts remain visible in the report.</p>
+          <label>CNPJ <input inputMode="numeric" value={cvmCnpj} onChange={(event) => setCvmCnpj(event.target.value)} placeholder="00.000.000/0000-00" /></label>
+          <label>Fiscal year <input type="number" min="2020" max={new Date().getUTCFullYear()} value={cvmYear} onChange={(event) => setCvmYear(Number(event.target.value))} /></label>
+          <a href="https://dados.cvm.gov.br/dataset/cia_aberta-doc-dfp" target="_blank" rel="noopener noreferrer">Check CVM annual filings</a>
+        </div>
+        <button className="secondary-button" type="button" onClick={() => void importCvmYear()} disabled={primarySourceBusy || cvmCnpj.replace(/\D/g, '').length !== 14}>{primarySourceBusy ? 'Importing…' : 'Import CVM year'}</button>
+      </div>}
       {primarySourceNotice && <p className={primarySourceNotice.startsWith('Imported') ? 'note' : 'caveat'}>{primarySourceNotice}</p>}
       {(country === 'CH' || country?.toLowerCase() === 'switzerland')
         && <FinancialDocumentReview candidateId={candidateId} onApproved={() => setReloadToken((current) => current + 1)} />}

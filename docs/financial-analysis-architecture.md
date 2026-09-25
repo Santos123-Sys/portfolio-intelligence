@@ -45,6 +45,10 @@ The current `market_data_observations` table has `observationDate`, `currency`, 
 
 A source failure, unknown reporting period, unit mismatch, missing issuer match, or ambiguous filing keeps valuation locked for that metric. The UI must show the concrete missing evidence and never imply that search results or scraped snippets are audited financial figures.
 
+## CVM DFP import
+
+For a BVMF/BRL candidate, enter the issuer's 14-digit CNPJ and one DFP fiscal year in the valuation workspace. The app fetches the official CVM annual archive for that year, extracts bounded consolidated DRE, DFC and balance-sheet CSVs, verifies the CNPJ and company name, selects the latest filing revision, normalizes the reported scale to BRL, and retains the archive URL, year and revision. It does not infer debt, capex or free cash flow from ambiguous line items, and therefore may leave DCF locked. Import further years individually to build historical coverage. Quarterly ITR normalization is a separate follow-up because its cumulative figures cannot be compared directly with annual flows.
+
 ## Swiss PDF flow
 
 Swiss PDF-only reports use the private `filings_python` service. Upload is limited to 5 MB and approved Swiss/CHF candidates. The model extracts a proposed JSON draft with original page references; pandas checks period and unit compatibility and calculates draft ratios. The authenticated owner opens the stored PDF and explicitly approves selected source facts. Only then are they available to the in-app report and valuation gate. Store the PDF hash, quoted evidence, original displayed value, unit multiplier and reviewer alongside every accepted fact. The service requires its own Railway deployment, OpenAI key and shared private token; see `services/filings_python/README.md`.
