@@ -53,6 +53,21 @@ export const marketDataObservations = pgTable(
   })
 );
 
+/** LLM-extracted PDF facts remain quarantined until the owner reviews them. */
+export const financialDocumentDrafts = pgTable('financial_document_drafts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  candidateId: uuid('candidate_id').references(() => discoveryCandidates.id, { onDelete: 'cascade' }).notNull(),
+  fileName: text('file_name').notNull(),
+  pdfBase64: text('pdf_base64').notNull(),
+  sha256: text('sha256').notNull(),
+  extractionJson: jsonb('extraction_json').notNull(),
+  analysisJson: jsonb('analysis_json').notNull(),
+  status: text('status').notNull().default('awaiting_review'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+}, (t) => ({ ownerCandidateIdx: index('financial_document_owner_candidate_idx').on(t.ownerId, t.candidateId, t.createdAt) }));
+
 /** Versioned owner customization layered beneath immutable agent safety rules. */
 export const agentConfigurations = pgTable(
   'agent_configurations',
