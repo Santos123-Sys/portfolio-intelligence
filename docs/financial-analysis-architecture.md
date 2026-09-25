@@ -44,3 +44,7 @@ The current `market_data_observations` table has `observationDate`, `currency`, 
 - PR F only if justified by measured throughput: Python batch worker, pandas/numpy and FastAPI contract. Deploy separately on Railway after parity, observability and authentication gates pass.
 
 A source failure, unknown reporting period, unit mismatch, missing issuer match, or ambiguous filing keeps valuation locked for that metric. The UI must show the concrete missing evidence and never imply that search results or scraped snippets are audited financial figures.
+
+## CVM DFP import
+
+For a BVMF/BRL candidate, enter the issuer's 14-digit CNPJ and one DFP fiscal year in the valuation workspace. The app fetches the official CVM annual archive for that year, extracts bounded consolidated DRE, DFC and balance-sheet CSVs, verifies the CNPJ and company name, selects the latest filing revision, normalizes the reported scale to BRL, and retains the archive URL, year and revision. It does not infer debt, capex or free cash flow from ambiguous line items, and therefore may leave DCF locked. Import further years individually to build historical coverage. Quarterly ITR normalization is a separate follow-up because its cumulative figures cannot be compared directly with annual flows.
