@@ -316,6 +316,17 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
 .dcf-unavailable { margin-top: 1rem; padding: 0.8rem; border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--border)); border-radius: 7px; }
 .primary-source-cta { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 0.9rem; padding: 0.8rem; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); }
 .primary-source-cta p { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.78rem; }
+.financial-document-review { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; }
+.financial-document-review h4 { margin: 0 0 0.4rem; }
+.financial-document-review > label { display: block; margin: 0.7rem 0; }
+.financial-document-review .table-scroll { margin: 0.75rem 0; }
+.financial-report { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.financial-report-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.financial-report-header h4 { margin: 0.2rem 0; }
+.financial-report .table-scroll { margin-top: 0.8rem; }
+.financial-chart { width: 100%; min-height: 280px; margin-top: 0.9rem; }
+.financial-gaps { display: block; color: var(--muted); font-size: 0.78rem; margin-top: 0.25rem; }
+@media (max-width: 640px) { .financial-report-header { align-items: flex-start; flex-direction: column; } }
 .comps-input-table input { min-width: 92px; width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 5px; color: var(--text); padding: 0.45rem; }
 .comps-input-table td:last-child input { min-width: 180px; }
 .secondary-button { margin: 0.75rem 0.5rem 0.15rem 0; padding: 0.5rem 0.7rem; background: transparent; color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; cursor: pointer; }

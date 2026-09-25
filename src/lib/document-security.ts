@@ -91,3 +91,17 @@ export function validateThesisDocument(input: {
     byteLength: bytes.length,
   };
 }
+
+/** Annual reports commonly contain ordinary URI hyperlinks; permit those links
+ * while rejecting executable actions, embedded payloads, forms and encryption. */
+export function validateFinancialPdfDocument(input: { fileName: string; contentBase64: string }) {
+  const fileName = validateFileName(input.fileName);
+  const bytes = decodeStrictBase64(input.contentBase64);
+  if (bytes.length > 5_000_000) throw new DocumentValidationError('PDF exceeds 5 MB limit', 413);
+  if (bytes.subarray(0, 5).toString('ascii') !== '%PDF-' ||
+    !bytes.subarray(Math.max(0, bytes.length - 4096)).toString('latin1').includes('%%EOF'))
+    throw new DocumentValidationError('Complete PDF required');
+  if (/\/(?:JavaScript|JS|Launch|GoToR|SubmitForm|ImportData|ResetForm|EmbeddedFile|Filespec|RichMedia|XFA|AA|Encrypt)\b/i.test(bytes.toString('latin1')))
+    throw new DocumentValidationError('Active, embedded, form, or encrypted PDF is not accepted');
+  return { fileName, contentBase64: bytes.toString('base64'), byteLength: bytes.length };
+}

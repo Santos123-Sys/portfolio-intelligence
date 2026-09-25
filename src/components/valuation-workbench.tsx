@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { FinancialDocumentReview } from './financial-document-review';
+import { FinancialAnalysisReport } from './financial-analysis-report';
 
 interface ValuationSetup {
   suitability: {
@@ -142,7 +144,7 @@ function emptyPeer(): PeerForm {
   return { companyName: '', ticker: '', exchange: '', currency: '', marketCapitalization: '', netDebt: '', totalDebt: '', revenue: '', ebitda: '', netIncome: '', grossProfit: '', operatingIncome: '', totalEquity: '', interestExpense: '', cashAndEquivalents: '', incomeTaxExpense: '', preTaxIncome: '', ntmRevenue: '', ntmEbitda: '', ntmNetIncome: '', sourceUrl: '', forecastSourceUrl: '', researchNote: '' };
 }
 
-export function ValuationWorkbench({ candidateId, exchange, currency, onSaved }: { candidateId: string; exchange: string; currency: string; onSaved: () => void }) {
+export function ValuationWorkbench({ candidateId, exchange, currency, country, onSaved }: { candidateId: string; exchange: string; currency: string; country: string | null; onSaved: () => void }) {
   const [setup, setSetup] = useState<ValuationSetup | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -422,7 +424,10 @@ export function ValuationWorkbench({ candidateId, exchange, currency, onSaved }:
   }
 
   if (busy && !setup && compsBusy && !compsSetup) return <p className="note">Loading valuation evidence…</p>;
-  if (!setup && !compsSetup && !busy && !compsBusy) return <p className="login-error" role="alert">{error ?? compsError ?? 'Valuation evidence is unavailable.'}</p>;
+  if (!setup && !compsSetup && !busy && !compsBusy) return <>
+    <FinancialAnalysisReport candidateId={candidateId} reloadToken={reloadToken} />
+    <p className="login-error" role="alert">{error ?? compsError ?? 'Valuation evidence is unavailable.'}</p>
+  </>;
   return (
     <section className="valuation-panel">
       <p className="analysis-eyebrow">4. Valuation</p>
@@ -441,6 +446,9 @@ export function ValuationWorkbench({ candidateId, exchange, currency, onSaved }:
         <button className="secondary-button" type="button" onClick={() => void importCvmYear()} disabled={primarySourceBusy || cvmCnpj.replace(/\D/g, '').length !== 14}>{primarySourceBusy ? 'Importing…' : 'Import CVM year'}</button>
       </div>}
       {primarySourceNotice && <p className={primarySourceNotice.startsWith('Imported') ? 'note' : 'caveat'}>{primarySourceNotice}</p>}
+      {(country === 'CH' || country?.toLowerCase() === 'switzerland')
+        && <FinancialDocumentReview candidateId={candidateId} onApproved={() => setReloadToken((current) => current + 1)} />}
+      <FinancialAnalysisReport candidateId={candidateId} reloadToken={reloadToken} />
       {!setup ? <section className="dcf-unavailable">
         <h4>Strict automatic DCF</h4>
         <p className="caveat">{busy ? 'Checking structured financial-statement evidence…' : error ?? 'DCF cannot be prepared from the current evidence.'}</p>

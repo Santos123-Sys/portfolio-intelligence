@@ -673,7 +673,7 @@ export default function AIStockDiscoveryPage() {
                       {valuationCandidateId === candidate.id ? t('closeValuation') : candidate.valuation ? t('reviewValuation') : t('openValuation')}
                     </button>
                     {candidate.valuation && typeof candidate.valuation.resultJson.fairValuePerShare === 'number' && <p className="security-state">Latest DCF fair-value scenario: {candidate.valuation.resultJson.currency} {candidate.valuation.resultJson.fairValuePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })} per share.</p>}
-                    {valuationCandidateId === candidate.id && <ValuationWorkbench candidateId={candidate.id} exchange={candidate.exchange} currency={candidate.currency} onSaved={() => {
+                    {valuationCandidateId === candidate.id && <ValuationWorkbench candidateId={candidate.id} exchange={candidate.exchange} currency={candidate.currency} country={candidate.country} onSaved={() => {
                       if (selectedRunId) void loadCandidates(selectedRunId);
                     }} />}
                     <details className="analysis-evidence"><summary>{t('audit')}</summary>
