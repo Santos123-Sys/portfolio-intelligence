@@ -320,6 +320,27 @@ td.num, th.num, .num { font-family: monospace; text-align: right; }
 .financial-document-review h4 { margin: 0 0 0.4rem; }
 .financial-document-review > label { display: block; margin: 0.7rem 0; }
 .financial-document-review .table-scroll { margin: 0.75rem 0; }
+.research-workspace { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); }
+.research-workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; }
+.research-workspace-heading h4 { margin: 0.2rem 0; }
+.research-workspace-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); gap: 1rem; margin-top: 0.9rem; }
+.research-workspace h5 { margin: 0 0 0.7rem; font-size: 0.82rem; }
+.research-perspective-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+.research-perspective { min-width: 0; padding: 0.75rem; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
+.research-perspective h6 { margin: 0 0 0.4rem; font-size: 0.78rem; }
+.research-perspective p { margin: 0; font-size: 0.78rem; line-height: 1.45; overflow-wrap: anywhere; }
+.research-workflow { padding: 0.75rem; border: 1px solid var(--border); border-radius: 7px; }
+.research-workflow ol { margin: 0; padding: 0; list-style: none; }
+.research-workflow li { display: flex; align-items: baseline; gap: 0.45rem; padding: 0.7rem 0; border-bottom: 1px solid var(--border); font-size: 0.78rem; }
+.research-workflow li:last-child { border: 0; }
+.research-workflow li span:nth-child(2) { flex: 1; }
+.research-workflow li strong { font-size: 0.7rem; text-transform: capitalize; }
+.research-workflow-dot { width: 0.55rem; height: 0.55rem; flex: 0 0 0.55rem; border-radius: 50%; background: var(--muted); }
+.research-workflow-complete .research-workflow-dot { background: #16a36f; }
+.research-workflow-running .research-workflow-dot { background: #c28b26; }
+.research-workflow-failed .research-workflow-dot { background: var(--danger); }
+@media (max-width: 900px) { .research-workspace-layout { grid-template-columns: 1fr; } }
+@media (max-width: 580px) { .research-perspective-grid { grid-template-columns: 1fr; } .research-workspace-heading { align-items: flex-start; flex-direction: column; } }
 .financial-report { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
 .financial-report-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .financial-report-header h4 { margin: 0.2rem 0; }
