@@ -28,12 +28,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Complete the approved security analysis before importing primary-source financials' }, { status: 409 });
   }
   try {
-    const result = await retrieveInvestorRelationsFundamentals(candidate.companyName, candidate.ticker);
+    const result = await retrieveInvestorRelationsFundamentals(candidate.companyName, candidate.ticker, candidate.currency);
     if (!result.extracted) {
       return NextResponse.json({
         error: result.skippedPdfCount
-          ? 'No readable inline-XBRL filing was found. Search found PDF-only report material; add a supported HTML/XBRL annual-report page or use a filing source that exposes inline XBRL.'
-          : 'No readable investor-relations HTML/XBRL filing was found for this company.',
+          ? 'No supported annual inline-XBRL facts were found in the candidate currency. Search also found PDF reports; those require a dedicated verified filing importer.'
+          : 'No unambiguous annual inline-XBRL facts with a matching currency and reporting period were found for this company.',
       }, { status: 422 });
     }
     await recordFundamentalObservations(candidate.securityId, {
@@ -43,10 +43,14 @@ export async function POST(req: Request) {
       _status: 'OK',
       _query: `Primary-source search via ${result.searchProvider}`,
       _evidenceSnippet: result.extracted.evidenceSnippet,
+      _currency: result.extracted.currency,
+      _observationDate: result.extracted.periodEnd,
     }, 'investor-relations');
     return NextResponse.json({
       importedMetrics: Object.keys(result.extracted.fundamentals),
       sourceUrl: result.extracted.sourceUrl,
+      periodEnd: result.extracted.periodEnd,
+      currency: result.extracted.currency,
       notice: result.extracted.evidenceSnippet,
     }, { status: 201 });
   } catch (error) {

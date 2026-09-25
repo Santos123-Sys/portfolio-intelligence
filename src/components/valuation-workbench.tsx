@@ -394,9 +394,9 @@ export function ValuationWorkbench({ candidateId, onSaved }: { candidateId: stri
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ candidateId }),
       });
-      const body = await response.json().catch(() => ({})) as { error?: string; importedMetrics?: string[] };
+      const body = await response.json().catch(() => ({})) as { error?: string; importedMetrics?: string[]; periodEnd?: string; currency?: string };
       if (!response.ok) throw new Error(body.error ?? `Primary-source retrieval failed (${response.status})`);
-      setPrimarySourceNotice(`Imported ${body.importedMetrics?.length ?? 0} primary-source metrics. The strict DCF will only run when all required financial records and source-linked scenario drivers are available.`);
+      setPrimarySourceNotice(`Imported ${body.importedMetrics?.length ?? 0} primary-source metrics for the annual period ending ${body.periodEnd ?? 'unknown'} (${body.currency ?? 'unknown currency'}). Review the filing and scope before valuation. The strict DCF still requires all financial records and source-linked scenario drivers.`);
       setReloadToken((current) => current + 1);
     } catch (cause) {
       setPrimarySourceNotice((cause as Error).message);
