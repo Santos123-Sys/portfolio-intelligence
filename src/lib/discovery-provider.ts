@@ -5,6 +5,7 @@ import { discoveryUniverseSnapshots } from './db/workflow-schema';
 import { getEnv } from './env';
 import { EodhdProvider } from './connectors/eodhd';
 import { getProviderGateway } from './services/provider-gateway';
+import { mergeResearchUniverse } from './research-universe';
 
 export interface MarketDiscoveryProvider {
   readonly name: 'eodhd' | 'finnhub';
@@ -148,10 +149,10 @@ export async function loadDiscoveryUniverse(exchange: string, limit: number): Pr
     const records = await primary.getSecurityUniverse(exchange, limit);
     if (!records.length) throw new Error(`${primary.name} returned an empty security universe`);
     await saveUniverse(primary.name, exchange, records);
-    return { records, provider: primary.name, cached: false };
+    return { records: mergeResearchUniverse(records, exchange), provider: primary.name, cached: false };
   } catch (primaryError) {
     const cached = await cachedUniverse(primary.name, exchange);
-    if (cached?.length) return { records: cached.slice(0, limit), provider: primary.name, cached: true };
+    if (cached?.length) return { records: mergeResearchUniverse(cached.slice(0, limit), exchange), provider: primary.name, cached: true };
     if (env.DISCOVERY_FALLBACK_PROVIDER === 'eodhd' && primary.name !== 'eodhd') {
       if (!env.MARKET_DATA_API_KEY) throw primaryError;
       const fallback = new EodhdDiscoveryProvider(new EodhdProvider(env.MARKET_DATA_API_KEY, getProviderGateway()));
@@ -159,7 +160,7 @@ export async function loadDiscoveryUniverse(exchange: string, limit: number): Pr
         const records = await fallback.getSecurityUniverse(exchange, limit);
         if (!records.length) throw new Error('EODHD returned an empty security universe');
         await saveUniverse(fallback.name, exchange, records);
-        return { records, provider: fallback.name, cached: false };
+        return { records: mergeResearchUniverse(records, exchange), provider: fallback.name, cached: false };
       } catch (fallbackError) {
         throw new Error(
           `${marketLabel(exchange)} could not be loaded. ${primary.name}: ${errorMessage(primaryError)}. ` +
