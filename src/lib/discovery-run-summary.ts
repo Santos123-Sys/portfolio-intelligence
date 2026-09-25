@@ -23,6 +23,13 @@ export function summarizeDiscoveryCandidateCounts(
   candidateCount: number;
   maxCandidatesPerPortfolio: number | null;
   portfolioCandidateCounts: PortfolioCandidateCount[];
+  universeCoverage: {
+    records: number;
+    truncated: boolean;
+    unranked: boolean;
+    providers: string[];
+    recordsByPortfolio: Array<{ portfolioId: string; count: number }>;
+  };
 } {
   const parsed = DiscoveryRunRequest.safeParse(requestJson);
   if (!parsed.success) {
@@ -30,6 +37,7 @@ export function summarizeDiscoveryCandidateCounts(
       candidateCount: candidatePortfolioIds.length,
       maxCandidatesPerPortfolio: null,
       portfolioCandidateCounts: [],
+      universeCoverage: { records: 0, truncated: false, unranked: false, providers: [], recordsByPortfolio: [] },
     };
   }
 
@@ -39,9 +47,20 @@ export function summarizeDiscoveryCandidateCounts(
   }
   const result = MarketDiscoveryOutput.safeParse(resultJson);
   const outcomes = new Map(result.success ? (result.data.portfolioOutcomes ?? []).map((item) => [item.portfolioId, item] as const) : []);
+  const universe = parsed.data.universe;
   return {
     candidateCount: candidatePortfolioIds.length,
     maxCandidatesPerPortfolio: parsed.data.maxCandidatesPerPortfolio,
+    universeCoverage: {
+      records: universe.length,
+      truncated: universe.some((record) => record.attributes.universe_truncated === true),
+      unranked: universe.some((record) => record.attributes.universe_ranking === 'unranked'),
+      providers: [...new Set(universe.map((record) => record.provider))],
+      recordsByPortfolio: parsed.data.portfolios.map((portfolio) => ({
+        portfolioId: portfolio.id,
+        count: universe.filter((record) => record.currency.toUpperCase() === portfolio.baseCurrency.toUpperCase()).length,
+      })),
+    },
     portfolioCandidateCounts: parsed.data.portfolios.map((portfolio) => {
       const count = counts.get(portfolio.id) ?? 0;
       const outcome = outcomes.get(portfolio.id);
