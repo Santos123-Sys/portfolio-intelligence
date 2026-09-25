@@ -52,3 +52,7 @@ For a BVMF/BRL candidate, enter the issuer's 14-digit CNPJ and one DFP fiscal ye
 ## Swiss PDF flow
 
 Swiss PDF-only reports use the private `filings_python` service. Upload is limited to 5 MB and approved Swiss/CHF candidates. The model extracts a proposed JSON draft with original page references; pandas checks period and unit compatibility and calculates draft ratios. The authenticated owner opens the stored PDF and explicitly approves selected source facts. Only then are they available to the in-app report and valuation gate. Store the PDF hash, quoted evidence, original displayed value, unit multiplier and reviewer alongside every accepted fact. The service requires its own Railway deployment, OpenAI key and shared private token; see `services/filings_python/README.md`.
+
+## SEC adapter configuration
+
+Set `SEC_USER_AGENT` to an identifying organization and contact email, such as `Portfolio Intelligence contact@example.com`, before enabling SEC Company Facts retrieval. The adapter requires an exact ticker match in the official SEC ticker registry and an issuer-name match; it imports only USD annual 10-K/20-F/40-F facts. It does not convert USD filings into a CHF or BRL portfolio's reporting currency. SEC access is bounded to two requests per import and fails visibly on provider errors.
